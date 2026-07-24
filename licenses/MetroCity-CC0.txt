@@ -1,0 +1,15 @@
+Character sprites bundled under app/src/main/assets/pixel/characters/
+(char_0..char_5) come from the JIK-A-4 "MetroCity" free top-down character
+pack: https://jik-a-4.itch.io/metrocity-free-topdown-character-pack
+
+License: Creative Commons Zero v1.0 Universal (CC0 1.0)
+
+To the extent possible under law, the author (JIK-A-4) has dedicated these
+assets to the public domain by waiving all of their rights to the work
+worldwide under copyright law, including all related and neighboring rights.
+You can copy, modify, distribute and use the work, even for commercial
+purposes, all without asking permission. Attribution is not required, though
+the author notes it "would be appreciated".
+
+Full legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+Human-readable summary: https://creativecommons.org/publicdomain/zero/1.0/

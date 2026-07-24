@@ -1,0 +1,222 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#141621;overflow:hidden;}
+  #c{display:block;width:100vw;height:100vh;image-rendering:pixelated;image-rendering:crisp-edges;}
+  /* 安全区探针:测量状态栏/导航条高度,让场景把「墙+主脑+顶部装饰」下压避让 */
+  #sat,#sab{position:fixed;left:0;width:1px;pointer-events:none;visibility:hidden;}
+  #sat{top:0;height:env(safe-area-inset-top);}
+  #sab{bottom:0;height:env(safe-area-inset-bottom);}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="sat"></div><div id="sab"></div>
+<script>
+// ===== XINCODE 像素办公室 =====
+// Android: window.setAgents([{name,status,text}]); window.setBrain(busy, text)
+// status: idle|preparing|running|done|failed ;  text=气泡内容(在做什么)
+const A = "../pixel/";
+const IMG = {};
+const NEED = {
+  floor:"floors/floor_0.png", desk:"furniture/SMALL_TABLE_FRONT.png",
+  pcOff:"furniture/PC_FRONT_OFF.png", pcOn1:"furniture/PC_FRONT_ON_1.png",
+  pcOn2:"furniture/PC_FRONT_ON_2.png", pcOn3:"furniture/PC_FRONT_ON_3.png",
+  pcBack:"furniture/PC_BACK.png",
+  bookshelf:"decor/BOOKSHELF.png", dbookshelf:"decor/DOUBLE_BOOKSHELF.png",
+  largePlant:"decor/LARGE_PLANT.png", plant:"decor/PLANT.png", clock:"decor/CLOCK.png",
+  whiteboard:"decor/WHITEBOARD.png", painting:"decor/SMALL_PAINTING_2.png",
+  cactus:"decor/CACTUS.png", bin:"decor/BIN.png", sofa:"decor/SOFA_FRONT.png",
+  coffeeTable:"decor/COFFEE_TABLE.png", coffee:"decor/COFFEE.png",
+  chair:"decor/WOODEN_CHAIR_FRONT.png", cchair:"decor/CUSHIONED_CHAIR_FRONT.png",
+  hangPlant:"decor/HANGING_PLANT.png",
+};
+for(let i=0;i<6;i++) NEED["char"+i]="characters/char_"+i+".png";
+let loaded=0, total=Object.keys(NEED).length;
+for(const k in NEED){ const im=new Image(); im.onload=()=>loaded++; im.onerror=()=>loaded++; im.src=A+NEED[k]; IMG[k]=im; }
+
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+ctx.imageSmoothingEnabled=false;
+let W=0,H=0,DPR=1;
+function ensureSize(){
+  const cw=cv.clientWidth||window.innerWidth||360, ch=cv.clientHeight||window.innerHeight||640;
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  if(cw!==W||ch!==H||dpr!==DPR){ W=cw;H=ch;DPR=dpr; cv.width=Math.max(1,W*DPR|0); cv.height=Math.max(1,H*DPR|0); ctx.setTransform(DPR,0,0,DPR,0,0); ctx.imageSmoothingEnabled=false; }
+}
+
+let agents=[]; let brainBusy=false, brainText="";
+function target(s){ return (s==="running"||s==="preparing")?1:0; } // 只有在忙才去工位;做完/闲置回休息室
+window.setAgents=function(list){
+  try{
+    const arr=(typeof list==="string")?JSON.parse(list):list;
+    const names=arr.map(a=>a.name);
+    agents=agents.filter(a=>names.includes(a.name));
+    arr.forEach((a,i)=>{
+      let ex=agents.find(x=>x.name===a.name);
+      if(!ex){ ex={name:a.name,prog:0}; agents.push(ex); }
+      ex.status=a.status||"idle"; ex.text=a.text||""; ex.idx=i;
+    });
+  }catch(e){}
+};
+window.setBrain=function(busy,text){ brainBusy=!!busy; brainText=text||""; };
+
+function drawImg(im,sx,sy,sw,sh,dx,dy,dw,dh){ if(im&&im.complete&&im.naturalWidth) ctx.drawImage(im,sx,sy,sw,sh,dx,dy,dw,dh); }
+function floorRegion(y0,y1,color){ const ts=26; for(let y=y0;y<y1;y+=ts)for(let x=0;x<W;x+=ts)drawImg(IMG.floor,0,0,16,16,x,y,ts,ts); ctx.globalCompositeOperation='multiply'; ctx.fillStyle=color; ctx.fillRect(0,y0,W,y1-y0); ctx.globalCompositeOperation='source-over'; }
+function drawChar(idx,dir,frame,cx,feetY,s){ const im=IMG["char"+(idx%6)]; if(!im)return; const cw=14*s,ch=28*s; drawImg(im,frame*16,dir*32,16,32,cx-cw/2,feetY-ch,cw,ch); }
+function place(im,cx,feetY,s){ if(!im||!im.naturalWidth)return; const dw=im.naturalWidth*s,dh=im.naturalHeight*s; drawImg(im,0,0,im.naturalWidth,im.naturalHeight,cx-dw/2,feetY-dh,dw,dh); }
+function wallItem(im,cx,topY,s){ if(!im||!im.naturalWidth)return; const dw=im.naturalWidth*s,dh=im.naturalHeight*s; drawImg(im,0,0,im.naturalWidth,im.naturalHeight,cx-dw/2,topY,dw,dh); }
+
+// tailUp=true:气泡挂在 anchorY【下方】,尾巴朝上指向说话人(用于顶部的主脑,避免被顶栏挡住)。
+// 默认:气泡在 anchorY【上方】,尾巴朝下(用于工位员工,浮在显示器上方)。
+function bubble(text,cx,anchorY,maxW,tailUp){
+  if(!text) return;
+  ctx.font="12px sans-serif"; ctx.textAlign="left";
+  // 简单按宽度折行(最多 3 行)
+  const words=text.split(''); let lines=[], cur="";
+  for(const ch of words){ if(ctx.measureText(cur+ch).width>maxW-16){ lines.push(cur); cur=ch; if(lines.length>=3){cur=cur+"…";break;} } else cur+=ch; }
+  if(cur&&lines.length<3) lines.push(cur); else if(cur&&lines.length>=3){}
+  lines=lines.slice(0,3);
+  const lh=15, padX=8, padY=6;
+  let bw=0; lines.forEach(l=>bw=Math.max(bw,ctx.measureText(l).width));
+  bw=Math.min(maxW, bw+padX*2); const bh=lines.length*lh+padY*2;
+  let bx=cx-bw/2; if(bx<4)bx=4; if(bx+bw>W-4)bx=W-4-bw;
+  const by = tailUp ? (anchorY+8) : (anchorY-bh-8);
+  ctx.fillStyle="rgba(250,248,240,0.96)"; roundRect(bx,by,bw,bh,6); ctx.fill();
+  ctx.fillStyle="rgba(250,248,240,0.96)"; ctx.beginPath();
+  if(tailUp){ ctx.moveTo(cx-5,by); ctx.lineTo(cx+5,by); ctx.lineTo(cx,by-6); }
+  else { ctx.moveTo(cx-5,by+bh); ctx.lineTo(cx+5,by+bh); ctx.lineTo(cx,by+bh+6); }
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle="#22212b"; lines.forEach((l,i)=>ctx.fillText(l,bx+padX,by+padY+lh*(i+1)-4));
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+function readInset(id){ const e=document.getElementById(id); return e?Math.round(e.getBoundingClientRect().height):0; }
+function drawWalls(ob,doorW,vh){
+  const face="#2E2A44",cap="#45406A",edge="#1B1830",t=10;
+  ctx.fillStyle=face; ctx.fillRect(0,0,W,18); ctx.fillRect(0,0,t,vh); ctx.fillRect(W-t,0,t,vh); ctx.fillRect(0,vh-10,W,10);
+  ctx.fillStyle=cap; ctx.fillRect(0,0,W,5); ctx.fillRect(0,0,4,vh); ctx.fillRect(W-4,0,4,vh);
+  ctx.fillStyle=edge; ctx.fillRect(0,18,W,2);
+  const dl=W/2-doorW/2,dr=W/2+doorW/2,dy=ob-7;
+  ctx.fillStyle=face; ctx.fillRect(0,dy,dl,14); ctx.fillRect(dr,dy,W-dr,14);
+  ctx.fillStyle=cap; ctx.fillRect(0,dy,dl,4); ctx.fillRect(dr,dy,W-dr,4);
+  ctx.fillStyle=edge; ctx.fillRect(dl-2,dy-2,3,16); ctx.fillRect(dr,dy-2,3,16);
+}
+
+let last=0;
+function frame(ts){
+  const dt=Math.min(0.05,(ts-last)/1000||0); last=ts;
+  ensureSize(); ctx.fillStyle="#141621"; ctx.fillRect(0,0,W,H);
+  if(loaded<total){ ctx.fillStyle="#6B7089"; ctx.font="14px monospace"; ctx.textAlign="center"; ctx.fillText("加载素材… "+loaded+"/"+total,W/2,H/2); requestAnimationFrame(frame); return; }
+
+  // 安全区避让:状态栏(顶)+ 导航条(底)高度,把整个「世界」下压/收窄,主脑的头就不会被状态栏挡住;
+  // 状态栏/导航条【后面】再用墙色/地色填住,视觉上场景仍然铺满整屏。
+  const insTop=Math.max(readInset('sat'),34), insBot=readInset('sab');
+  const VH=H-insTop-insBot;
+  ctx.save(); ctx.translate(0, insTop);
+
+  const ob=VH*0.60, doorW=W*0.26, phase=ts/500, blink=(Math.sin(ts/270)+1)/2;
+  floorRegion(0,ob,"#CBA678"); floorRegion(ob,VH,"#6E7CA6");
+  drawWalls(ob,doorW,VH);
+
+  const ds=Math.max(1.3,Math.min(2.3,W/170));
+  // 墙面装饰(不再往地上摆画)
+  wallItem(IMG.dbookshelf,W*0.15,22,ds); wallItem(IMG.whiteboard,W*0.37,22,ds);
+  wallItem(IMG.clock,W*0.63,18,ds); wallItem(IMG.bookshelf,W*0.85,24,ds);
+  wallItem(IMG.hangPlant,W*0.06,20,ds*0.9); wallItem(IMG.hangPlant,W*0.94,20,ds*0.9);
+  place(IMG.largePlant,W*0.09,ob-14,ds); place(IMG.plant,W*0.91,ob-14,ds);
+
+  const s=Math.max(1.9,Math.min(2.9,(W/2)/32));
+
+  // 主脑:面向房间(down)坐在经理桌后,头露在顶部;桌在人前(下方)
+  const bx=W/2, bScale=s*0.95, bTop=30, bFeet=bTop+28*bScale;
+  drawChar(0,0,brainBusy?(blink<0.5?0:1):0, bx, bFeet, bScale);   // 人(头在 bTop 可见)
+  place(IMG.desk, bx, bFeet+14*bScale, bScale*1.15);              // 桌在人前(遮住下半身)
+  ctx.fillStyle="#F2C14E"; const cwv=2.6*bScale; [-1,0,1].forEach(k=>ctx.fillRect(bx+k*cwv-cwv/2, bTop-cwv*1.4, cwv, cwv));
+  // 主脑的话:挪到【右侧】并挂在头部下方(尾巴朝上指向主脑),避开顶栏遮挡。
+  if(brainBusy && brainText) bubble(brainText, Math.min(W-10, bx + 34*bScale), bTop+4, Math.min(210,W*0.52), true);
+
+  // 工位网格
+  const n=Math.max(1,agents.length), cols=2, zoneTop=150, rowH=120;
+  const dCx=i=>(W/cols)*(i%cols)+(W/cols)/2;
+  const dBaseY=i=>Math.min(ob-20, zoneTop+rowH*((i/cols|0)+1)-8);
+
+  // 休息室:围着中央茶几坐(有美感);座位绕圈分布
+  const loungeX=W/2, loungeY=ob+(VH-ob)*0.42;
+  const rxR=Math.min(W*0.30,150), ryR=(VH-ob)*0.16;
+  const seat=[ [-1,-0.15],[1,-0.15],[-0.55,0.8],[0.55,0.8],[0,-0.9],[0,1] ];
+  const sCx=i=>loungeX+seat[i%seat.length][0]*rxR;
+  const sFeet=i=>loungeY+seat[i%seat.length][1]*ryR + 10;
+
+  agents.forEach(a=>{ const tg=target(a.status); a.prog+=(tg-a.prog)*Math.min(1,dt*2.0); if(Math.abs(a.prog-tg)<0.005)a.prog=tg; });
+
+  // 中央茶几(先画,座位/人再画在四周)
+  place(IMG.coffeeTable, loungeX, loungeY+ryR*0.5, ds*1.1);
+  place(IMG.coffee, loungeX, loungeY+ryR*0.5-14*ds*1.1, ds*0.8);
+  // 座位椅子
+  agents.forEach((a,i)=>{ if(a.prog<=0.1) place(IMG.chair, sCx(i), sFeet(i)+8, s*0.85); });
+
+  agents.forEach((a,i)=>{
+    const p=a.prog;
+    if(p>=0.9){
+      // 在岗(与主脑同款排布,更自然):员工坐在桌【后】面朝我们,桌在人前遮住下半身,
+      // 显示器【坐落在桌面上】(屏幕朝我们),头/肩露在显示器上方——电脑明确摆在桌上,不再悬空。
+      const feetY=dBaseY(i), cx=dCx(i);
+      const frame=a.status==="running"?(blink<0.5?0:1):0;
+      const pcImg = a.status==="running" ? [IMG.pcOn1,IMG.pcOn2,IMG.pcOn3][Math.floor(ts/220)%3] : IMG.pcOff;
+      place(IMG.chair, cx, feetY+2*s, s*0.85);                   // 椅(大半被人挡住)
+      drawChar(i+1,0,frame, cx, feetY, s);                       // 员工:面朝我们,头肩露出
+      place(IMG.desk, cx, feetY+13*s, s*1.15);                   // 桌在人前(遮下半身)
+      place(pcImg, cx, feetY+10*s, s*0.8);                       // 显示器【摆在桌面上】,屏幕朝我们
+      // 气泡浮在员工头顶上方
+      if(a.text) bubble(a.text, cx, feetY-30*s, Math.min(200,W*0.46));
+    } else if(p<=0.1){
+      // 休息:坐在茶几周围的椅子上,按序号分配不同的休闲动作(看书/看手机/打盹),带轻微呼吸起伏
+      const cs=s*0.85, act=i%3, bob=Math.sin(phase*1.2+i*1.7)*0.9;
+      const cx=sCx(i), fy=sFeet(i)+bob;
+      drawChar(i+1,0,0, cx, fy, cs);
+      if(act===0){
+        // 看书:胸前捧一本翻开的书
+        const bw=11*cs, bh=7.5*cs, bx=cx-bw/2, byy=fy-16*cs;
+        ctx.fillStyle="#F1E9D2"; ctx.fillRect(bx,byy,bw,bh);
+        ctx.fillStyle="#8A7550"; ctx.fillRect(cx-0.7*cs,byy,1.4*cs,bh);           // 书脊
+        ctx.strokeStyle="#B7A987"; ctx.lineWidth=Math.max(1,cs*0.35); ctx.strokeRect(bx,byy,bw,bh);
+        ctx.fillStyle="rgba(160,150,120,0.5)";                                     // 书页纹路
+        for(let l=1;l<=2;l++){ ctx.fillRect(bx+2*cs,byy+l*2.2*cs,3.5*cs,cs*0.4); ctx.fillRect(cx+1.2*cs,byy+l*2.2*cs,3.5*cs,cs*0.4); }
+      } else if(act===1){
+        // 看手机:手里一块发光的小屏,伴随幽幽蓝光
+        const glow=0.18+0.16*((Math.sin(phase*2.2+i)+1)/2);
+        ctx.fillStyle="rgba(143,227,255,"+glow+")"; ctx.fillRect(cx-1*cs, fy-16*cs, 7*cs, 8*cs);
+        ctx.fillStyle="#2B2E3A"; ctx.fillRect(cx+1.6*cs, fy-14.5*cs, 3.6*cs, 5.8*cs);
+        ctx.fillStyle="#8FE3FF"; ctx.fillRect(cx+2.2*cs, fy-13.9*cs, 2.4*cs, 4.6*cs);
+      } else {
+        // 打盹:头顶飘 z z z
+        ctx.fillStyle="rgba(243,239,224,"+(0.3+0.4*((Math.sin(phase+i)+1)/2))+")";
+        for(let k=0;k<3;k++){ const sz=(3-k*0.7)*cs*0.5; ctx.fillRect(cx+7*cs+k*3.5*cs, fy-24*cs-k*4.5*cs, sz, sz); }
+      }
+    } else {
+      // 途中:穿门(休息室座位 → 门 → 工位)
+      const doorX=W/2, doorY=ob; let cx,fy;
+      if(p<0.5){ const u=p*2; cx=sCx(i)+(doorX-sCx(i))*u; fy=sFeet(i)+(doorY-sFeet(i))*u; }
+      else { const u=(p-0.5)*2; cx=doorX+(dCx(i)-doorX)*u; fy=doorY+((dBaseY(i)-16*s)-doorY)*u; }
+      drawChar(i+1,1,blink<0.5?0:1,cx,fy,s);
+    }
+  });
+
+  // 休息室角落大件
+  place(IMG.sofa,W*0.16,VH-16,ds*1.15);
+  place(IMG.cactus,W*0.85,VH-16,ds*0.9); place(IMG.bin,W*0.94,VH-16,ds*0.8);
+
+  ctx.restore();
+  // 状态栏后面用墙面色、导航条后面用休息室地色填住,让场景「铺满」整屏而不是留黑边。
+  ctx.fillStyle="#2E2A44"; ctx.fillRect(0,0,W,insTop);
+  if(insBot>0){ ctx.fillStyle="#3B4160"; ctx.fillRect(0,H-insBot,W,insBot); }
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

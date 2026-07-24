@@ -1,0 +1,17 @@
+XINCODE 指挥室像素素材来源 / Asset Attribution
+================================================
+
+角色 sprite(characters/ char_0..char_5)
+  JIK-A-4「MetroCity」免费 topdown 角色包
+  https://jik-a-4.itch.io/metrocity-free-topdown-character-pack
+  许可:Creative Commons Zero v1.0 Universal(CC0 公共领域奉献)。
+  可自由使用/修改/再分发,含商业用途;署名非必需,但作者表示欢迎。
+  全文见仓库根 licenses/MetroCity-CC0.txt。
+
+地板 / 墙 / 家具 / 装饰 / 地毯(floors/ furniture/ decor/ carpets/)
+  来自 pixel-agents 项目(https://github.com/pixel-agents-hq/pixel-agents)。
+  许可:MIT License,Copyright (c) 2026 Pablo De Lucca。
+  全文见仓库根 licenses/pixel-agents-MIT.txt。
+
+说明:以上素材均为【可再分发、可商用】的开放授权,随本仓库一并公开分发。
+本文件与仓库根的 THIRD-PARTY-NOTICES.md、licenses/ 共同满足各许可的署名/通知要求。

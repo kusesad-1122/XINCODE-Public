@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Xincode" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#F9F9F6</item>
+        <item name="android:statusBarColor">#F9F9F6</item>
+        <item name="android:navigationBarColor">#F9F9F6</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

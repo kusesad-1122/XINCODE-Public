@@ -1,0 +1,20 @@
+*.iml
+.gradle/
+build/
+*/build/
+.idea/
+*.apk
+*.aab
+local.properties
+# 发布签名密钥 —— 绝不入库(只留在你本机)
+keystore.properties
+*.jks
+*.keystore
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.log
+.backup/
+cmdline-tools.zip
+android-sdk/

@@ -1,0 +1,1896 @@
+package com.xincode.app
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.widget.Toast
+import android.view.HapticFeedbackConstants
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import com.xincode.app.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.UUID
+import androidx.compose.ui.text.style.TextOverflow
+
+/** Pending attachment waiting to be sent with the next message. */
+data class Attachment(
+    val id: String = UUID.randomUUID().toString(),
+    val fileName: String,
+    val absolutePath: String = "",
+    val sizeBytes: Long = 0,
+    val mimeType: String = "",
+    val content: String
+)
+
+/** Process a single URI from the document picker: validate whitelist + size, read content. */
+private fun processAttachmentUri(
+    context: android.content.Context,
+    uri: Uri,
+    pending: MutableState<List<Attachment>>
+) {
+    val resolver = context.contentResolver
+    var fileName = "unknown"
+    var size = 0L
+    resolver.query(uri, null, null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) {
+            val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+            if (nameIdx >= 0) fileName = cursor.getString(nameIdx) ?: "unknown"
+            if (sizeIdx >= 0) size = cursor.getLong(sizeIdx)
+        }
+    }
+
+    // Size check
+    if (size > 200 * 1024) {
+        Toast.makeText(context, "文件过大(>200KB): $fileName", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    // Extension whitelist check
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+    val nameNoExt = fileName.substringBeforeLast('.')
+    val allowed = whiteList.contains(ext) || whiteListNoExt.contains(nameNoExt) ||
+        whiteListNoExt.contains(fileName)
+    if (!allowed) {
+        Toast.makeText(context, "暂不支持该文件类型: $fileName", Toast.LENGTH_SHORT).show()
+        return
+    }
+
+    // Read content
+    try {
+        val content = resolver.openInputStream(uri)?.use { it.reader().readText() } ?: ""
+        pending.value = pending.value + Attachment(
+            fileName = fileName,
+            sizeBytes = size,
+            mimeType = resolver.getType(uri) ?: "",
+            content = content
+        )
+    } catch (e: Exception) {
+        Toast.makeText(context, "读取失败: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private val whiteList = setOf(
+    "txt","md","markdown","log","json","yaml","yml","toml","ini","properties","conf","cfg",
+    "xml","html","htm","csv","tsv","kt","java","py","sh","bash","zsh","rs","go","c","cpp",
+    "cc","h","hpp","js","ts","tsx","jsx","css","scss","less","vue","svelte","gradle",
+    "gradle.kts","pro","cmake","dockerfile","gitignore","gitattributes","editorconfig",
+    "sql","graphql","gql","env","env.example"
+)
+private val whiteListNoExt = setOf("README","LICENSE","Makefile","Dockerfile","CMakeLists.txt")
+
+// Palette now sourced from [LocalXinColors] — supports light/dark switching.
+// Kept as local vals inside each composable so existing code paths compile unchanged.
+
+private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+
+// -- Unified icon button (terminal aesthetic, all monochrome) --
+
+@Composable
+private fun XinIcon(
+    icon: ImageVector,
+    size: Dp = 18.dp,
+    tint: Color = LocalXinColors.current.ink,
+    onClick: (() -> Unit)? = null,
+    contentDescription: String? = null
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val mod = if (onClick != null) {
+        Modifier.clickable(indication = null, interactionSource = interactionSource) { onClick() }
+    } else Modifier
+    Icon(
+        imageVector = icon,
+        contentDescription = contentDescription,
+        modifier = mod.size(size).padding(2.dp),
+        tint = tint
+    )
+}
+
+@Composable
+fun ChatScreen(
+    chatState: ChatStateLike,
+    currentModel: String = "",
+    availableModels: List<String> = emptyList(),
+    onSwitchModel: (String) -> Unit = {},
+    thinkingEnabled: Boolean = false,
+    thinkingLevel: Int = 2,
+    onThinkingEnabledChange: (Boolean) -> Unit = {},
+    onThinkingLevelChange: (Int) -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
+    onNavigateToWorkflow: () -> Unit = {},
+    onNavigateToGoal: () -> Unit = {},
+    onNavigateToAgentScene: () -> Unit = {},
+    onNavigateToStats: () -> Unit = {},
+    onNavigateToTerminal: () -> Unit = {},
+    subAgentActive: Boolean = false,
+    ttsHelper: TtsHelper? = null,
+    powerMode: com.xincode.core.PowerMode = com.xincode.core.PowerMode.NORMAL,
+    onOpenDrawer: () -> Unit = {},
+    planState: PlanState? = null,
+    tokenStats: TokenStats = TokenStats.EMPTY,
+    onRegenerate: (Long) -> Unit = {},
+    onDeleteMessage: (Long) -> Unit = {},
+    onCompactContext: () -> Unit = {},
+    skillNames: List<String> = emptyList(),
+    onInsertSkill: (String) -> Unit = {},
+    mcpNames: List<String> = emptyList(),
+    onInsertMcp: (String) -> Unit = {},
+    onNavigateToMcp: () -> Unit = {},
+    onSetConversationWorkspace: (String) -> Unit = {},
+    onSetWebSearchEnabled: (Boolean) -> Unit = {},
+    // 计划模式:输入框内切换。PLAN=只读+规划、不执行写/命令;ASK=正常聊天。
+    permissionMode: com.xincode.security.PermissionMode = com.xincode.security.PermissionMode.ASK,
+    onUpdatePermissionMode: (com.xincode.security.PermissionMode) -> Unit = {},
+    // 协作模式(主脑+子智能体):与计划模式一起在输入框模式卡片里选。
+    collabMode: Boolean = false,
+    onSetCollabMode: (Boolean) -> Unit = {},
+    // ---- Goal/Work 模式 ----
+    isGoalSession: Boolean = false,
+    goalStatusCode: String = "",          // ""/running/achieved/failed(来自 DB)
+    goalLiveText: String = "",            // 实时状态小字(第 N 轮/裁判评估中…)
+    goalRunning: Boolean = false,
+    onStartGoal: (String) -> Unit = {},
+    onStopGoal: () -> Unit = {}
+) {
+    val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
+    val context = LocalContext.current
+    var pendingModelIdx by remember { mutableStateOf<String?>(null) }
+    val xc = LocalXinColors.current
+    val Bg = xc.bg
+    val Ink = xc.ink
+    val Sub = xc.sub
+    val Faint = xc.faint
+    val Green = xc.green
+    val Red = xc.red
+    val Border = xc.border
+
+    // Menu visibility
+    var showMainMenu by remember { mutableStateOf(false) }
+    var showEffortMenu by remember { mutableStateOf(false) }
+
+    // TTS state
+    val ttsEnabled by (ttsHelper?.enabled?.collectAsState() ?: remember { mutableStateOf(false) })
+    val lastMsgCount = remember { mutableStateOf(0) }
+
+    // Live token stats + 上下文占用 —— 消息变化时刷新;流式期间每秒轮询一次(修「刷新不及时」)。
+    var liveTokenStats by remember { mutableStateOf(tokenStats) }
+    var contextUsage by remember { mutableStateOf(ContextUsage.EMPTY) }
+    LaunchedEffect(chatState.messages.size, chatState.isStreaming.value) {
+        val agentChat = chatState as? AgentChatState ?: return@LaunchedEffect
+        do {
+            liveTokenStats = agentChat.getSessionTokenStats()
+            contextUsage = agentChat.getContextUsage()
+            if (chatState.isStreaming.value) kotlinx.coroutines.delay(500)
+        } while (chatState.isStreaming.value)
+    }
+
+    // ---- attachments ----
+    val pendingAttachments = remember { mutableStateOf<List<Attachment>>(emptyList()) }
+    val attachLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { result: List<Uri>? ->
+        if (result == null) return@rememberLauncherForActivityResult
+        result.forEach { uri -> processAttachmentUri(context, uri, pendingAttachments) }
+    }
+    // 相册取图。
+    val imageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? -> if (uri != null) processAttachmentUri(context, uri, pendingAttachments) }
+
+    // 「+」卡片 + 文件夹/技能选择器 状态;联网搜索、深度分析 开关。
+    var showPlusCard by remember { mutableStateOf(false) }
+    var showFolderPicker by remember { mutableStateOf(false) }
+    var showSkillPicker by remember { mutableStateOf(false) }
+    var showMcpPicker by remember { mutableStateOf(false) }
+    var showStatsPopup by remember { mutableStateOf(false) }   // 点圆环弹出的统计卡片
+    var showModeCard by remember { mutableStateOf(false) }     // 计划/协作模式卡片
+    var webSearchOn by remember { mutableStateOf(com.xincode.tools.WebSearchGate.enabled) }
+
+    LaunchedEffect(chatState.messages.size, ttsEnabled) {
+        val newCount = chatState.messages.size
+        if (newCount > lastMsgCount.value && ttsEnabled && !chatState.isStreaming.value) {
+            val lastMsg = chatState.messages.lastOrNull()
+            if (lastMsg != null && lastMsg.role == "assistant" && lastMsg.content.isNotBlank()) {
+                ttsHelper?.speak(lastMsg.content)
+            }
+        }
+        lastMsgCount.value = newCount
+    }
+
+    // Model display name (shorten long IDs smartly)
+    val modelDisplayName = remember(currentModel) {
+        when {
+            currentModel.length <= 15 -> currentModel
+            currentModel.startsWith("deepseek-") -> currentModel.removePrefix("deepseek-")
+            else -> {
+                val parts = currentModel.split("-")
+                if (parts.size >= 3) parts.takeLast(2).joinToString("-")
+                else currentModel.take(15)
+            }
+        }
+    }
+    val effortLabels = listOf("Low", "Medium", "High", "Extra", "Max")
+    val effortLabel = effortLabels.getOrElse(thinkingLevel) { "High" }
+
+    // Bind scope on (re)composition — keyed on the chatState INSTANCE so切换会话换绑新实例时会重新布线
+    // (statusLine / isStreaming 收集器绑到新会话那一对)。旧实例仍在其自有 scope 后台运行,不受影响。
+    LaunchedEffect(chatState) {
+        // M1 修复:用 LaunchedEffect 自身的协程作用域(this)布线,而非 composition 级 scope ——
+        // 这样切会话(key=chatState 变化)时,旧实例的状态收集器随本 effect 一并取消,不再泄漏被驱逐的 core。
+        val legacy = chatState as? ChatState
+        if (legacy != null) {
+            legacy.init(this)
+            legacy.loadHistory()            // 旧版 ChatState 仍自行加载
+        }
+        // AgentChatState 的历史由 app(冷启动 + switchToSession)负责加载,这里只布线,避免打断后台正在跑的会话。
+        (chatState as? AgentChatState)?.init(this)
+    }
+
+    // Auto-scroll to bottom when new messages arrive
+    LaunchedEffect(chatState.messages.size) {
+        if (chatState.messages.isNotEmpty()) {
+            listState.animateScrollToItem(chatState.messages.size - 1)
+        }
+    }
+
+    Column(Modifier.fillMaxSize().background(Bg)) {
+        // ---- top bar ----
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("☰", fontSize = 16.sp, fontFamily = JetBrainsMono, color = Ink,
+                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onOpenDrawer() })
+            Spacer(Modifier.width(8.dp))
+            Text("XINCODE", fontSize = 13.sp, fontFamily = JetBrainsMono, color = Ink)
+            Spacer(Modifier.width(8.dp))
+            // Battery / Power mode indicator
+            val batColor = when (powerMode) {
+                com.xincode.core.PowerMode.POWER_SAVE -> Red
+                com.xincode.core.PowerMode.HIGH_PERF -> Green
+                else -> Faint
+            }
+            Text(
+                powerMode.label,
+                fontSize = 10.sp,
+                fontFamily = JetBrainsMono,
+                color = batColor
+            )
+            Spacer(Modifier.weight(1f))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "终端",
+                    fontSize = 13.sp,
+                    fontFamily = JetBrainsMono,
+                    color = Sub,
+                    modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNavigateToTerminal() }
+                )
+                Spacer(Modifier.width(12.dp))
+                // 「统计」不再放右上角 —— 改为输入框上方的可展开小卡片(见 TokenStatsBar 展开态)。
+                Text(
+                    "指挥室",
+                    fontSize = 13.sp,
+                    fontFamily = JetBrainsMono,
+                    color = if (subAgentActive) Green else Sub,
+                    modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNavigateToAgentScene() }
+                )
+                    Spacer(Modifier.width(12.dp))
+                    XinIcon(
+                        icon = Icons.Outlined.Share,
+                        size = 16.dp,
+                        tint = Sub,
+                        onClick = {
+                            val exportText = chatState.formatForExport()
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, exportText)
+                                putExtra(Intent.EXTRA_SUBJECT, "XINCODE 对话导出")
+                            }
+                            context.startActivity(Intent.createChooser(intent, "分享对话"))
+                        }
+                    )
+                }
+            }
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
+
+        // ---- Goal/Work 模式横幅 ----
+        if (isGoalSession) {
+            GoalBanner(goalStatusCode, goalLiveText, goalRunning, onStopGoal)
+        }
+
+        // Live plan card (only shows when an agent_plan has been published)
+        if (planState != null) {
+            PlanCard(planState = planState)
+        }
+
+        val turnGroups by remember(chatState.messages.toList()) {
+            derivedStateOf { chatState.messages.toList().groupByTurn() }
+        }
+
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = 12.dp)
+        ) {
+            items(turnGroups, key = { it.key }) { group ->
+                when {
+                    group.isFlat && group.userMessage != null ->
+                        MessageBubble(
+                            group.userMessage,
+                            isStreamingMessage = chatState.isStreaming.value && group.userMessage == chatState.messages.lastOrNull(),
+                            onDelete = { onDeleteMessage(group.userMessage.id) }
+                        )
+                    group.isFlat && group.assistantMessage != null ->
+                        MessageBubble(
+                            group.assistantMessage,
+                            isStreamingMessage = chatState.isStreaming.value && group.assistantMessage == chatState.messages.lastOrNull(),
+                            onRetry = if (group.assistantMessage.content.startsWith("✗ ")) {
+                                { onRegenerate(group.assistantMessage.id) }
+                            } else null,
+                            onDelete = { onDeleteMessage(group.assistantMessage.id) }
+                        )
+                    group.isFlat && group.toolMessages.isNotEmpty() ->
+                        group.toolMessages.forEach { toolMsg ->
+                            toolMsg.contentBlock?.let { block ->
+                                when (block) {
+                                    is MessageContent.ToolCall -> ToolCallRow(block, modifier = Modifier)
+                                    is MessageContent.FileRead -> CodeBlock(block, Modifier.padding(vertical = 4.dp))
+                                    is MessageContent.FileEdit -> DiffBlock(block, Modifier.padding(vertical = 4.dp))
+                                    else -> {}
+                                }
+                            }
+                        }
+                    else ->
+                        AgentTurnBlock(group, isStreaming = chatState.isStreaming.value)
+                }
+            }
+            // Confirmation card (rendered in chat flow)
+            val agentState = chatState as? AgentChatState
+            val confirmReq = agentState?.pendingConfirm?.value
+            if (confirmReq != null) {
+                item(key = "confirm_card") {
+                    ConfirmCard(
+                        command = confirmReq.command,
+                        isIrreversible = confirmReq.isIrreversible,
+                        onDeny = { agentState.denyConfirmation() },
+                        onAllowOnce = { agentState.approveOnceConfirmation() },
+                        onAlwaysAllow = { agentState.approveAlwaysConfirmation() }
+                    )
+                }
+            }
+        }
+
+        // ---- Scroll-to-bottom FAB — only visible when not at the tail ----
+        val nearBottom by remember {
+            derivedStateOf {
+                val info = listState.layoutInfo
+                val visibleLast = info.visibleItemsInfo.lastOrNull()?.index ?: -1
+                val total = info.totalItemsCount
+                total == 0 || visibleLast >= total - 2
+            }
+        }
+        val showFab = !nearBottom && chatState.messages.isNotEmpty()
+        val fabScale by animateFloatAsState(
+            targetValue = if (showFab) 1f else 0f,
+            animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow),
+            label = "fabScale"
+        )
+        if (fabScale > 0.02f) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .size(36.dp)
+                    .graphicsLayer(scaleX = fabScale, scaleY = fabScale, alpha = fabScale)
+                    .background(Ink, RoundedCornerShape(18.dp))
+                    .border(1.dp, Border, RoundedCornerShape(18.dp))
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        scope.launch { listState.animateScrollToItem(chatState.messages.size - 1) }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.KeyboardArrowDown, "跳到底部", tint = Bg, modifier = Modifier.size(18.dp))
+            }
+        }
+        }
+
+        // Token 统计不再单独占一条 —— 改为输入框发送键旁的「上下文圆环」,点击弹出统计卡片(见下)。
+
+        // Pulse animation for streaming/tool execution
+        val pulseTransition = rememberInfiniteTransition(label = "toolPulse")
+        val pulseAlpha by pulseTransition.animateFloat(
+            initialValue = 0.6f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(700, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "pulseAlpha"
+        )
+
+        // ---- status line ----
+        if (chatState.statusLine.value.isNotEmpty()) {
+            val isError = chatState.statusLine.value.startsWith("✗")
+            Text(
+                chatState.statusLine.value,
+                fontSize = 11.sp,
+                fontFamily = JetBrainsMono,
+                color = if (isError) Red else Faint,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    .alpha(if (!isError && chatState.isStreaming.value) pulseAlpha else 1f)
+            )
+        }
+
+        // ---- slash command popup ----
+        // 仅在还在敲【命令名本身】(斜杠后无空格)时显示菜单;一旦出现空格(如 /skill 后接任务)即隐藏。
+        val activeSlashCommand = remember(chatState.input.value) {
+            val v = chatState.input.value
+            if (v.startsWith("/") && !v.drop(1).contains(' ')) v.substring(1).trim() else null
+        }
+        if (activeSlashCommand != null) {
+            SlashCommandMenu(
+                query = activeSlashCommand,
+                skillNames = skillNames,
+                onCompact = {
+                    onCompactContext()
+                    chatState.input.value = ""
+                },
+                // 选技能 → 输入框生成 /技能名 (由 onInsertSkill 处理),不再清空、不塞模板。
+                onSelectSkill = { name -> onInsertSkill(name) },
+                onClose = { chatState.input.value = "" }
+            )
+        }
+
+        // ---- 「+」卡片:上排 图片/文件/文件夹,下排 skill/MCP/联网搜索/深度分析 ----
+        if (showPlusCard) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp)
+                    .background(Bg, RoundedCornerShape(16.dp))
+                    .border(1.dp, Color(0x1A1A1A17), RoundedCornerShape(16.dp))
+                    .padding(12.dp)
+            ) {
+                // 上排:图片 / 文件 / 文件夹
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    PlusAction(Icons.Outlined.Image, "图片", Ink, Sub) { showPlusCard = false; imageLauncher.launch("image/*") }
+                    PlusAction(Icons.Outlined.Description, "文件", Ink, Sub) { showPlusCard = false; attachLauncher.launch(arrayOf("*/*")) }
+                    PlusAction(Icons.Outlined.Folder, "文件夹", Ink, Sub) { showPlusCard = false; showFolderPicker = true }
+                }
+                Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(Border))
+                // 下排:skill / MCP / 联网搜索 / 深度分析
+                PlusRow(Icons.Outlined.Bolt, "Skill", "选择技能,在输入框生成 /技能名", Ink, Sub, null) { showPlusCard = false; showSkillPicker = true }
+                PlusRow(Icons.Outlined.Extension, "MCP", "选择 MCP 服务器,生成 @服务器 引用", Ink, Sub, null) { showPlusCard = false; showMcpPicker = true }
+                PlusRow(Icons.Outlined.Public, "联网搜索", if (webSearchOn) "已开启" else "已关闭(不打开就不能联网获取信息)", Ink, Sub, webSearchOn) {
+                    webSearchOn = !webSearchOn; onSetWebSearchEnabled(webSearchOn)
+                }
+                PlusRow(Icons.Outlined.Psychology, "深度分析", if (thinkingEnabled) "已开启(深度思考)" else "已关闭", Ink, Sub, thinkingEnabled) {
+                    val next = !thinkingEnabled; onThinkingEnabledChange(next); if (next) onThinkingLevelChange(4)
+                }
+            }
+        }
+        if (showFolderPicker) {
+            DirectoryPickerDialog(
+                initialPath = "",
+                onConfirm = { path -> onSetConversationWorkspace(path); showFolderPicker = false },
+                onDismiss = { showFolderPicker = false }
+            )
+        }
+        if (showSkillPicker) {
+            SkillPickerDialog(skillNames = skillNames, onPick = { onInsertSkill(it); showSkillPicker = false }, onDismiss = { showSkillPicker = false })
+        }
+        if (showMcpPicker) {
+            McpPickerDialog(
+                mcpNames = mcpNames,
+                onPick = { onInsertMcp(it); showMcpPicker = false },
+                onManage = { showMcpPicker = false; onNavigateToMcp() },
+                onDismiss = { showMcpPicker = false }
+            )
+        }
+
+        // ---- floating input card ----
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 12.dp)
+                .border(1.dp, Color(0x1A1A1A17), RoundedCornerShape(16.dp))
+                .background(Bg, RoundedCornerShape(16.dp))
+        ) {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                // Row 1: text field
+                TextField(
+                    value = chatState.input.value,
+                    onValueChange = { chatState.input.value = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !chatState.isStreaming.value,
+                    singleLine = true,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        cursorColor = Ink,
+                        focusedTextColor = Ink,
+                        unfocusedTextColor = Ink,
+                        disabledTextColor = Faint
+                    ),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = JetBrainsMono),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    placeholder = {
+                        Text(
+                            when {
+                                chatState.isStreaming.value -> "…"
+                                isGoalSession && !goalRunning -> "输入目标,让 XINCODE 自主完成…"
+                                else -> "输入消息…"
+                            },
+                            color = Faint, fontSize = 13.sp, fontFamily = JetBrainsMono
+                        )
+                    }
+                )
+                Box(Modifier.fillMaxWidth().height(0.5.dp).background(Border))
+
+                // Row 1.5: attachment chips (only if any)
+                if (pendingAttachments.value.isNotEmpty()) {
+                    val chipScrollState = rememberScrollState()
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(chipScrollState)
+                            .padding(vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        pendingAttachments.value.forEach { att ->
+                            Row(
+                                Modifier
+                                    .height(28.dp)
+                                    .border(1.dp, Color(0x1A1A1A17), RoundedCornerShape(6.dp))
+                                    .background(Color(0x0D1A1A17), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Description,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp),
+                                    tint = Ink
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    att.fileName,
+                                    fontSize = 12.sp,
+                                    fontFamily = JetBrainsMono,
+                                    color = Ink,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Icon(
+                                    Icons.Outlined.Close,
+                                    contentDescription = "删除",
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) {
+                                            pendingAttachments.value =
+                                                pendingAttachments.value.filter { it.id != att.id }
+                                        },
+                                    tint = Ink
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Row 2: toolbar
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 左组:[+] 附件 + 模式芯片(点击弹卡:普通聊天 / 计划模式 / 协作模式,各选 正常·完全访问)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // [+] icon → attach file
+                        XinIcon(icon = Icons.Outlined.Add, size = 18.dp, tint = if (showPlusCard) Green else Sub,
+                            onClick = { showPlusCard = !showPlusCard })
+
+                        Spacer(Modifier.width(10.dp))
+
+                        val isFull = permissionMode == com.xincode.security.PermissionMode.ALLOW_ALL
+                        val accessSuffix = if (isFull) "·完全访问" else "·正常"
+                        val (modeLabel, modeColor) = when {
+                            collabMode -> ("◆ 协作$accessSuffix") to (if (isFull) Red else Green)
+                            permissionMode == com.xincode.security.PermissionMode.PLAN -> "◑ 计划" to Green
+                            isFull -> "● 完全访问" to Red
+                            else -> "○ 聊天" to Sub
+                        }
+                        Text(
+                            modeLabel,
+                            fontSize = 12.sp,
+                            fontFamily = JetBrainsMono,
+                            color = modeColor,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    showModeCard = !showModeCard
+                                }
+                                .padding(vertical = 2.dp)
+                        )
+                    }
+
+                    // Model·Effort capsule
+                    Text(
+                        "$modelDisplayName · $effortLabel ▾",
+                        fontSize = 12.sp,
+                        fontFamily = JetBrainsMono,
+                        color = Sub,
+                        maxLines = 1,
+                        modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            showMainMenu = !showMainMenu
+                            showEffortMenu = false
+                        }
+                    )
+
+                    // 右侧:上下文圆环 + 发送/停止键
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 上下文圆环:随占用绿→蓝→黄→红渐变填充;点击弹出统计卡片。
+                    ContextRing(
+                        usage = contextUsage,
+                        onClick = { showStatsPopup = !showStatsPopup }
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    // [→] send / [■] stop — animated morph
+                    androidx.compose.animation.AnimatedContent(
+                        targetState = chatState.isStreaming.value,
+                        transitionSpec = {
+                            (scaleIn(tween(180)) + fadeIn(tween(180))) togetherWith
+                                (scaleOut(tween(140)) + fadeOut(tween(140)))
+                        },
+                        label = "sendStopMorph"
+                    ) { streaming ->
+                        Text(
+                            if (streaming) "[■]" else "[→]",
+                            fontSize = 13.sp,
+                            fontFamily = JetBrainsMono,
+                            color = if (chatState.input.value.isNotBlank() || streaming) Ink else Faint,
+                            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                if (streaming) {
+                                    // Goal 运行中:停止=终止整个目标任务(而非只掐当前这一轮)。
+                                    if (isGoalSession && goalRunning) onStopGoal() else chatState.stop()
+                                } else if (isGoalSession && !goalRunning) {
+                                    // Goal 会话未在跑:发送=以输入作为目标启动自主循环。
+                                    val g = chatState.input.value.trim()
+                                    if (g.isNotEmpty()) { chatState.input.value = ""; onStartGoal(g) }
+                                } else {
+                                    if (pendingAttachments.value.isNotEmpty()) {
+                                        val attachmentText = buildString {
+                                            append(chatState.input.value.trim())
+                                            append("\n\n---\n附件:\n")
+                                            pendingAttachments.value.forEach { att ->
+                                                append("\n### ${att.fileName}\n```\n${att.content}\n```\n")
+                                            }
+                                            append("\n---\n")
+                                        }
+                                        chatState.input.value = attachmentText
+                                        pendingAttachments.value = emptyList()
+                                    }
+                                    chatState.send()
+                                }
+                            }
+                        )
+                    }
+                    }
+                }
+            }
+        }
+
+        // ---- 模式卡片(计划 / 协作,各选 正常·完全访问)----
+        if (showModeCard) {
+            Popup(
+                alignment = Alignment.BottomStart,
+                offset = IntOffset(0, -70),
+                onDismissRequest = { showModeCard = false }
+            ) {
+                ModeCard(
+                    permissionMode = permissionMode,
+                    collabMode = collabMode,
+                    onPick = { mode, collab ->
+                        onSetCollabMode(collab)
+                        onUpdatePermissionMode(mode)
+                        showModeCard = false
+                    }
+                )
+            }
+        }
+
+        // ---- 上下文统计弹卡(点圆环)----
+        if (showStatsPopup) {
+            Popup(
+                alignment = Alignment.BottomEnd,
+                offset = IntOffset(0, -70),
+                onDismissRequest = { showStatsPopup = false }
+            ) {
+                ContextStatsCard(
+                    usage = contextUsage,
+                    stats = liveTokenStats,
+                    model = currentModel,
+                    chatState = chatState,
+                    onClose = { showStatsPopup = false }
+                )
+            }
+        }
+
+        // ---- Main Menu Popup ----
+        if (showMainMenu) {
+            Popup(
+                alignment = Alignment.BottomCenter,
+                offset = IntOffset(0, -80),
+                onDismissRequest = { showMainMenu = false; showEffortMenu = false }
+            ) {
+                Column(
+                    Modifier
+                        .background(Bg).border(0.5.dp, Border)
+                        .padding(6.dp).widthIn(min = 200.dp, max = 280.dp)
+                ) {
+                    // (a) Current model — top, with ✓
+                    Text(
+                        "$currentModel  ✓",
+                        fontSize = 12.sp,
+                        fontFamily = JetBrainsMono,
+                        color = Ink,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                    )
+                    Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(0.5.dp).background(Border))
+
+                    // (b) Effort row with › arrow — click opens submenu
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                showEffortMenu = true
+                            }
+                            .padding(horizontal = 4.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Effort: $effortLabel",
+                            fontSize = 12.sp,
+                            fontFamily = JetBrainsMono,
+                            color = Ink
+                        )
+                        Text(
+                            "›",
+                            fontSize = 14.sp,
+                            fontFamily = JetBrainsMono,
+                            color = Faint
+                        )
+                    }
+                    Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(0.5.dp).background(Border))
+
+                    // (c) More models
+                    if (availableModels.isNotEmpty()) {
+                        Text(
+                            "More models",
+                            fontSize = 9.sp,
+                            fontFamily = JetBrainsMono,
+                            color = Faint,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                        )
+                        val scrollState = rememberScrollState()
+                        Column(
+                            Modifier
+                                .heightIn(max = 160.dp)
+                                .verticalScroll(scrollState)
+                        ) {
+                            availableModels.forEach { name ->
+                                val isActive = name == currentModel
+                                Row(
+                                    Modifier.fillMaxWidth()
+                                        .background(if (isActive) Color(0xFFF0EFEA) else Bg)
+                                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                            showMainMenu = false
+                                            showEffortMenu = false
+                                            pendingModelIdx = name
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        if (isActive) "●" else "○",
+                                        fontSize = 9.sp,
+                                        color = if (isActive) Green else Faint,
+                                        modifier = Modifier.width(14.dp)
+                                    )
+                                    Text(
+                                        name,
+                                        fontSize = 11.sp,
+                                        fontFamily = JetBrainsMono,
+                                        color = if (isActive) Ink else Sub
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- Effort Submenu Popup (overlays main menu) ----
+        if (showEffortMenu) {
+            Popup(
+                alignment = Alignment.BottomCenter,
+                offset = IntOffset(0, -80),
+                onDismissRequest = { showEffortMenu = false }
+            ) {
+                Column(
+                    Modifier
+                        .background(Bg).border(0.5.dp, Border)
+                        .padding(6.dp).widthIn(min = 200.dp, max = 280.dp)
+                ) {
+                    // (a) Hint
+                    Text(
+                        "强度越高回复越细致，但耗时更长",
+                        fontSize = 9.sp,
+                        fontFamily = JetBrainsMono,
+                        color = Faint,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                    Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(0.5.dp).background(Border))
+
+                    // (b) Five effort levels — all clickable
+                    effortLabels.forEachIndexed { i, label ->
+                        val sel = i == thinkingLevel
+                        Row(
+                            Modifier.fillMaxWidth()
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    onThinkingLevelChange(i)
+                                }
+                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                if (sel) "●" else "○",
+                                fontSize = 10.sp,
+                                color = if (sel) Green else Faint,
+                                modifier = Modifier.width(16.dp)
+                            )
+                            Text(
+                                label,
+                                fontSize = 12.sp,
+                                fontFamily = JetBrainsMono,
+                                color = if (sel) Ink else Sub
+                            )
+                            if (sel) Text("  ✓", fontSize = 10.sp, color = Green)
+                            if (label == "Max") {
+                                XinIcon(
+                                    icon = Icons.Outlined.Info,
+                                    size = 12.dp,
+                                    tint = Faint,
+                                    onClick = {
+                                        // tooltip: 耗用极大，谨慎使用
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(0.5.dp).background(Border))
+
+                    // (c) Thinking toggle
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                onThinkingEnabledChange(!thinkingEnabled)
+                            }
+                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Thinking", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Ink)
+                            Text("用于复杂任务的思考过程", fontSize = 9.sp, fontFamily = JetBrainsMono, color = Faint)
+                        }
+                        Text(
+                            if (thinkingEnabled) "ON ●──" else "OFF ──○",
+                            fontSize = 10.sp,
+                            fontFamily = JetBrainsMono,
+                            color = if (thinkingEnabled) Green else Faint
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- model switch warning ----
+    if (pendingModelIdx != null) {
+        val targetName = pendingModelIdx ?: ""
+        AlertDialog(
+            onDismissRequest = { pendingModelIdx = null },
+            title = { Text("切换模型", fontFamily = JetBrainsMono, color = Ink) },
+            text = { Text("切换到「$targetName」？\n\n新模型可能不兼容当前对话中的工具调用记录，建议开启新会话。", fontFamily = JetBrainsMono, fontSize = 12.sp, color = Ink, lineHeight = 18.sp) },
+            confirmButton = { TextButton(onClick = { val name = pendingModelIdx; pendingModelIdx = null; name?.let { onSwitchModel(it) } }) { Text("切换", fontFamily = JetBrainsMono, color = Red) } },
+            dismissButton = { TextButton(onClick = { pendingModelIdx = null }) { Text("取消", fontFamily = JetBrainsMono, color = Sub) } },
+            containerColor = Bg
+        )
+    }
+}
+
+/**
+ * Slash-command menu shown while the input begins with '/'.
+ * Built-in items: `/compact`. Every user-defined skill is also listed and
+ * expands into its prompt when selected.
+ */
+@Composable
+private fun SlashCommandMenu(
+    query: String,
+    skillNames: List<String>,
+    onCompact: () -> Unit,
+    onSelectSkill: (String) -> Unit,
+    onClose: () -> Unit
+) {
+    val xc = LocalXinColors.current
+    data class Item(val label: String, val desc: String, val onClick: () -> Unit)
+    val q = query.lowercase()
+    val builtins = listOf(
+        Item("/compact", "总结当前对话为摘要，释放上下文") { onCompact() }
+    )
+    val skillItems = skillNames.map { s -> Item("/skill: $s", "注入技能 '$s' 的内容", { onSelectSkill(s) }) }
+    val filtered = (builtins + skillItems).filter { q.isBlank() || it.label.lowercase().contains(q) }
+
+    AnimatedVisibility(
+        visible = filtered.isNotEmpty() || q.isBlank(),
+        enter = fadeIn(tween(120)) + slideInVertically(tween(160)) { it / 2 },
+        exit = fadeOut(tween(100)) + slideOutVertically(tween(120)) { it / 2 }
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp)
+                .padding(bottom = 4.dp)
+                .background(xc.bgElevated, RoundedCornerShape(12.dp))
+                .border(1.dp, xc.border, RoundedCornerShape(12.dp))
+                .padding(8.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Slash 命令 · ${filtered.size} 项",
+                    fontSize = 10.sp,
+                    fontFamily = JetBrainsMono,
+                    color = xc.sub,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    "✕",
+                    fontSize = 12.sp,
+                    fontFamily = JetBrainsMono,
+                    color = xc.sub,
+                    modifier = Modifier.clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onClose() }
+                )
+            }
+            if (filtered.isEmpty()) {
+                Text(
+                    "无匹配命令。可用: /compact, /skill: <name>",
+                    fontSize = 11.sp,
+                    fontFamily = JetBrainsMono,
+                    color = xc.faint,
+                    modifier = Modifier.padding(vertical = 6.dp)
+                )
+            }
+            filtered.take(6).forEach { item ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { item.onClick() }
+                        .padding(vertical = 6.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(item.label, fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.ink)
+                        Text(item.desc, fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub)
+                    }
+                    Text("↵", fontSize = 11.sp, fontFamily = JetBrainsMono, color = xc.faint)
+                }
+            }
+        }
+    }
+}
+
+/** 「+」卡片上排的方块动作(图标 + 标签)。 */
+@Composable
+private fun PlusAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, ink: Color, sub: Color, onClick: () -> Unit) {
+    Column(
+        Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(icon, contentDescription = label, tint = ink, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.height(4.dp))
+        Text(label, fontSize = 11.sp, fontFamily = JetBrainsMono, color = sub)
+    }
+}
+
+/** 「+」卡片下排的一行(图标 + 标题 + 说明/状态 + 可选开关点)。 */
+@Composable
+private fun PlusRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, sub: String, ink: Color, subC: Color, toggled: Boolean?, onClick: () -> Unit) {
+    val green = LocalXinColors.current.green
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = label, tint = if (toggled == true) green else ink, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, fontSize = 13.sp, fontFamily = JetBrainsMono, color = ink)
+            if (sub.isNotBlank()) Text(sub, fontSize = 10.sp, fontFamily = JetBrainsMono, color = subC)
+        }
+        if (toggled != null) {
+            Text(if (toggled) "●" else "○", fontSize = 14.sp, fontFamily = JetBrainsMono, color = if (toggled) green else subC)
+        }
+    }
+}
+
+/** 技能选择对话框:列出可用技能,点选插入。 */
+@Composable
+private fun SkillPickerDialog(skillNames: List<String>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val xc = LocalXinColors.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择技能", fontSize = 14.sp, fontFamily = JetBrainsMono, color = xc.ink) },
+        text = {
+            if (skillNames.isEmpty()) {
+                Text("暂无技能(可在 设置→Skills 管理)", fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.faint)
+            } else {
+                Column(Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    skillNames.forEach { name ->
+                        Text(name, fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onPick(name) }
+                                .padding(vertical = 10.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("关闭", fontFamily = JetBrainsMono, color = xc.sub) } },
+        containerColor = xc.bg
+    )
+}
+
+/** 可展开的统计小卡片:折叠态 = token 一行 + 箭头;展开态 = 子智能体 token + 调用占比。 */
+@Composable
+private fun ExpandableStatsBar(stats: TokenStats, model: String, chatState: ChatStateLike) {
+    val xc = LocalXinColors.current
+    var expanded by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)) {
+        Row(
+            Modifier.fillMaxWidth()
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.weight(1f)) {
+                if (stats.hasData) TokenStatsBar(stats, model)
+                else Text("统计", fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub)
+            }
+            Text(if (expanded) " ▾" else " ▸", fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.faint)
+        }
+        if (expanded) {
+            // 调用占比(从内存消息统计)。
+            val counts = remember(chatState.messages.size, expanded) {
+                val m = HashMap<String, Int>()
+                for (msg in chatState.messages) {
+                    if (msg.role != "tool") continue
+                    val name = try {
+                        val j = org.json.JSONObject(msg.content)
+                        if (j.optBoolean("__tool_call__", false)) j.optString("tool_name", "") else ""
+                    } catch (_: Exception) { "" }
+                    if (name.isBlank()) continue
+                    val cat = when {
+                        name in listOf("web_search", "web_fetch", "web_search_batch") -> "网络"
+                        name in listOf("file_read", "file_write", "file_edit", "edit", "multi_edit", "list_dir", "grep", "glob") -> "文件"
+                        name in listOf("shell_exec", "su_exec", "code_exec", "env_exec") -> "终端"
+                        name in listOf("invoke_skill", "skill_manage") -> "技能"
+                        name in listOf("dispatch_agents", "wolfpack_run") -> "子智能体"
+                        name == "agent_plan" -> "计划"
+                        name in listOf("recall_memory", "save_memory") -> "记忆"
+                        name.contains("__") -> "MCP"
+                        else -> "其他"
+                    }
+                    m[cat] = (m[cat] ?: 0) + 1
+                }
+                m
+            }
+            val total = counts.values.sum()
+            Column(
+                Modifier.fillMaxWidth().padding(top = 6.dp)
+                    .background(xc.bgElevated, RoundedCornerShape(10.dp)).padding(12.dp)
+            ) {
+                Text("子智能体:${AgentStats.subAgentRuns} 次 · ${formatCount(AgentStats.subAgentTokens)} tokens",
+                    fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub)
+                Spacer(Modifier.height(6.dp))
+                Text("调用占比(共 $total 次)", fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.faint)
+                if (total == 0) {
+                    Text("暂无工具调用", fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.faint, modifier = Modifier.padding(top = 4.dp))
+                } else {
+                    counts.entries.sortedByDescending { it.value }.forEach { (cat, cnt) ->
+                        Row(Modifier.fillMaxWidth().padding(top = 3.dp)) {
+                            Text(cat, fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.ink, modifier = Modifier.weight(1f))
+                            Text("$cnt 次 · ${cnt * 100 / total}%", fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Compact token accounting strip. Renders quietly above the input. */
+@Composable
+private fun TokenStatsBar(stats: TokenStats, model: String = "") {
+    val xc = LocalXinColors.current
+    val cachePct = (stats.cacheHitRatio * 100).toInt()
+    val cacheColor = when {
+        stats.cacheHitRatio > 0.5f -> xc.green
+        stats.cacheHitRatio > 0.2f -> xc.yellow
+        else -> xc.sub
+    }
+    val cost = Pricing.costRmb(stats, model)
+    val line = buildString {
+        append("in ")
+        append(formatCount(stats.prompt))
+        append(" · out ")
+        append(formatCount(stats.completion))
+        if (stats.cacheHit + stats.cacheMiss > 0) {
+            append(" · cache ")
+            append(cachePct)
+            append("%")
+        }
+        append(" · Σ ")
+        append(formatCount(stats.total))
+        // 缓存感知的人民币成本(未知模型不显示)。
+        if (cost != null) {
+            append(" · ")
+            append(Pricing.formatRmb(cost))
+        }
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(line, fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub,
+            modifier = Modifier.weight(1f))
+        if (stats.cacheHit + stats.cacheMiss > 0) {
+            Text("●", fontSize = 9.sp, color = cacheColor)
+        }
+    }
+}
+
+private fun formatCount(n: Long): String = when {
+    n < 1_000 -> n.toString()
+    n < 10_000 -> "%.1fk".format(n / 1000.0)
+    n < 1_000_000 -> "${n / 1000}k"
+    else -> "%.1fM".format(n / 1_000_000.0)
+}
+
+// 上下文圆环配色:绿(少)→蓝(中)→黄(接近满)→红(几乎满),分段线性插值。
+private val RingGreen = Color(0xFF7BE0A4)
+private val RingBlue = Color(0xFF4FA3FF)
+private val RingYellow = Color(0xFFF2C14E)
+private val RingRed = Color(0xFFE5484D)
+
+private fun ringColor(ratio: Float): Color {
+    val r = ratio.coerceIn(0f, 1f)
+    return when {
+        r <= 0.45f -> lerp(RingGreen, RingBlue, r / 0.45f)
+        r <= 0.75f -> lerp(RingBlue, RingYellow, (r - 0.45f) / 0.30f)
+        else -> lerp(RingYellow, RingRed, (r - 0.75f) / 0.25f)
+    }
+}
+
+/**
+ * 上下文占用圆环:随占用比例填满,颜色从绿→蓝→黄→红渐变。窗口未知时显示为一圈淡描边 + 「?」。
+ * 点击弹出统计卡片。
+ */
+@Composable
+private fun ContextRing(usage: ContextUsage, onClick: () -> Unit) {
+    val xc = LocalXinColors.current
+    val ratio = usage.ratio
+    // 平滑动画到目标占用(修「刷新不及时」时的跳变观感)。
+    val animated by animateFloatAsState(
+        targetValue = if (usage.known) ratio else 0f,
+        animationSpec = tween(500, easing = FastOutSlowInEasing),
+        label = "ctxRing"
+    )
+    val fg = ringColor(if (usage.known) ratio else 0f)
+    Box(
+        Modifier.size(28.dp)
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(Modifier.size(24.dp)) {
+            val stroke = 3.dp.toPx()
+            // 轨道
+            drawArc(
+                color = xc.border,
+                startAngle = -90f, sweepAngle = 360f, useCenter = false,
+                style = Stroke(width = stroke, cap = StrokeCap.Round)
+            )
+            // 已占用
+            if (usage.known && animated > 0f) {
+                drawArc(
+                    color = fg,
+                    startAngle = -90f, sweepAngle = animated * 360f, useCenter = false,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round)
+                )
+            }
+        }
+        Text(
+            if (usage.known) "${(ratio * 100).toInt()}" else "?",
+            fontSize = 8.sp, fontFamily = JetBrainsMono,
+            color = if (usage.known) fg else xc.faint
+        )
+    }
+}
+
+/**
+ * 点圆环弹出的统计卡片(收窄):上下文占用 + 总 token + 子智能体 token + 工具/skill/MCP 调用占比(不同颜色)。
+ */
+@Composable
+private fun ContextStatsCard(usage: ContextUsage, stats: TokenStats, model: String, chatState: ChatStateLike, onClose: () -> Unit) {
+    val xc = LocalXinColors.current
+    val ringC = ringColor(usage.ratio)
+    // 调用占比(从内存消息统计)。
+    val counts = remember(chatState.messages.size) {
+        val m = HashMap<String, Int>()
+        for (msg in chatState.messages) {
+            if (msg.role != "tool") continue
+            val name = try {
+                val j = org.json.JSONObject(msg.content)
+                if (j.optBoolean("__tool_call__", false)) j.optString("tool_name", "") else ""
+            } catch (_: Exception) { "" }
+            if (name.isBlank()) continue
+            val cat = when {
+                name in listOf("web_search", "web_fetch", "web_search_batch") -> "网络"
+                name in listOf("file_read", "file_write", "file_edit", "edit", "multi_edit", "list_dir", "grep", "glob") -> "文件"
+                name in listOf("shell_exec", "su_exec", "code_exec", "env_exec") -> "终端"
+                name in listOf("invoke_skill", "skill_manage") -> "技能"
+                name in listOf("dispatch_agents", "wolfpack_run") -> "子智能体"
+                name == "agent_plan" -> "计划"
+                name in listOf("recall_memory", "save_memory") -> "记忆"
+                name.contains("__") -> "MCP"
+                else -> "其他"
+            }
+            m[cat] = (m[cat] ?: 0) + 1
+        }
+        m
+    }
+    val total = counts.values.sum()
+    val catColors = mapOf(
+        "网络" to RingBlue, "文件" to RingGreen, "终端" to Color(0xFF9B87F5),
+        "技能" to RingYellow, "子智能体" to Color(0xFFE58F65), "计划" to Color(0xFF57C7D4),
+        "记忆" to Color(0xFFC77DBB), "MCP" to Color(0xFF6FBF73), "其他" to xc.faint
+    )
+    Column(
+        Modifier.width(232.dp)
+            .background(xc.bgElevated, RoundedCornerShape(14.dp))
+            .border(1.dp, xc.border, RoundedCornerShape(14.dp))
+            .padding(14.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("上下文", fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.ink, modifier = Modifier.weight(1f))
+            Text("✕", fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.sub,
+                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClose() })
+        }
+        Spacer(Modifier.height(8.dp))
+        // 上下文占用
+        if (usage.known) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("占用", fontSize = 11.sp, fontFamily = JetBrainsMono, color = xc.sub, modifier = Modifier.weight(1f))
+                Text("${(usage.ratio * 100).toInt()}%", fontSize = 11.sp, fontFamily = JetBrainsMono, color = ringC)
+            }
+            Spacer(Modifier.height(3.dp))
+            // 进度条
+            Box(Modifier.fillMaxWidth().height(5.dp).background(xc.border, RoundedCornerShape(3.dp))) {
+                Box(Modifier.fillMaxWidth(usage.ratio).height(5.dp).background(ringC, RoundedCornerShape(3.dp)))
+            }
+            Spacer(Modifier.height(3.dp))
+            Text("${formatCount(usage.usedTokens)} / ${formatCount(usage.windowTokens)} tokens",
+                fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.faint)
+        } else {
+            Text("上下文窗口未配置(设置→上下文压缩→上下文长度)",
+                fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.faint)
+            Text("当前上下文 ≈ ${formatCount(usage.usedTokens)} tokens",
+                fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub, modifier = Modifier.padding(top = 2.dp))
+        }
+
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(0.5.dp).background(xc.border))
+        Spacer(Modifier.height(8.dp))
+        // 总 token
+        Text("总用量 Σ ${formatCount(stats.total)}", fontSize = 11.sp, fontFamily = JetBrainsMono, color = xc.ink)
+        Text("in ${formatCount(stats.prompt)} · out ${formatCount(stats.completion)}" +
+            (if (stats.cacheHit + stats.cacheMiss > 0) " · cache ${(stats.cacheHitRatio * 100).toInt()}%" else ""),
+            fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub, modifier = Modifier.padding(top = 2.dp))
+        val cost = Pricing.costRmb(stats, model)
+        if (cost != null) Text("成本 ${Pricing.formatRmb(cost)}", fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub)
+
+        Spacer(Modifier.height(8.dp))
+        // 子智能体
+        Text("子智能体 ${AgentStats.subAgentRuns} 次 · ${formatCount(AgentStats.subAgentTokens)} tokens",
+            fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub)
+
+        Spacer(Modifier.height(8.dp))
+        Text("调用占比(共 $total 次)", fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.faint)
+        if (total == 0) {
+            Text("暂无工具调用", fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.faint, modifier = Modifier.padding(top = 3.dp))
+        } else {
+            // 颜色分段条
+            Spacer(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp))) {
+                counts.entries.sortedByDescending { it.value }.forEach { (cat, cnt) ->
+                    Box(Modifier.fillMaxHeight().weight(cnt.toFloat()).background(catColors[cat] ?: xc.faint))
+                }
+            }
+            Spacer(Modifier.height(6.dp))
+            counts.entries.sortedByDescending { it.value }.forEach { (cat, cnt) ->
+                Row(Modifier.fillMaxWidth().padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(7.dp).clip(RoundedCornerShape(2.dp)).background(catColors[cat] ?: xc.faint))
+                    Spacer(Modifier.width(6.dp))
+                    Text(cat, fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.ink, modifier = Modifier.weight(1f))
+                    Text("$cnt · ${cnt * 100 / total}%", fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * 模式卡片:普通聊天 / 计划模式 / 协作模式;计划与协作各可选「正常 / 完全访问」。
+ * 正常 = 危险操作会逐一确认;完全访问 = 全放行不再确认。协作 = 主脑+子智能体优先并行。
+ */
+@Composable
+private fun ModeCard(
+    permissionMode: com.xincode.security.PermissionMode,
+    collabMode: Boolean,
+    onPick: (com.xincode.security.PermissionMode, Boolean) -> Unit
+) {
+    val xc = LocalXinColors.current
+    val ask = com.xincode.security.PermissionMode.ASK
+    val plan = com.xincode.security.PermissionMode.PLAN
+    val allowAll = com.xincode.security.PermissionMode.ALLOW_ALL
+    val isFull = permissionMode == allowAll
+    Column(
+        Modifier.width(248.dp)
+            .background(xc.bgElevated, RoundedCornerShape(14.dp))
+            .border(1.dp, xc.border, RoundedCornerShape(14.dp))
+            .padding(12.dp)
+    ) {
+        Text("模式", fontSize = 11.sp, fontFamily = JetBrainsMono, color = xc.sub)
+        Spacer(Modifier.height(8.dp))
+
+        // 普通聊天(也可选完全访问)
+        Text("○ 普通聊天", fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink)
+        Text("正常对话;完全访问=危险操作也不再逐一确认", fontSize = 9.sp, fontFamily = JetBrainsMono, color = xc.sub)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AccessChip("正常", !collabMode && permissionMode == ask, xc.green, xc) { onPick(ask, false) }
+            AccessChip("完全访问", !collabMode && permissionMode == allowAll, xc.red, xc) { onPick(allowAll, false) }
+        }
+
+        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(xc.border))
+
+        // 计划模式(只读规划)
+        Text("◑ 计划模式", fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink)
+        Text("只读+规划,不写文件、不执行命令", fontSize = 9.sp, fontFamily = JetBrainsMono, color = xc.sub)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AccessChip("正常", !collabMode && permissionMode == plan, xc.green, xc) { onPick(plan, false) }
+        }
+
+        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(xc.border))
+
+        // 协作模式(主脑+子智能体)
+        Text("◆ 协作模式", fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink)
+        Text("主脑指挥,复杂任务拆给子智能体并行", fontSize = 9.sp, fontFamily = JetBrainsMono, color = xc.sub)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AccessChip("正常", collabMode && !isFull, xc.green, xc) { onPick(ask, true) }
+            AccessChip("完全访问", collabMode && isFull, xc.red, xc) { onPick(allowAll, true) }
+        }
+    }
+}
+
+@Composable
+private fun ModeRowSimple(label: String, sub: String, active: Boolean, xc: XinColors, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(label, fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink)
+            Text(sub, fontSize = 9.sp, fontFamily = JetBrainsMono, color = xc.sub)
+        }
+        if (active) Text("✓", fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.green)
+    }
+}
+
+@Composable
+private fun AccessChip(label: String, active: Boolean, activeColor: Color, xc: XinColors, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .border(1.dp, if (active) activeColor else xc.border, RoundedCornerShape(14.dp))
+            .background(if (active) activeColor.copy(alpha = 0.14f) else Color.Transparent, RoundedCornerShape(14.dp))
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+    ) {
+        Text(label, fontSize = 12.sp, fontFamily = JetBrainsMono, color = if (active) activeColor else xc.sub)
+    }
+}
+
+/** Goal/Work 模式横幅:显示目标状态 + 运行中可停止。 */
+@Composable
+private fun GoalBanner(statusCode: String, liveText: String, running: Boolean, onStop: () -> Unit) {
+    val xc = LocalXinColors.current
+    val (dot, label) = when {
+        running || statusCode == "running" -> xc.yellow to (liveText.ifBlank { "执行中…" })
+        statusCode == "achieved" -> xc.green to "✓ 目标已达成"
+        statusCode == "failed" -> xc.red to "✗ 目标未达成"
+        else -> xc.faint to "输入一个目标,XINCODE 会自主执行、裁判验收,完成后通知你"
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
+            .background(xc.bgElevated, RoundedCornerShape(10.dp))
+            .border(1.dp, xc.border, RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(7.dp).background(dot, RoundedCornerShape(4.dp)))
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text("Goal 模式", fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.sub)
+            Text(label, fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.ink, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        if (running || statusCode == "running") {
+            Text("停止", fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.red,
+                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onStop() }
+                    .padding(horizontal = 8.dp, vertical = 4.dp))
+        }
+    }
+}
+
+/** MCP 服务器选择对话框:列出已配置服务器,点选在输入框生成 @服务器 引用;底部可进管理页。 */
+@Composable
+private fun McpPickerDialog(mcpNames: List<String>, onPick: (String) -> Unit, onManage: () -> Unit, onDismiss: () -> Unit) {
+    val xc = LocalXinColors.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择 MCP 服务器", fontSize = 14.sp, fontFamily = JetBrainsMono, color = xc.ink) },
+        text = {
+            if (mcpNames.isEmpty()) {
+                Text("暂无 MCP 服务器(点下方「管理」去添加)", fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.faint)
+            } else {
+                Column(Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    mcpNames.forEach { name ->
+                        Text("@$name", fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onPick(name) }
+                                .padding(vertical = 10.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onManage) { Text("管理", fontFamily = JetBrainsMono, color = xc.green) }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("关闭", fontFamily = JetBrainsMono, color = xc.sub) } },
+        containerColor = xc.bg
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean = false, onRetry: (() -> Unit)? = null, onDelete: (() -> Unit)? = null) {
+    val isUser = msg.role == "user"
+    val isTool = msg.role == "tool"
+    val isError = msg.content.startsWith("✗ ")
+    val xc = LocalXinColors.current
+    val Ink = xc.ink
+    val Sub = xc.sub
+    val Faint = xc.faint
+    val Green = xc.green
+    val Red = xc.red
+    val Border = xc.border
+    val roleLabel = when {
+        isUser -> "you"
+        isTool -> "❯ tool"
+        else -> "xincode"
+    }
+    val roleColor = when {
+        isUser -> Sub
+        isError -> Red
+        isTool -> Green
+        else -> Green
+    }
+    val contentColor = when {
+        isError -> Red
+        isTool -> Faint
+        else -> Ink
+    }
+    val context = LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    var showMenu by remember(msg.id) { mutableStateOf(false) }
+
+    // Blinking cursor while this specific assistant is streaming
+    val cursorTransition = rememberInfiniteTransition(label = "cursor")
+    val cursorAlpha by cursorTransition.animateFloat(
+        initialValue = 0.15f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(520, easing = LinearEasing), RepeatMode.Reverse),
+        label = "cursorAlpha"
+    )
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() },
+                onClick = {},
+                onLongClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    showMenu = true
+                }
+            )
+            .padding(horizontal = 0.dp, vertical = 4.dp),
+        // 用户消息靠右,AI/工具消息靠左。
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start
+    ) {
+        // Reasoning section (message-level, inside bubble, collapsible)
+        ReasoningFoldable(msg, isCurrentStreaming = isStreamingMessage)
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                roleLabel,
+                fontSize = 10.sp,
+                fontFamily = JetBrainsMono,
+                color = roleColor
+            )
+            if (isError && onRetry != null) {
+                Spacer(Modifier.width(12.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onRetry() }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Icon(Icons.Outlined.Refresh, "重试", tint = Sub, modifier = Modifier.size(11.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text("重试", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
+                }
+            }
+        }
+
+        // Content (Markdown for assistant, plain text for user/tool)
+        if (msg.role == "assistant") {
+            if (msg.content.isNotEmpty()) {
+                MarkdownContent(msg.content)
+                if (isStreamingMessage) {
+                    Text(
+                        "▊",
+                        fontSize = 13.sp,
+                        fontFamily = JetBrainsMono,
+                        color = Ink,
+                        modifier = Modifier.alpha(cursorAlpha)
+                    )
+                }
+            } else {
+                Text(
+                    "▊",
+                    fontSize = 13.sp,
+                    fontFamily = JetBrainsMono,
+                    color = Ink,
+                    modifier = Modifier.alpha(cursorAlpha)
+                )
+            }
+        } else {
+            Text(
+                msg.content.ifEmpty {
+                    if (isTool) "(empty)" else ""
+                },
+                fontSize = if (isTool) 11.sp else 13.sp,
+                fontFamily = JetBrainsMono,
+                color = contentColor,
+                lineHeight = if (isTool) 16.sp else 20.sp,
+                // 用户消息文字靠右对齐。
+                textAlign = if (isUser) androidx.compose.ui.text.style.TextAlign.End else androidx.compose.ui.text.style.TextAlign.Start,
+                modifier = if (isUser) Modifier.fillMaxWidth() else Modifier
+            )
+        }
+    }
+    // Subtle separator between messages
+    Box(Modifier.fillMaxWidth().padding(top = 6.dp).height(0.5.dp).background(Border))
+
+    if (showMenu) {
+        MessageActionSheet(
+            content = msg.content,
+            reasoning = msg.reasoning,
+            canDelete = onDelete != null,
+            onCopy = {
+                val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                cm?.setPrimaryClip(ClipData.newPlainText("xincode", msg.content))
+                Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                showMenu = false
+            },
+            onCopyReasoning = if (msg.reasoning.isNotBlank()) {
+                {
+                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    cm?.setPrimaryClip(ClipData.newPlainText("xincode-think", msg.reasoning))
+                    Toast.makeText(context, "已复制思考过程", Toast.LENGTH_SHORT).show()
+                    showMenu = false
+                }
+            } else null,
+            onDelete = if (onDelete != null) { { onDelete(); showMenu = false } } else null,
+            onDismiss = { showMenu = false }
+        )
+    }
+}
+
+@Composable
+private fun MessageActionSheet(
+    content: String,
+    reasoning: String,
+    canDelete: Boolean,
+    onCopy: () -> Unit,
+    onCopyReasoning: (() -> Unit)?,
+    onDelete: (() -> Unit)?,
+    onDismiss: () -> Unit
+) {
+    val xc = LocalXinColors.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("消息操作", fontFamily = JetBrainsMono, color = xc.ink, fontSize = 14.sp) },
+        text = {
+            Column {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onCopy() }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("复制内容", fontFamily = JetBrainsMono, fontSize = 13.sp, color = xc.ink)
+                }
+                if (onCopyReasoning != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onCopyReasoning() }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("复制思考过程", fontFamily = JetBrainsMono, fontSize = 13.sp, color = xc.ink)
+                    }
+                }
+                if (onDelete != null && canDelete) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onDelete() }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("删除这条消息", fontFamily = JetBrainsMono, fontSize = 13.sp, color = xc.red)
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消", color = xc.sub, fontFamily = JetBrainsMono) } },
+        containerColor = xc.bg
+    )
+}
+
+/**
+ * In-flow confirmation card rendered inside the message list.
+ * Style: terminal aesthetic, thin border, rounded 8dp, three horizontal buttons.
+ */
+@Composable
+private fun ConfirmCard(
+    command: String,
+    isIrreversible: Boolean,
+    onDeny: () -> Unit,
+    onAllowOnce: () -> Unit,
+    onAlwaysAllow: () -> Unit
+) {
+    val xc = LocalXinColors.current
+    val Bg = xc.bg
+    val Ink = xc.ink
+    val Sub = xc.sub
+    val Green = xc.green
+    val Red = xc.red
+    val Border = xc.border
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .border(0.5.dp, Color(0x1A1A1A17), RoundedCornerShape(8.dp))
+            .background(Bg, RoundedCornerShape(8.dp))
+            .padding(12.dp)
+    ) {
+        // Header
+        Text(
+            "xincode 想执行",
+            fontSize = 11.sp,
+            fontFamily = JetBrainsMono,
+            color = Sub
+        )
+        Spacer(Modifier.height(6.dp))
+        // Command line
+        Text(
+            "  ❯ $command",
+            fontSize = 12.sp,
+            fontFamily = JetBrainsMono,
+            color = Green
+        )
+        // Risk warning (only for irreversible operations)
+        if (isIrreversible) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "  ⚠ 不可逆操作，请谨慎确认",
+                fontSize = 10.sp,
+                fontFamily = JetBrainsMono,
+                color = Red
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        // Three buttons
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            Text(
+                "拒绝",
+                fontSize = 12.sp,
+                fontFamily = JetBrainsMono,
+                color = Sub,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onDeny() }
+                    .padding(vertical = 8.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Box(Modifier.width(0.5.dp).height(24.dp).background(Border))
+            Text(
+                "仅本次",
+                fontSize = 12.sp,
+                fontFamily = JetBrainsMono,
+                color = Ink,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onAllowOnce() }
+                    .padding(vertical = 8.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            Box(Modifier.width(0.5.dp).height(24.dp).background(Border))
+            Text(
+                "总是允许",
+                fontSize = 12.sp,
+                fontFamily = JetBrainsMono,
+                color = Green,
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onAlwaysAllow() }
+                    .padding(vertical = 8.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        }
+    }
+}

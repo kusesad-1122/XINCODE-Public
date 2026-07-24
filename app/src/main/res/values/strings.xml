@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">XINCODE</string>
+    <string name="widget_title">XINCODE</string>
+    <string name="widget_default_status">空闲</string>
+    <string name="widget_description">XINCODE Agent 状态小组件</string>
+</resources>

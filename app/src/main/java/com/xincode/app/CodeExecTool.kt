@@ -1,0 +1,131 @@
+package com.xincode.app
+
+import android.util.Log
+import com.xincode.core.Tool
+import com.xincode.core.ToolRegistry
+import com.xincode.core.ToolResult
+import com.xincode.provider.ToolCall
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+import org.mozilla.javascript.Context
+import org.mozilla.javascript.ContextFactory
+import org.mozilla.javascript.ScriptableObject
+
+/**
+ * Hermes-④ `execute_code` —— 零上下文成本的工具-RPC 管线。
+ *
+ * 模型写一段 JavaScript,脚本里像调普通函数一样调工具(web_search/file_read/grep/…),
+ * **只有脚本 print() 的输出**回到模型上下文——把 N 次工具调用压成 1 个模型轮次。
+ *
+ * 与 Hermes 的差异:XINCODE 同进程,无需 socket——桥接对象 [Bridge] 直接把工具名回落到
+ * 唯一派发点 [ToolRegistry.execute](与模型正常工具调用同一入口)。
+ *
+ * 安全:
+ *  - 白名单 [SANDBOX_TOOLS] 只含**只读/安全**工具(不含 file_write/shell_exec/su_exec),
+ *    因为脚本内的工具调用绕过了 AgentCore 的安全闸门。
+ *  - 工具调用数上限 [MAX_TOOL_CALLS]、指令数看门狗(防死循环)、stdout 上限 [MAX_STDOUT]。
+ *  - 用 Rhino 解释模式(optimizationLevel=-1),不生成 JVM 字节码,兼容 Android。
+ */
+class CodeExecTool(private val toolRegistry: ToolRegistry) : Tool {
+
+    companion object {
+        private const val TAG = "CodeExecTool"
+        private const val MAX_TOOL_CALLS = 50
+        private const val MAX_STDOUT = 50_000
+        private const val INSTRUCTION_BUDGET = 20_000_000
+        // 只读/安全工具白名单(与 Hermes SANDBOX_ALLOWED_TOOLS 精神一致)。
+        private val SANDBOX_TOOLS = setOf(
+            "web_search", "web_fetch", "file_read", "list_dir", "grep", "glob", "recall_memory"
+        )
+    }
+
+    override val name = "execute_code"
+    override val description =
+        "执行一段 JavaScript 脚本来编排多步工具调用。脚本里可直接调用这些函数(参数为对象,返回值为工具输出字符串):" +
+        SANDBOX_TOOLS.joinToString(", ") + "。用 print(x) 输出——【只有 print 的内容】会回到你这里,中间工具结果不占上下文。" +
+        "适合:批量检索/读多个文件后汇总。不支持写文件/执行 shell(安全)。"
+
+    override val parametersSchema: JSONObject = JSONObject().apply {
+        put("type", "object")
+        put("properties", JSONObject().apply {
+            put("code", JSONObject().apply {
+                put("type", "string")
+                put("description", "要执行的 JavaScript 源码。用 print(...) 输出结果。")
+            })
+        })
+        put("required", JSONArray(listOf("code")))
+    }
+
+    /** JS ↔ Kotlin 桥:call() 回落到工具派发,print() 收集输出。 */
+    inner class Bridge {
+        val out = StringBuilder()
+        var toolCalls = 0
+        fun print(v: Any?) {
+            if (out.length < MAX_STDOUT) out.append(v?.toString() ?: "null").append("\n")
+        }
+        fun call(toolName: String, argsJson: String): String {
+            if (toolName !in SANDBOX_TOOLS) return "ERROR: 工具 '$toolName' 不在脚本沙箱白名单内"
+            if (++toolCalls > MAX_TOOL_CALLS) throw RuntimeException("超出脚本工具调用上限 ($MAX_TOOL_CALLS)")
+            return try {
+                runBlocking {
+                    when (val r = toolRegistry.execute(ToolCall(id = "codeexec_$toolCalls", name = toolName, arguments = argsJson))) {
+                        is ToolResult.Success -> r.output
+                        is ToolResult.Error -> "ERROR: ${r.message}"
+                    }
+                }
+            } catch (e: Exception) { "ERROR: ${e.message}" }
+        }
+    }
+
+    override suspend fun execute(params: Map<String, String>): ToolResult = withContext(Dispatchers.Default) {
+        val code = params["code"].orEmpty()
+        if (code.isBlank()) return@withContext ToolResult.Error("execute_code: code 不能为空")
+
+        val bridge = Bridge()
+        val factory = object : ContextFactory() {
+            override fun makeContext(): Context {
+                val cx = super.makeContext()
+                cx.optimizationLevel = -1 // 解释模式:Android 不能生成字节码
+                cx.instructionObserverThreshold = 100_000
+                return cx
+            }
+            private var instructions = 0
+            override fun observeInstructionCount(cx: Context?, count: Int) {
+                instructions += count
+                if (instructions > INSTRUCTION_BUDGET) throw RuntimeException("脚本指令数超限(疑似死循环)")
+            }
+        }
+
+        try {
+            val cx = factory.enterContext()
+            try {
+                val scope = cx.initStandardObjects()
+                ScriptableObject.putProperty(scope, "__bridge", Context.javaToJS(bridge, scope))
+                cx.evaluateString(scope, buildPreamble() + "\n" + code, "userscript", 1, null)
+            } finally {
+                Context.exit()
+            }
+            val stdout = bridge.out.toString().let {
+                if (it.length >= MAX_STDOUT) it.take(MAX_STDOUT) + "\n...(输出截断)" else it
+            }
+            ToolResult.Success(stdout.ifBlank { "(脚本无 print 输出)" } + "\n[工具调用 ${bridge.toolCalls} 次]")
+        } catch (e: Exception) {
+            Log.w(TAG, "execute_code failed: ${e.message}")
+            val partial = bridge.out.toString().take(2000)
+            ToolResult.Error("execute_code 运行出错: ${e.message}" + if (partial.isNotBlank()) "\n已产出:\n$partial" else "")
+        }
+    }
+
+    /** 为每个白名单工具生成 JS 包装函数 + print。 */
+    private fun buildPreamble(): String = buildString {
+        append("var print = function(x){ __bridge.print(x); };\n")
+        append("var console = { log: print };\n")
+        for (t in SANDBOX_TOOLS) {
+            append("function ").append(t).append("(args){ return __bridge.call('").append(t)
+            append("', JSON.stringify(args || {})); }\n")
+        }
+    }
+}
