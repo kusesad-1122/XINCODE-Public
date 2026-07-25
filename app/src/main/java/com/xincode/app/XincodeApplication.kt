@@ -154,6 +154,24 @@ class XincodeApplication : Application() {
      *    (一次工具失败不该让用户丢掉整个会话);
      *  - **主线程**的异常:记录后交还系统默认处理(UI 状态已不可信,强行续命只会更糟)。
      */
+    /**
+     * 清理超过 7 天的附件副本。
+     *
+     * 图片和大文本附件都会被复制进 filesDir/attachments 只留路径,发完消息也不删——
+     * 不清理的话反复传大图会一直吃满应用私有空间。不在发送后立即删,是因为历史消息里
+     * 还留着路径,用户回看旧对话时可能还想让 AI 再读一次。
+     */
+    private fun pruneOldAttachments() {
+        try {
+            val dir = java.io.File(filesDir, "attachments")
+            if (!dir.isDirectory) return
+            val cutoff = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
+            dir.listFiles()?.forEach { f ->
+                if (f.isFile && f.lastModified() < cutoff) f.delete()
+            }
+        } catch (_: Exception) { /* 清理失败不影响启动 */ }
+    }
+
     private fun installCrashGuard() {
         val default = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
@@ -178,6 +196,7 @@ override fun onCreate() {
         super.onCreate()
         Log.i("XINCODE", "=== APP START ===")
         installCrashGuard()
+        pruneOldAttachments()
         // Initialize shared HTTP disk cache
         HttpCacheProvider.init(cacheDir)
         database = AppDatabase.getInstance(this)

@@ -70,34 +70,79 @@ class DescribeImageTool(
         val apiKey = resolved.apiKey
         val model = resolved.model.ifBlank { "gpt-4o-mini" }
 
-        // 组装 image_url:URL 直传,本地路径转 data URI。
-        val imageUrl = if (image.startsWith("http://") || image.startsWith("https://")) image
-        else {
-            val f = File(image)
-            if (!f.exists() || !f.isFile) return@withContext ToolResult.Error("图片文件不存在: $image")
-            val bytes = f.readBytes()
-            val mime = when (f.extension.lowercase()) {
-                "png" -> "image/png"; "webp" -> "image/webp"; "gif" -> "image/gif"; else -> "image/jpeg"
-            }
-            "data:$mime;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP)
+        // 请求体:远程 URL 直接进 JSON;本地文件【流式】编码,不整张读进内存。
+        //
+        // 为什么不能图省事用 readBytes + encodeToString:那样峰值堆占用约是图片体积的 8 倍——
+        // 原始 byte[] 是 N,Base64 出来的 Java String 按 UTF-16 存是 2.74N,
+        // body.toString() 又整份拷贝一次 2.74N,toRequestBody 再转回 UTF-8 是 1.37N。
+        // 应用默认堆常见 192-256MB,一张 30MB 的相机原图就会 OOM。
+        // 现在改为边读边编码直接写进 sink,内存占用与图片大小无关。
+        val localFile = if (image.startsWith("http://") || image.startsWith("https://")) null
+        else File(image).also {
+            if (!it.exists() || !it.isFile) return@withContext ToolResult.Error("图片文件不存在: $image")
         }
 
-        val body = JSONObject().apply {
-            put("model", model)
-            put("messages", JSONArray().put(JSONObject().apply {
-                put("role", "user")
-                put("content", JSONArray()
-                    .put(JSONObject().put("type", "text").put("text", question))
-                    .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", imageUrl))))
-            }))
-            put("stream", false)
+        val requestBody: okhttp3.RequestBody = if (localFile == null) {
+            JSONObject().apply {
+                put("model", model)
+                put("messages", JSONArray().put(JSONObject().apply {
+                    put("role", "user")
+                    put("content", JSONArray()
+                        .put(JSONObject().put("type", "text").put("text", question))
+                        .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", image))))
+                }))
+                put("stream", false)
+            }.toString().toRequestBody(JSON)
+        } else {
+            val mime = when (localFile.extension.lowercase()) {
+                "png" -> "image/png"; "webp" -> "image/webp"; "gif" -> "image/gif"; else -> "image/jpeg"
+            }
+            // 手写 JSON 的前后缀,中间那段 base64 由 writeTo 流式补上。
+            // 字符串一律用 JSONObject.quote 转义,避免 question 里的引号/换行破坏 JSON。
+            val prefix = buildString {
+                append("{\"model\":").append(JSONObject.quote(model))
+                append(",\"messages\":[{\"role\":\"user\",\"content\":[")
+                append("{\"type\":\"text\",\"text\":").append(JSONObject.quote(question)).append("},")
+                append("{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:").append(mime).append(";base64,")
+            }
+            val suffix = "\"}}]}],\"stream\":false}"
+            object : okhttp3.RequestBody() {
+                override fun contentType() = JSON
+                /** 精确算出长度,避免退化成 chunked 传输(部分网关不接受)。 */
+                override fun contentLength(): Long {
+                    val n = localFile.length()
+                    val b64 = ((n + 2) / 3) * 4     // base64 定长展开
+                    return prefix.toByteArray().size + b64 + suffix.toByteArray().size
+                }
+                override fun writeTo(sink: okio.BufferedSink) {
+                    sink.writeUtf8(prefix)
+                    localFile.inputStream().use { input ->
+                        // 缓冲区必须是 3 的倍数:base64 每 3 字节编成 4 字符,
+                        // 不足 3 的倍数就会提前补 '=' padding,拼起来整段就废了。
+                        val buf = ByteArray(48 * 1024)
+                        while (true) {
+                            var filled = 0
+                            while (filled < buf.size) {
+                                val n = input.read(buf, filled, buf.size - filled)
+                                if (n < 0) break
+                                filled += n
+                            }
+                            if (filled == 0) break
+                            sink.writeUtf8(Base64.encodeToString(buf, 0, filled, Base64.NO_WRAP))
+                            if (filled < buf.size) break   // 读到文件尾
+                        }
+                    }
+                    sink.writeUtf8(suffix)
+                }
+            }
         }
+
         return@withContext try {
             val req = Request.Builder()
                 .url("${baseUrl.trimEnd('/')}/v1/chat/completions")
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
-                .post(body.toString().toRequestBody(JSON))
+                .post(requestBody)
                 .build()
             http.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""

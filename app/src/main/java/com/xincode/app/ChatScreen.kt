@@ -95,18 +95,32 @@ data class Attachment(
 )
 
 /**
- * 处理选择器返回的一个 URI:图片落盘走路径,文本文件读内容。
+ * 处理选择器返回的一个 URI。**必须在 IO 线程调用**(内部有同步文件读写)。
  *
- * 大小【不设上限】(用户要求)。这意味着读取本身可能耗尽内存,所以:
- *  - 图片一律不读进内存,只复制到私有目录、记录路径,交给 describe_image 按需 base64;
- *  - 文本文件仍需读成字符串(要拼进消息),这一步用 OutOfMemoryError 兜底,
- *    宁可给一句明确提示,也不能让整个应用因为选了个超大文件而崩掉。
+ * 大小【不设上限】(用户要求)。真正做到无上限的办法不是"敢读多大读多大",而是让大文件
+ * 根本不进消息体:
+ *  - 图片:流式复制到私有目录,只记路径,由 describe_image 按需读;
+ *  - 文本:小文件照旧内联进消息(方便直接看);超过 [INLINE_TEXT_LIMIT] 的同样只落盘给路径,
+ *    让模型用 file_read 按需读、分段读。否则几 MB 的日志会把上下文顶爆,
+ *    换来一个来自服务端的 context_length_exceeded —— 报错指向不明,用户根本猜不到是附件太大。
+ *
+ * 这里的阈值只决定"内联还是给路径",不拦截任何文件。
  */
-private fun processAttachmentUri(
+private const val INLINE_TEXT_LIMIT = 256 * 1024
+
+private suspend fun processAttachmentUri(
     context: android.content.Context,
     uri: Uri,
     pending: MutableState<List<Attachment>>
 ) {
+    // Toast 必须回主线程弹,否则在 IO 线程上没有 Looper 会直接抛异常。
+    suspend fun toast(msg: String, long: Boolean = false) = withContext(Dispatchers.Main) {
+        Toast.makeText(context, msg, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
+    }
+    suspend fun addAttachment(a: Attachment) = withContext(Dispatchers.Main) {
+        pending.value = pending.value + a
+    }
+
     val resolver = context.contentResolver
     var fileName = "unknown"
     var size = 0L
@@ -122,57 +136,69 @@ private fun processAttachmentUri(
     val mime = resolver.getType(uri).orEmpty()
     val ext = fileName.substringAfterLast('.', "").lowercase()
 
-    // ---- 图片:落盘存路径,不读内容 ----
-    // 以前图片和文本文件走同一条路,结果是两道坎都过不去:图片扩展名不在白名单里,
-    // 就算放行,reader().readText() 把二进制按 UTF-8 读出来也只是一堆乱码。
-    // 现在改为复制到应用私有目录、只记路径,由 describe_image 需要时再读。
-    // 顺带这也让「图片无上限」名副其实——图片根本不进消息体,多大都不占上下文。
-    if (mime.startsWith("image/") || ext in imageExts) {
-        try {
+    /** 流式复制到应用私有目录,返回落盘后的文件;失败返回 null。全程不占内存。 */
+    fun copyToPrivate(): java.io.File? {
+        return try {
             val dir = java.io.File(context.filesDir, "attachments").apply { mkdirs() }
             val safeName = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_")
             val dest = java.io.File(dir, "${System.currentTimeMillis()}_$safeName")
-            resolver.openInputStream(uri)?.use { input ->
-                dest.outputStream().use { output -> input.copyTo(output) }   // 流式复制,不占内存
-            } ?: run {
-                Toast.makeText(context, "无法读取图片: $fileName", Toast.LENGTH_SHORT).show()
-                return
-            }
-            pending.value = pending.value + Attachment(
-                fileName = fileName,
-                absolutePath = dest.absolutePath,
-                sizeBytes = if (size > 0) size else dest.length(),
-                mimeType = mime.ifBlank { "image/$ext" },
-                content = ""      // 图片内容不入消息,只留路径
-            )
-        } catch (e: Exception) {
-            Toast.makeText(context, "图片保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
+            val stream = resolver.openInputStream(uri) ?: return null
+            stream.use { input -> dest.outputStream().use { output -> input.copyTo(output) } }
+            dest
+        } catch (_: Exception) { null }
+    }
+
+    // ---- 图片:落盘存路径,不读内容 ----
+    // 以前图片和文本文件走同一条路,两道坎都过不去:图片扩展名不在白名单里会被拒,
+    // 就算放行,reader().readText() 把二进制按 UTF-8 读出来也只是一堆乱码。
+    if (mime.startsWith("image/") || ext in imageExts) {
+        val dest = copyToPrivate() ?: run { toast("无法读取图片: $fileName"); return }
+        addAttachment(Attachment(
+            fileName = fileName,
+            absolutePath = dest.absolutePath,
+            sizeBytes = if (size > 0) size else dest.length(),
+            mimeType = mime.ifBlank { "image/$ext" },
+            content = ""      // 图片内容不入消息,只留路径
+        ))
         return
     }
 
-    // ---- 文本文件:白名单 + 读内容 ----
+    // ---- 文本文件:白名单 + 按大小决定内联还是给路径 ----
     val nameNoExt = fileName.substringBeforeLast('.')
     val allowed = whiteList.contains(ext) || whiteListNoExt.contains(nameNoExt) ||
         whiteListNoExt.contains(fileName)
     if (!allowed) {
-        Toast.makeText(context, "暂不支持该文件类型: $fileName", Toast.LENGTH_SHORT).show()
+        toast("暂不支持该文件类型: $fileName")
+        return
+    }
+
+    // 大文本走路径,不读进内存 —— 既不会 OOM,也不会顶爆上下文。
+    if (size > INLINE_TEXT_LIMIT) {
+        val dest = copyToPrivate() ?: run { toast("读取失败: $fileName"); return }
+        addAttachment(Attachment(
+            fileName = fileName,
+            absolutePath = dest.absolutePath,
+            sizeBytes = if (size > 0) size else dest.length(),
+            mimeType = mime,
+            content = ""
+        ))
+        toast("文件较大,已按路径附带,AI 会按需读取")
         return
     }
 
     try {
         val content = resolver.openInputStream(uri)?.use { it.reader().readText() } ?: ""
-        pending.value = pending.value + Attachment(
+        addAttachment(Attachment(
             fileName = fileName,
             sizeBytes = size,
             mimeType = mime,
             content = content
-        )
+        ))
     } catch (e: OutOfMemoryError) {
-        // 不设大小上限的代价:真的可能读不下。给明确原因,别让用户以为是文件坏了。
-        Toast.makeText(context, "文件太大,内存装不下:$fileName", Toast.LENGTH_LONG).show()
+        // size 取不到(部分 provider 不给 SIZE 列)时可能漏过上面的阈值判断,这里兜底。
+        toast("文件太大,内存装不下:$fileName", long = true)
     } catch (e: Exception) {
-        Toast.makeText(context, "读取失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        toast("读取失败: ${e.message}")
     }
 }
 
@@ -306,16 +332,27 @@ fun ChatScreen(
 
     // ---- attachments ----
     val pendingAttachments = remember { mutableStateOf<List<Attachment>>(emptyList()) }
+    // 附件读取一律走 IO 线程。ActivityResult 回调跑在主线程,而复制/读取都是同步 IO——
+    // 取消大小上限之后,选一个大文件会直接把 UI 卡死触发 ANR。原来有 200KB 限制时
+    // 这个问题被掩盖着,现在必须显式挪走。
     val attachLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { result: List<Uri>? ->
         if (result == null) return@rememberLauncherForActivityResult
-        result.forEach { uri -> processAttachmentUri(context, uri, pendingAttachments) }
+        scope.launch {
+            result.forEach { uri ->
+                withContext(Dispatchers.IO) { processAttachmentUri(context, uri, pendingAttachments) }
+            }
+        }
     }
     // 相册取图。
     val imageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? -> if (uri != null) processAttachmentUri(context, uri, pendingAttachments) }
+    ) { uri: Uri? ->
+        if (uri != null) scope.launch {
+            withContext(Dispatchers.IO) { processAttachmentUri(context, uri, pendingAttachments) }
+        }
+    }
 
     // 「+」卡片 + 文件夹/技能选择器 状态;联网搜索、深度分析 开关。
     var showPlusCard by remember { mutableStateOf(false) }
@@ -648,9 +685,15 @@ fun ChatScreen(
                     append("\n\n---\n附件:\n")
                     pendingAttachments.value.forEach { att ->
                         if (att.absolutePath.isNotEmpty()) {
-                            // 图片:只给路径。内容不进消息体,所以多大的图都不占上下文;
-                            // 要看图时模型自己调 describe_image(未配视觉副模型时该工具不暴露)。
-                            append("\n### ${att.fileName}(图片,路径:${att.absolutePath})\n")
+                            // 走路径的附件:内容不进消息体,所以多大都不占上下文。
+                            // 图片交给 describe_image(未配视觉模型时该工具不暴露),
+                            // 大文本交给 file_read 按需读、分段读。
+                            val isImg = att.mimeType.startsWith("image/")
+                            if (isImg) {
+                                append("\n### ${att.fileName}(图片,路径:${att.absolutePath})\n")
+                            } else {
+                                append("\n### ${att.fileName}(文件较大未内联,路径:${att.absolutePath},请用 file_read 按需读取)\n")
+                            }
                         } else {
                             append("\n### ${att.fileName}\n```\n${att.content}\n```\n")
                         }
