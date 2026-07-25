@@ -16,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -103,6 +104,28 @@ fun SettingsScreen(
             )
         }
 
+        // 回车发送开关(App 层可观察设置,立即生效)
+        val app = LocalContext.current.applicationContext as XincodeApplication
+        Row(
+            Modifier.fillMaxWidth()
+                .height(48.dp)
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { app.updateEnterToSend(!app.enterToSend) }
+                .padding(start = 20.dp, end = 16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("回车发送", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
+                Text(if (app.enterToSend) "回车直接发送(换行用输入法组合键)" else "回车换行(发送靠 [→] 键)", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
+            }
+            Text(
+                if (app.enterToSend) "ON ●──" else "OFF ──○",
+                fontSize = 11.sp,
+                fontFamily = JetBrainsMono,
+                color = if (app.enterToSend) Green else Faint
+            )
+        }
+
         // ── Section: 账户与模型 ──
         SectionDivider()
         SectionHeader("账户与模型")
@@ -179,7 +202,7 @@ fun SettingsScreen(
         SettingRow("子智能体", "主脑指挥的专职子智能体(各管各的技能),可自建") { onNavigateToSubAgents() }
         SettingRow("Skills 技能", "管理可复用提示词模板") { onNavigateToSkills() }
         SettingRow("MCP 服务器", "外部工具协议服务器管理") { onNavigateToMcp() }
-        SettingRow("Git 接入", "GitHub 授权(CLI)+ Git MCP,连接你的仓库") { onNavigateToGit() }
+        SettingRow("Git 接入", "OAuth 登录 GitHub + 远程/本地 MCP(免 root 也能用)") { onNavigateToGit() }
         SettingRow("搜索 API Key", if (searchApiKey.isNotBlank()) "••••••••••" else "未配置") { showSearchKeyDialog = true }
         if (showSearchKeyDialog) {
             var tempKey by remember { mutableStateOf(searchApiKey) }
@@ -221,7 +244,7 @@ fun SettingsScreen(
         // ── Section: 关于 ──
         SectionDivider()
         SectionHeader("关于")
-        SettingRow("版本", "0.1.0") { /* no-op */ }
+        SettingRow("版本", "1.01") { /* no-op */ }
         SettingRow("XINCODE", "纯 Kotlin 原生 Android AI Agent") { /* no-op */ }
     }
 }

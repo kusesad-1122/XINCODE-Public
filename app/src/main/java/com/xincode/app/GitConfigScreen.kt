@@ -51,11 +51,17 @@ fun GitConfigScreen(database: AppDatabase, keystore: KeystoreProvider, onBack: (
     var token by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    // OAuth 设备流:client_id(用户注册的 OAuth App)+ 登录中显示的用户码/授权网址。
+    var clientId by remember { mutableStateOf("") }
+    var loggingIn by remember { mutableStateOf(false) }
+    var deviceUserCode by remember { mutableStateOf("") }
+    var deviceVerifyUri by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             user = database.settingDao().get("git_user_name") ?: ""
             email = database.settingDao().get("git_user_email") ?: ""
+            clientId = database.settingDao().get("github_oauth_client_id") ?: ""
             val enc = database.settingDao().get("git_token_enc")
             if (!enc.isNullOrBlank()) token = try {
                 keystore.decrypt(android.util.Base64.decode(enc, android.util.Base64.NO_WRAP))
@@ -69,10 +75,53 @@ fun GitConfigScreen(database: AppDatabase, keystore: KeystoreProvider, onBack: (
         scope.launch(Dispatchers.IO) {
             database.settingDao().put("git_user_name", user.trim())
             database.settingDao().put("git_user_email", email.trim())
+            database.settingDao().put("github_oauth_client_id", clientId.trim())
             if (token.isNotBlank()) {
                 val enc = android.util.Base64.encodeToString(keystore.encrypt(token.trim()), android.util.Base64.NO_WRAP)
                 database.settingDao().put("git_token_enc", enc)
             }
+        }
+    }
+
+    /** OAuth 设备流登录:拿设备码 → 打开授权网址 → 轮询拿 token → 回填用户名。免手动建 PAT。 */
+    fun loginOAuth() {
+        if (loggingIn) return
+        val cid = clientId.trim()
+        if (cid.isBlank()) { status = "请先填 OAuth App 的 Client ID(下方有注册入口)"; return }
+        loggingIn = true; deviceUserCode = ""; deviceVerifyUri = ""; status = "正在申请设备码…"
+        scope.launch {
+            val dc = GithubAuth.requestDeviceCode(cid).getOrElse {
+                status = "申请失败:${it.message?.take(120)}"; loggingIn = false; return@launch
+            }
+            deviceUserCode = dc.userCode; deviceVerifyUri = dc.verificationUri
+            status = "① 打开授权网页 → ② 输入下面的用户码 → ③ 点授权(自动检测)"
+            // 顺手把授权网页打开,省得用户手输网址。
+            try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(dc.verificationUri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+            val tok = GithubAuth.pollForToken(cid, dc.deviceCode, dc.interval, dc.expiresIn) { tick -> status = "$tick(用户码 ${dc.userCode})" }
+                .getOrElse { status = "登录失败:${it.message?.take(120)}"; loggingIn = false; deviceUserCode = ""; return@launch }
+            token = tok
+            val login = GithubAuth.fetchLogin(tok)
+            if (!login.isNullOrBlank() && user.isBlank()) user = login
+            saveSettings()
+            status = "已登录 GitHub ✓${login?.let { "(@$it)" } ?: ""} — 现在可配置环境或添加远程 MCP"
+            deviceUserCode = ""; loggingIn = false
+        }
+    }
+
+    /** 添加 GitHub 官方【远程】MCP(HTTP,免 root/免 node):AI 直接用 GitHub API 管仓库/PR/Issue/文件。 */
+    fun addRemoteGithubMcp() {
+        if (token.isBlank()) { status = "请先登录 GitHub(或填 Token)再添加远程 MCP"; return }
+        saveSettings()
+        scope.launch(Dispatchers.IO) {
+            database.mcpServerDao().upsert(
+                McpServerEntity(
+                    name = "github-remote",
+                    url = "https://api.githubcopilot.com/mcp/",
+                    authHeader = "Bearer ${token.trim()}",
+                    transport = "http"
+                )
+            )
+            status = "已添加 GitHub 远程 MCP(免 root),去「设置→MCP 服务器」连接即可"
         }
     }
 
@@ -122,25 +171,55 @@ fun GitConfigScreen(database: AppDatabase, keystore: KeystoreProvider, onBack: (
             Text("Git 接入", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
             Spacer(Modifier.weight(1f))
         }
-        Text("填入 GitHub 用户名/邮箱/Personal Access Token,即可让 XINCODE 连接 Git(CLI 授权 + Git MCP 两条路都备)。",
+        Text("推荐用 OAuth 直接登录 GitHub 账户(免手动建 Token)。登录后可:添加官方远程 MCP(免 root/免 node)让 AI 直接用 GitHub API 管仓库/PR/Issue/文件,或配置到 Linux 环境走终端 git。",
             fontSize = 11.sp, fontFamily = Mono, color = xc.sub, modifier = Modifier.padding(horizontal = 16.dp))
-        Text("点这里去 GitHub 创建 Token(勾选 repo 权限) ›", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
+
+        // —— OAuth 登录 ——
+        Column(Modifier.padding(horizontal = 16.dp).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Field("OAuth App Client ID", clientId, { clientId = it }, xc)
+        }
+        Text("没有 Client ID?点这里注册一个 OAuth App(务必勾选 Enable Device Flow) ›", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
             modifier = Modifier.padding(16.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/settings/tokens")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+                try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/settings/developers")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
             })
 
-        Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Field("GitHub 用户名", user, { user = it }, xc)
-            Field("邮箱(git commit 用)", email, { email = it }, xc)
-            Field("Personal Access Token", token, { token = it }, xc)
+        if (deviceUserCode.isNotBlank()) {
+            Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)) {
+                Text("在打开的网页里输入用户码(点码可复制):", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                Text(deviceUserCode, fontSize = 22.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink,
+                    modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                            ?.setPrimaryClip(android.content.ClipData.newPlainText("code", deviceUserCode))
+                        status = "用户码已复制"
+                    })
+                if (deviceVerifyUri.isNotBlank())
+                    Text("授权网址:$deviceVerifyUri(点击重开) ›", fontSize = 11.sp, fontFamily = Mono, color = xc.green,
+                        modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(deviceVerifyUri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+                        })
+            }
         }
 
         if (status.isNotBlank()) Text(status, fontSize = 11.sp, fontFamily = Mono, color = xc.green, modifier = Modifier.padding(16.dp))
 
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Btn(if (busy) "配置中…" else "① 配置到 Linux 环境(git 授权)", xc.green, !busy) { configureEnv() }
-            Btn("② 添加 GitHub MCP(用同一 Token)", xc.green.copy(alpha = 0.85f), true) { addGithubMcp() }
+            Btn(if (loggingIn) "登录中…(等待网页授权)" else "登录 GitHub(OAuth,免建 Token)", xc.green, !loggingIn) { loginOAuth() }
+            Btn("② 添加官方远程 MCP(免 root/免 node,推荐)", xc.green.copy(alpha = 0.85f), true) { addRemoteGithubMcp() }
+            Btn(if (busy) "配置中…" else "① 配置到 Linux 环境(终端 git,需 root)", xc.green.copy(alpha = 0.75f), !busy) { configureEnv() }
+            Btn("③ 添加本地 GitHub MCP(npx,需环境装 node)", xc.green.copy(alpha = 0.6f), true) { addGithubMcp() }
         }
+
+        // —— 备用:手动 PAT ——
+        Text("或手动填资料(用 Personal Access Token 代替 OAuth):", fontSize = 11.sp, fontFamily = Mono, color = xc.sub, modifier = Modifier.padding(horizontal = 16.dp))
+        Column(Modifier.padding(horizontal = 16.dp).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Field("GitHub 用户名", user, { user = it }, xc)
+            Field("邮箱(git commit 用)", email, { email = it }, xc)
+            Field("Personal Access Token", token, { token = it }, xc)
+        }
+        Text("手动建 Token(勾选 repo 权限) ›", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
+            modifier = Modifier.padding(16.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/settings/tokens")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+            })
         Spacer(Modifier.height(24.dp))
     }
 }

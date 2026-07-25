@@ -29,16 +29,19 @@ object LinuxEnvironment {
     private const val TAG = "LinuxEnv"
 
     /**
-     * 官方 Ubuntu base rootfs(arm64)候选列表:点释放版本会变动(旧文件会被移除),
-     * 逐个尝试,取第一个 200 的。若都失效可加新版本号。
+     * Ubuntu base rootfs(arm64)候选列表——【全部国内镜像】(清华 TUNA / 南京大学 NJU / 北外 BFSU),
+     * 逐个尝试取第一个 200 的。这些镜像同步自官方 cdimage,国内下载快且稳定;点释放版本会变动
+     * (旧文件会被移除),若都失效可加新版本号。已实测各链接可下载且为合法 gzip。
      */
     val ROOTFS_URLS = listOf(
-        "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
-        "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-arm64.tar.gz",
-        "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.2-base-arm64.tar.gz",
-        // 22.04 兜底(长期支持,更稳定)
-        "https://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release/ubuntu-base-22.04.5-base-arm64.tar.gz",
-        "https://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release/ubuntu-base-22.04.4-base-arm64.tar.gz"
+        // 24.04(noble)——主力,三镜像互备
+        "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
+        "https://mirror.nju.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
+        "https://mirrors.bfsu.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.4-base-arm64.tar.gz",
+        "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.3-base-arm64.tar.gz",
+        // 22.04(jammy)兜底(长期支持,更稳定)
+        "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/22.04/release/ubuntu-base-22.04.5-base-arm64.tar.gz",
+        "https://mirror.nju.edu.cn/ubuntu-cdimage/ubuntu-base/releases/22.04/release/ubuntu-base-22.04.5-base-arm64.tar.gz"
     )
 
     enum class State { NOT_SETUP, SETTING_UP, READY, ERROR }
@@ -155,10 +158,11 @@ object LinuxEnvironment {
                 state = State.ERROR; return@withContext false
             }
             tarball.delete()
-            log("解包完成,写入 DNS 与软件源…")
-            // DNS + 保证 apt 可用(resolv.conf 常为空)。
-            RootShellManager.execute("printf 'nameserver 8.8.8.8\\nnameserver 1.1.1.1\\n' > '$r/etc/resolv.conf'")
+            log("解包完成,写入 DNS 与软件源(国内镜像)…")
+            // DNS + 保证 apt 可用(resolv.conf 常为空)。国内优先:阿里 DNS / 腾讯 DNSPod,末尾留一个公共兜底。
+            RootShellManager.execute("printf 'nameserver 223.5.5.5\\nnameserver 119.29.29.29\\nnameserver 180.76.76.76\\n' > '$r/etc/resolv.conf'")
             writeAptSources(r)
+            writePipConf(r)
             // 标记就绪 —— 到这一步 rootfs 已解包完好即视为部署成功。
             // 之后的 apt update 只是"预热",【绝不允许】它把状态翻回失败(加终端前用非流式不易抛,
             // 改流式后 chroot/apt 抛异常会被外层 catch 误判为部署失败——这里彻底隔离)。
@@ -186,21 +190,48 @@ object LinuxEnvironment {
     }
 
     /**
-     * 兜底写入 apt 软件源:官方 base 一般已自带(24.04 用 deb822 的 ubuntu.sources,22.04 用经典
-     * sources.list)。仅当【两者都缺/为空】时才写一份经典 sources.list,避免与自带源重复。
+     * 写入 apt 软件源——【全部指向国内镜像】(清华 TUNA 的 ubuntu-ports,arm64)。用 http 而非 https,
+     * 以避免裸 base rootfs 尚未装 ca-certificates 时 apt 走 TLS 失败的鸡生蛋问题。
+     *  - 官方 base 自带的源(24.04 用 deb822 的 ubuntu.sources,22.04 用经典 sources.list)会把主机
+     *    从 ports.ubuntu.com / archive.ubuntu.com / security.ubuntu.com 就地替换为国内镜像;
+     *  - 若两者都缺/为空,则写一份国内经典 sources.list。
+     * 镜像地址已实测可用。
      */
     private suspend fun writeAptSources(r: String) {
-        val hasSources =
-            "test -s '$r/etc/apt/sources.list' || test -s '$r/etc/apt/sources.list.d/ubuntu.sources'"
-        // 读版本代号(VERSION_CODENAME),缺省用 noble(24.04)。
         val script = buildString {
-            append("if $hasSources; then echo HAVE_SRC; exit 0; fi; ")
+            append("M='mirrors.tuna.tsinghua.edu.cn/ubuntu-ports'; ")
+            // 1) 已自带源:把官方主机替换成国内镜像(http/https、ports/archive/security 都覆盖)。
+            append("for f in '$r/etc/apt/sources.list' '$r/etc/apt/sources.list.d/ubuntu.sources'; do ")
+            append("[ -f \"\$f\" ] && sed -i ")
+            append("-e \"s#http://ports.ubuntu.com/ubuntu-ports#http://\$M#g\" ")
+            append("-e \"s#https://ports.ubuntu.com/ubuntu-ports#http://\$M#g\" ")
+            append("-e \"s#http://archive.ubuntu.com/ubuntu#http://\$M#g\" ")
+            append("-e \"s#https://archive.ubuntu.com/ubuntu#http://\$M#g\" ")
+            append("-e \"s#http://security.ubuntu.com/ubuntu#http://\$M#g\" ")
+            append("-e \"s#https://security.ubuntu.com/ubuntu#http://\$M#g\" \"\$f\"; ")
+            append("done; ")
+            // 2) 两者都无/为空 → 写一份国内经典源(读版本代号,缺省 noble=24.04)。
+            append("if ! test -s '$r/etc/apt/sources.list' && ! test -s '$r/etc/apt/sources.list.d/ubuntu.sources'; then ")
             append(". '$r/etc/os-release' 2>/dev/null; C=\"\${VERSION_CODENAME:-noble}\"; ")
-            append("{ ")
-            append("echo \"deb http://ports.ubuntu.com/ubuntu-ports \$C main restricted universe multiverse\"; ")
-            append("echo \"deb http://ports.ubuntu.com/ubuntu-ports \$C-updates main restricted universe multiverse\"; ")
-            append("echo \"deb http://ports.ubuntu.com/ubuntu-ports \$C-security main restricted universe multiverse\"; ")
-            append("} > '$r/etc/apt/sources.list'; echo WROTE_SRC")
+            append("{ echo \"deb http://\$M \$C main restricted universe multiverse\"; ")
+            append("echo \"deb http://\$M \$C-updates main restricted universe multiverse\"; ")
+            append("echo \"deb http://\$M \$C-security main restricted universe multiverse\"; ")
+            append("} > '$r/etc/apt/sources.list'; fi; echo APT_SRC_DONE")
+        }
+        try { RootShellManager.execute(script) } catch (_: Exception) {}
+    }
+
+    /**
+     * 写入 pip 全局配置 /etc/pip.conf——指向国内 PyPI 镜像(清华 TUNA),让环境内所有 pip 安装走国内源。
+     * 镜像地址已实测可用。
+     */
+    private suspend fun writePipConf(r: String) {
+        val script = buildString {
+            append("mkdir -p '$r/etc'; ")
+            append("printf '[global]\\n")
+            append("index-url = https://pypi.tuna.tsinghua.edu.cn/simple\\n")
+            append("[install]\\n")
+            append("trusted-host = pypi.tuna.tsinghua.edu.cn\\n' > '$r/etc/pip.conf'; echo PIP_CONF_DONE")
         }
         try { RootShellManager.execute(script) } catch (_: Exception) {}
     }

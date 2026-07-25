@@ -110,6 +110,10 @@ class XincodeApplication : Application() {
     var darkMode by mutableStateOf(false)
         private set
 
+    /** 输入框回车行为:true=回车直接发送(换行用输入法的组合键);false=回车换行(发送靠 [→] 键)。持久化到 `enter_to_send`。 */
+    var enterToSend by mutableStateOf(true)
+        private set
+
     /** Live plan card state — populated by `agent_plan` tool. Application-scoped so it
      *  survives navigation and is visible from ChatScreen regardless of composition. */
     val planState = PlanState()
@@ -367,6 +371,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         agentChatState.thinkingEnabled = thinkingEnabled
         agentChatState.thinkingLevel = thinkingLevel
         darkMode = runBlocking { database.settingDao().get("dark_mode")?.toBooleanStrictOrNull() ?: false }
+        enterToSend = runBlocking { database.settingDao().get("enter_to_send")?.toBooleanStrictOrNull() ?: true }
         // 联网搜索总开关:默认【关闭】,不打开就不能联网获取信息。加载持久化值。
         com.xincode.tools.WebSearchGate.enabled = runBlocking { database.settingDao().get("web_search_enabled")?.toBooleanStrictOrNull() ?: false }
         // Ensure enabledModelIds has at least the active model
@@ -1042,6 +1047,13 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         darkMode = enabled
         GlobalScope.launch(Dispatchers.IO) {
             database.settingDao().put("dark_mode", enabled.toString())
+        }
+    }
+
+    fun updateEnterToSend(enabled: Boolean) {
+        enterToSend = enabled
+        GlobalScope.launch(Dispatchers.IO) {
+            database.settingDao().put("enter_to_send", enabled.toString())
         }
     }
 

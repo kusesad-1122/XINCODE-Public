@@ -230,7 +230,7 @@ fun SupplierConfigScreen(
 
     LaunchedEffect(Unit) { loadConfigs() }
 
-    Column(Modifier.fillMaxSize().background(Bg).padding(horizontal = 16.dp, vertical = 24.dp)) {
+    Column(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp)) {
         // Header
         Text("← 返回", fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Sub,
             modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
@@ -373,7 +373,7 @@ fun SupplierConfigScreen(
 
             Label("启用模型（多选）")
             Box(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().border(1.dp, Faint).padding(4.dp).heightIn(max = 200.dp)) {
+                Column(Modifier.fillMaxWidth().border(1.dp, Faint).padding(4.dp).heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
                     if (modelsLoading) {
                         Text("加载中…", fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Faint,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
@@ -443,6 +443,7 @@ fun SupplierConfigScreen(
                 Text("保存配置", fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = Ink,
                     modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { saveConfig() }.padding(horizontal = 12.dp, vertical = 8.dp))
             }
+            Spacer(Modifier.height(64.dp))  // 底部留白:配合整页可滚动,保存按钮完整露出、不贴屏幕/导航栏底边
         }
 
         if (status.isNotEmpty()) {

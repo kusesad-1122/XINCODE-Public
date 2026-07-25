@@ -25,6 +25,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import android.content.Intent
@@ -226,6 +227,8 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val context = LocalContext.current
+    // 回车行为开关(App 层可观察设置):true=回车发送;false=回车换行。读它即响应式。
+    val enterToSend = (context.applicationContext as XincodeApplication).enterToSend
     var pendingModelIdx by remember { mutableStateOf<String?>(null) }
     val xc = LocalXinColors.current
     val Bg = xc.bg
@@ -582,6 +585,33 @@ fun ChatScreen(
         }
 
         // ---- floating input card ----
+        // 统一「提交」动作:回车键(回车发送模式)与 [→] 键共用。运行中=中途插话(注入不打断);
+        // Goal 未跑=以输入启动目标;否则正常发送(含附件拼接)。
+        val submitInput: () -> Unit = submit@{
+            if (chatState.isStreaming.value) {
+                if (chatState.input.value.isNotBlank()) chatState.send()  // send() 内部走 steer 注入
+                return@submit
+            }
+            if (isGoalSession && !goalRunning) {
+                val g = chatState.input.value.trim()
+                if (g.isNotEmpty()) { chatState.input.value = ""; onStartGoal(g) }
+                return@submit
+            }
+            if (pendingAttachments.value.isNotEmpty()) {
+                val attachmentText = buildString {
+                    append(chatState.input.value.trim())
+                    append("\n\n---\n附件:\n")
+                    pendingAttachments.value.forEach { att ->
+                        append("\n### ${att.fileName}\n```\n${att.content}\n```\n")
+                    }
+                    append("\n---\n")
+                }
+                chatState.input.value = attachmentText
+                pendingAttachments.value = emptyList()
+            }
+            chatState.send()
+        }
+
         Box(
             Modifier
                 .fillMaxWidth()
@@ -596,8 +626,11 @@ fun ChatScreen(
                     value = chatState.input.value,
                     onValueChange = { chatState.input.value = it },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !chatState.isStreaming.value,
-                    singleLine = true,
+                    // 始终可编辑:AI 运行中也能打字,以便「中途插话」不打断地注入指令。
+                    enabled = true,
+                    // 回车发送模式=单行(回车即发,换行用输入法组合键);回车换行模式=多行(靠 [→] 发)。
+                    singleLine = enterToSend,
+                    maxLines = if (enterToSend) 1 else 6,
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
@@ -609,11 +642,12 @@ fun ChatScreen(
                         disabledTextColor = Faint
                     ),
                     textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = JetBrainsMono),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardOptions = KeyboardOptions(imeAction = if (enterToSend) ImeAction.Send else ImeAction.Default),
+                    keyboardActions = KeyboardActions(onSend = { submitInput() }),
                     placeholder = {
                         Text(
                             when {
-                                chatState.isStreaming.value -> "…"
+                                chatState.isStreaming.value -> "插话给正在工作的 AI(不打断)…"
                                 isGoalSession && !goalRunning -> "输入目标,让 XINCODE 自主完成…"
                                 else -> "输入消息…"
                             },
@@ -744,33 +778,19 @@ fun ChatScreen(
                         },
                         label = "sendStopMorph"
                     ) { streaming ->
+                        val hasText = chatState.input.value.isNotBlank()
+                        // 运行中:有文字=[→] 中途插话(注入不打断);无文字=[■] 停止。空闲:[→] 发送。
                         Text(
-                            if (streaming) "[■]" else "[→]",
+                            if (streaming && !hasText) "[■]" else "[→]",
                             fontSize = 13.sp,
                             fontFamily = JetBrainsMono,
-                            color = if (chatState.input.value.isNotBlank() || streaming) Ink else Faint,
+                            color = if (hasText || streaming) Ink else Faint,
                             modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                if (streaming) {
+                                if (streaming && !hasText) {
                                     // Goal 运行中:停止=终止整个目标任务(而非只掐当前这一轮)。
                                     if (isGoalSession && goalRunning) onStopGoal() else chatState.stop()
-                                } else if (isGoalSession && !goalRunning) {
-                                    // Goal 会话未在跑:发送=以输入作为目标启动自主循环。
-                                    val g = chatState.input.value.trim()
-                                    if (g.isNotEmpty()) { chatState.input.value = ""; onStartGoal(g) }
                                 } else {
-                                    if (pendingAttachments.value.isNotEmpty()) {
-                                        val attachmentText = buildString {
-                                            append(chatState.input.value.trim())
-                                            append("\n\n---\n附件:\n")
-                                            pendingAttachments.value.forEach { att ->
-                                                append("\n### ${att.fileName}\n```\n${att.content}\n```\n")
-                                            }
-                                            append("\n---\n")
-                                        }
-                                        chatState.input.value = attachmentText
-                                        pendingAttachments.value = emptyList()
-                                    }
-                                    chatState.send()
+                                    submitInput()
                                 }
                             }
                         )

@@ -423,10 +423,42 @@ class AgentChatState(
     }
 
     // ---- send ----
+    /**
+     * 中途插话(不打断):AI 正在跑时发消息,不新起一轮,而是把这句作为新的用户指令注入到
+     * AgentCore 当前循环的下一轮迭代顶部(Hermes-⑧ redirect)。本轮工作不被杀,模型读到后自然衔接。
+     * 同时把这条插话消息上屏 + 落库 + 抽取用户短偏好,和正常发送一致。
+     */
+    private fun steer(text: String) {
+        input.value = ""
+        scope.launch {
+            val userMsg = MessageEntity(role = "user", content = text, sessionId = currentSessionId, turnId = agentCore.currentTurnId)
+            val userId = withContext(Dispatchers.IO) { messageDao.insert(userMsg) }
+            messages.add(ChatState.MessageUi(userId, "user", text, userMsg.timestamp, turnId = agentCore.currentTurnId))
+            launch(Dispatchers.IO) {
+                try {
+                    val uf = MemoryExtractor.extractUserFact(text, userId)
+                    if (uf != null) {
+                        val emb = runCatching { openAiClient.embeddings(uf.content) }.getOrNull()
+                        memoryDao.upsert(
+                            MemoryEntity(
+                                title = uf.title, content = uf.content, tags = uf.tags,
+                                sourceMessageId = uf.sourceMessageId, projectId = sessionProjectId,
+                                embedding = emb?.let { EmbeddingService.floatArrayToBytes(it) }
+                            )
+                        )
+                    }
+                } catch (_: Exception) {}
+            }
+            agentCore.redirect(text)
+        }
+    }
+
     override fun send() {
         val s = scope
         val text = input.value.trim()
-        if (text.isEmpty() || isStreaming.value) return
+        if (text.isEmpty()) return
+        // AI 正在跑 → 中途插话(注入到当前循环,不打断);否则正常新起一轮。
+        if (isStreaming.value) { steer(text); return }
 
         input.value = ""
 

@@ -47,7 +47,8 @@ object EnvCatalog {
                 "command -v pip3 || command -v pip", "apt-get install -y python3-pip"),
             EnvTool("uv", "uv", "一个用 Rust 编写的极速 Python 包安装器",
                 "command -v uv",
-                "apt-get install -y python3-pip && (pip3 install -U uv || pip install -U uv) || (apt-get install -y curl && curl -LsSf https://astral.sh/uv/install.sh | sh)")
+                // 走国内 PyPI(/etc/pip.conf 已配清华源;再显式带 -i 兜底)。
+                "apt-get install -y python3-pip && (pip3 install -U uv || pip install -U uv || pip3 install -U -i https://pypi.tuna.tsinghua.edu.cn/simple uv)")
         )),
         EnvCategory("SSH 工具", "SSH 客户端和密码认证工具", required = false, tools = listOf(
             EnvTool("ssh", "SSH 客户端", "SSH 连接客户端",
@@ -66,7 +67,14 @@ object EnvCatalog {
         EnvCategory("Rust (Cargo) 环境", "Rust 开发环境和包管理器", required = false, tools = listOf(
             EnvTool("rust", "Rust & Cargo", "通过 rustup 安装 Rust 工具链",
                 "command -v cargo",
-                "(apt-get install -y curl && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && ln -sf /root/.cargo/bin/* /usr/local/bin/) || apt-get install -y rustc cargo")
+                // 走国内 rsproxy 镜像:rustup-init 脚本 + 工具链下载 + cargo crates 索引全部国内;失败回退 apt(国内源)。
+                "(apt-get install -y curl ca-certificates && " +
+                    "export RUSTUP_DIST_SERVER=https://rsproxy.cn && export RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup && " +
+                    "curl --proto '=https' --tlsv1.2 -sSf https://rsproxy.cn/rustup-init.sh | sh -s -- -y && " +
+                    "mkdir -p /root/.cargo && printf '[source.crates-io]\\nreplace-with = \"rsproxy-sparse\"\\n" +
+                    "[source.rsproxy-sparse]\\nregistry = \"sparse+https://rsproxy.cn/index/\"\\n" +
+                    "[net]\\ngit-fetch-with-cli = true\\n' > /root/.cargo/config.toml && " +
+                    "ln -sf /root/.cargo/bin/* /usr/local/bin/) || apt-get install -y rustc cargo")
         )),
         EnvCategory("Go 环境", "Go 语言开发环境", required = false, tools = listOf(
             EnvTool("go", "Go", "Go 编程语言",
@@ -76,7 +84,9 @@ object EnvCatalog {
             EnvTool("android_ndk", "Android SDK/NDK", "编译 APK 的命令行工具、build-tools、平台与 NDK",
                 "ls /opt/android-sdk/ndk 2>/dev/null | grep -q .",
                 "apt-get install -y wget unzip openjdk-17-jdk-headless && mkdir -p /opt/android-sdk/cmdline-tools && cd /tmp && " +
-                    "wget -qO cmd.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && " +
+                    // 命令行工具从国内腾讯 AndroidSDK 镜像下载(已实测可用);dl.google 作最后兜底。
+                    "(wget -qO cmd.zip https://mirrors.cloud.tencent.com/AndroidSDK/commandlinetools-linux-11076708_latest.zip || " +
+                    "wget -qO cmd.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip) && " +
                     "unzip -oq cmd.zip -d /opt/android-sdk/cmdline-tools && " +
                     "(mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest 2>/dev/null || true) && " +
                     "yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --sdk_root=/opt/android-sdk " +
