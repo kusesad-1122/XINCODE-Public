@@ -20,16 +20,21 @@ android {
         applicationId = "com.xincode.app"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 101          // 1.0 → 100;之后每次 +0.01 版本对应 +1(1.01→101…)
+        versionName = "1.01"
     }
 
+    // 只有在 keystore.properties 真实存在时才建 release 签名配置。
+    // 无条件 create 会在 CI(无该文件)上让 getProperty 返回 null,file(null) 直接抛异常,
+    // 导致 Gradle【配置阶段】就失败——连 assembleDebug 都跑不起来。
     signingConfigs {
-        create("release") {
-            storeFile = file(keystoreProperties.getProperty("storeFile"))
-            storePassword = keystoreProperties.getProperty("storePassword")
-            keyAlias = keystoreProperties.getProperty("keyAlias")
-            keyPassword = keystoreProperties.getProperty("keyPassword")
+        if (keystorePropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
         }
     }
 
@@ -39,7 +44,10 @@ android {
         }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            // 同理:没有密钥文件时不绑定签名配置(CI release job 会先写出 keystore.properties 再构建)。
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -78,6 +86,11 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.github.topjohnwu.libsu:core:5.2.2")
+    // execute_code 的 JS 解释器(CodeExecTool 依赖 org.mozilla.javascript.*)。缺失会导致
+    // compileDebugKotlin 报 35 处 "Unresolved reference: mozilla" —— 别删。
+    implementation("org.mozilla:rhino:1.7.14")
+    // 定时任务(CronScheduler/CronWorker 依赖 androidx.work.*)。同样别删。
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
