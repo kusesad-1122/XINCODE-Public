@@ -29,7 +29,8 @@ class ToolRegistry {
         val now = System.currentTimeMillis()
         val hit = availabilityCache[tool.name]
         if (hit != null && now - hit.first < availabilityTtlMs) return hit.second
-        val v = try { tool.isAvailable() } catch (_: Exception) { hit?.second ?: true } // 抖动时沿用上次好值
+        // 捕 Throwable:isAvailable 内部可能读 DB/探网,抖动或 Error 都不该把整个请求(乃至进程)带崩。
+        val v = try { tool.isAvailable() } catch (_: Throwable) { hit?.second ?: true } // 抖动时沿用上次好值
         availabilityCache[tool.name] = now to v
         return v
     }
@@ -97,8 +98,13 @@ class ToolRegistry {
         val argsJson = parseArgumentsJson(call.arguments)
         return try {
             tool.executeJson(argsJson)
-        } catch (e: Exception) {
-            ToolResult.Error("${tool.name} 执行异常: ${e.message}")
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            throw c  // 协程取消必须原样上抛,否则「停止」按钮会失灵
+        } catch (t: Throwable) {
+            // 这里是所有工具的唯一派发点,捕 Throwable 而非 Exception 是刻意的:
+            // OutOfMemoryError(抓取/读取超大内容)、StackOverflowError(脚本深递归)等属于 Error,
+            // 漏掉就会直接杀死进程(用户看到的"闪退")。转成模型可见的错误,让它自我纠正。
+            ToolResult.Error("${tool.name} 执行异常(${t::class.java.simpleName}): ${t.message}")
         }
     }
 

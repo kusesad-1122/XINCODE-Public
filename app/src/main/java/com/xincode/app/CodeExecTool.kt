@@ -5,7 +5,7 @@ import com.xincode.core.Tool
 import com.xincode.core.ToolRegistry
 import com.xincode.core.ToolResult
 import com.xincode.provider.ToolCall
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -38,8 +38,26 @@ class CodeExecTool(private val toolRegistry: ToolRegistry) : Tool {
         private const val INSTRUCTION_BUDGET = 20_000_000
         // 只读/安全工具白名单(与 Hermes SANDBOX_ALLOWED_TOOLS 精神一致)。
         private val SANDBOX_TOOLS = setOf(
-            "web_search", "web_fetch", "file_read", "list_dir", "grep", "glob", "recall_memory"
+            "web_search", "web_fetch", "file_read", "list_dir", "grep", "glob", "recall_memory",
+            "current_time"
         )
+
+        /**
+         * 脚本专用调度器(闪退修复,关键)。
+         *
+         * 原先跑在 [Dispatchers.Default]:该池大小 = CPU 核数(手机常见 4~8)。而 [Bridge.call] 用
+         * runBlocking **阻塞住当前线程**去等工具完成——web_fetch/web_search 是网络请求(可达 15~30s)。
+         * 脚本连调几次、或多个会话并发跑脚本,就会把 Default 池全部占满并互相等待 → 整个 App 的
+         * CPU 协程停摆 → ANR → 被系统杀掉(用户看到的"闪退")。
+         *
+         * 改用独立线程池后,阻塞只发生在这些自有线程上,不再拖垮 Default 池。
+         * 线程数设上限,避免脚本并发无限开线程;Rhino Context 绑定线程,单脚本始终在同一线程内执行。
+         */
+        private val scriptExecutor: java.util.concurrent.ExecutorService =
+            java.util.concurrent.Executors.newFixedThreadPool(3) { r ->
+                Thread(r, "xincode-codeexec").apply { isDaemon = true }
+            }
+        private val scriptDispatcher = scriptExecutor.asCoroutineDispatcher()
     }
 
     override val name = "execute_code"
@@ -76,11 +94,15 @@ class CodeExecTool(private val toolRegistry: ToolRegistry) : Tool {
                         is ToolResult.Error -> "ERROR: ${r.message}"
                     }
                 }
-            } catch (e: Exception) { "ERROR: ${e.message}" }
+            } catch (t: Throwable) {
+                // 捕到 Throwable 而非 Exception:工具内部可能抛 OutOfMemoryError(如 Jsoup 解析超大页面)
+                // 等 Error,漏掉会直接杀死进程(闪退)。这里转成脚本可见的错误字符串,让脚本继续/收尾。
+                "ERROR: ${t::class.java.simpleName}: ${t.message}"
+            }
         }
     }
 
-    override suspend fun execute(params: Map<String, String>): ToolResult = withContext(Dispatchers.Default) {
+    override suspend fun execute(params: Map<String, String>): ToolResult = withContext(scriptDispatcher) {
         val code = params["code"].orEmpty()
         if (code.isBlank()) return@withContext ToolResult.Error("execute_code: code 不能为空")
 
@@ -106,16 +128,22 @@ class CodeExecTool(private val toolRegistry: ToolRegistry) : Tool {
                 ScriptableObject.putProperty(scope, "__bridge", Context.javaToJS(bridge, scope))
                 cx.evaluateString(scope, buildPreamble() + "\n" + code, "userscript", 1, null)
             } finally {
-                Context.exit()
+                // exit() 自身在异常路径下可能抛 IllegalStateException,吞掉以免掩盖真正的错误。
+                try { Context.exit() } catch (_: Throwable) {}
             }
             val stdout = bridge.out.toString().let {
                 if (it.length >= MAX_STDOUT) it.take(MAX_STDOUT) + "\n...(输出截断)" else it
             }
             ToolResult.Success(stdout.ifBlank { "(脚本无 print 输出)" } + "\n[工具调用 ${bridge.toolCalls} 次]")
-        } catch (e: Exception) {
-            Log.w(TAG, "execute_code failed: ${e.message}")
+        } catch (t: Throwable) {
+            // 捕 Throwable 而非 Exception:Rhino 解释模式执行深递归/复杂脚本会抛 StackOverflowError,
+            // 大结果拼接会抛 OutOfMemoryError——都是 Error,不接住就是整个 App 闪退。
+            Log.w(TAG, "execute_code failed: ${t::class.java.simpleName}: ${t.message}")
             val partial = bridge.out.toString().take(2000)
-            ToolResult.Error("execute_code 运行出错: ${e.message}" + if (partial.isNotBlank()) "\n已产出:\n$partial" else "")
+            ToolResult.Error(
+                "execute_code 运行出错(${t::class.java.simpleName}): ${t.message}" +
+                    if (partial.isNotBlank()) "\n已产出:\n$partial" else ""
+            )
         }
     }
 

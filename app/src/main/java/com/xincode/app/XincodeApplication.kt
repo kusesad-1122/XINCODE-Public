@@ -132,9 +132,46 @@ class XincodeApplication : Application() {
     @Volatile
     var rootInitError: String? = null
         private set
+
+    /** 最近一次未捕获崩溃的摘要(供设置页/日志排查);进程重启后由 crash.log 恢复。 */
+    @Volatile
+    var lastCrashSummary: String? = null
+
+    /**
+     * 全局崩溃兜底。此前 App 没有任何 UncaughtExceptionHandler:
+     *  - 后台线程(工具执行、脚本沙箱、网络回调)里任何漏网的 Throwable 都会**直接杀掉整个进程**,
+     *    用户看到的就是"莫名闪退",且事后毫无线索。
+     *
+     * 策略:
+     *  - 一律先把堆栈写进 filesDir/crash.log(可事后排查,不上传任何地方);
+     *  - **非主线程**的异常:记录后【吞掉】,只让那条线程结束,App 继续可用
+     *    (一次工具失败不该让用户丢掉整个会话);
+     *  - **主线程**的异常:记录后交还系统默认处理(UI 状态已不可信,强行续命只会更糟)。
+     */
+    private fun installCrashGuard() {
+        val default = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            val summary = "${throwable::class.java.name}: ${throwable.message} @${thread.name}"
+            try {
+                lastCrashSummary = summary
+                Log.e("XINCODE", "UNCAUGHT on ${thread.name}", throwable)
+                val sw = java.io.StringWriter()
+                throwable.printStackTrace(java.io.PrintWriter(sw))
+                java.io.File(filesDir, "crash.log").appendText(
+                    "\n=== ${java.util.Date()} thread=${thread.name} ===\n$sw\n"
+                )
+            } catch (_: Throwable) { /* 记录失败也不能再抛 */ }
+
+            if (thread === mainLooper.thread) {
+                default?.uncaughtException(thread, throwable)  // 主线程:交还系统,正常崩溃
+            }
+            // 非主线程:已记录,吞掉不杀进程
+        }
+    }
 override fun onCreate() {
         super.onCreate()
         Log.i("XINCODE", "=== APP START ===")
+        installCrashGuard()
         // Initialize shared HTTP disk cache
         HttpCacheProvider.init(cacheDir)
         database = AppDatabase.getInstance(this)
@@ -219,6 +256,8 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         toolRegistry.register(SkillManageTool(database))
         // Hermes-④ execute_code 零上下文工具-RPC(脚本内调工具、仅 stdout 回模型)。
         toolRegistry.register(CodeExecTool(toolRegistry))
+        // 当前时间(纯本地读设备时钟,零依赖):定时任务/"现在几点"等场景先查准时间,避免把 UTC 当本地时间。
+        toolRegistry.register(CurrentTimeTool())
         // Hermes-⑦ cronjob:让模型把用户口语翻译成定时任务。
         toolRegistry.register(CronJobTool(database))
         // Hermes-⑥ 语音转写(服务门控:无端点则不暴露)。

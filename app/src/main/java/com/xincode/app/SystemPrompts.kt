@@ -45,6 +45,24 @@ const val BASE_SYSTEM_PROMPT = "你是 XINCODE —— 一个运行在 Android �
     "- 找不到时直接说\"没有相关记忆\",不要编造"
 
 /**
+ * 生成「当前时间」锚点行——用设备本地时区,避免模型把 UTC 当本地时间(典型症状:11:33 说成 03:33)。
+ * 例:当前时间:2026-07-25 11:35:04 星期六(时区 Asia/Shanghai, UTC+08:00)
+ */
+fun currentTimeAnchor(now: java.util.Date = java.util.Date()): String {
+    val tz = java.util.TimeZone.getDefault()
+    val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss EEEE", java.util.Locale.CHINA)
+    fmt.timeZone = tz
+    // 时区偏移(含夏令时),格式化为 UTC±HH:MM
+    val offMin = tz.getOffset(now.time) / 60000
+    val sign = if (offMin < 0) "-" else "+"
+    val off = kotlin.math.abs(offMin)
+    val offStr = String.format(java.util.Locale.US, "UTC%s%02d:%02d", sign, off / 60, off % 60)
+    return "当前时间:${fmt.format(now)}(时区 ${tz.id}, $offStr)。" +
+        "这是本次会话开始时的设备时间;若任务对时间敏感(定时任务、\"今天/现在\"等)," +
+        "请调用 current_time 工具获取此刻的准确时间,不要凭记忆推算,也不要把 UTC 当本地时间。"
+}
+
+/**
  * Compose the final system prompt for a turn: base operational rules + the locked identity's
  * persona (if any) + project-level extra instructions (if any).
  *
@@ -64,6 +82,10 @@ fun buildLayeredSystemPrompt(
 ): String {
     return buildString {
         append(BASE_SYSTEM_PROMPT)
+        // 时间锚点【重要】:模型自身没有时钟,不注入就只能靠训练数据瞎猜(常把 UTC 当本地时间报错)。
+        // 这里注入【设备本地时间 + 时区】。注意系统提示按会话冻结一次(保 prompt 缓存命中),
+        // 所以这是「本次会话开始时」的时间;要精确到当下,模型应调用 current_time 工具。
+        append("\n\n").append(currentTimeAnchor())
         if (!identityPrompt.isNullOrBlank()) {
             append("\n\n")
             append(identityPrompt)
