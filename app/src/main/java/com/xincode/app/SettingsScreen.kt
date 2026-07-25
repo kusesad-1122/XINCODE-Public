@@ -244,7 +244,7 @@ fun SettingsScreen(
         // ── Section: 关于 ──
         SectionDivider()
         SectionHeader("关于")
-        SettingRow("版本", "1.01") { /* no-op */ }
+        SettingRow("版本", "1.02") { /* no-op */ }
         SettingRow("XINCODE", "纯 Kotlin 原生 Android AI Agent") { /* no-op */ }
     }
 }
