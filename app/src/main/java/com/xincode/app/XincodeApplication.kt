@@ -651,16 +651,37 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
 
     fun createNewSession(): Long {
         val newId = runBlocking {
-            database.sessionDao().upsert(SessionEntity(title = "新对话", identityId = activeIdentityId))
+            val id = database.sessionDao().upsert(SessionEntity(title = "新对话", identityId = activeIdentityId))
+            seedOpeningStatement(id)
+            id
         }
         return newId
     }
 
     fun createSessionInProject(projectId: Long): Long {
         val newId = runBlocking {
-            database.sessionDao().upsert(SessionEntity(title = "新对话", projectId = projectId, identityId = activeIdentityId))
+            val id = database.sessionDao().upsert(SessionEntity(title = "新对话", projectId = projectId, identityId = activeIdentityId))
+            seedOpeningStatement(id)
+            id
         }
         return newId
+    }
+
+    /**
+     * 身份卡若设了开场白,新建会话时作为第一条 AI 消息落库,让这张卡一上来就进入状态。
+     *
+     * 只落 UI 消息、不进模型历史:开场白是给用户看的,拿它当真实的助手回复会让模型
+     * 以为自己已经说过这句话。留空则什么也不做。
+     */
+    private suspend fun seedOpeningStatement(sessionId: Long) {
+        try {
+            val identity = activeIdentityId?.let { database.identityDao().getById(it) } ?: return
+            val opening = identity.openingStatement.trim()
+            if (opening.isBlank()) return
+            database.messageDao().insert(
+                com.xincode.data.MessageEntity(role = "assistant", content = opening, sessionId = sessionId)
+            )
+        } catch (_: Exception) { /* 开场白失败不该挡住建会话 */ }
     }
 
     // ---- Goal/Work 模式 ----
@@ -969,9 +990,20 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         }
     }
 
-    fun createIdentity(name: String, systemPrompt: String, temperature: Float = 1.0f) {
+    fun createIdentity(r: IdentityEditResult) {
         GlobalScope.launch(Dispatchers.IO) {
-            identityRepository.create(name, systemPrompt, temperature)
+            val id = identityRepository.create(r.name, r.systemPrompt, r.temperature)
+            // repository.create 只认三个基础字段,扩展字段建完再补一次更新,
+            // 免得为了几个可选字段改动 repository 的既有签名。
+            if (r.description.isNotBlank() || r.openingStatement.isNotBlank() ||
+                r.marks.isNotBlank() || r.allowedTools.isNotBlank()) {
+                database.identityDao().getById(id)?.let { created ->
+                    identityRepository.update(created.copy(
+                        description = r.description, openingStatement = r.openingStatement,
+                        marks = r.marks, allowedTools = r.allowedTools
+                    ))
+                }
+            }
         }
     }
 
@@ -1054,20 +1086,35 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
      * put the preceding user message text back in the input, and let the user press send.
      * Keeping the two-step flow avoids surprise duplicate sends.
      */
-    fun regenerateFromMessage(assistantId: Long) {
+    /**
+     * 让 AI 重新回答某条消息所在的那一轮。
+     *
+     * 传 assistant 的 id 就重答那条;传 user 的 id 就重发那条。
+     *
+     * 两个要点:
+     *  1. 必须删掉【从那条 user 之后的全部消息】,而不只是那一条 assistant ——
+     *     后面的对话都是基于旧回答展开的,留着会让新回答和历史自相矛盾。
+     *  2. 删完直接重新发送,而不是把原文填回输入框等用户再按一次。
+     *     用户点的是「重新回答」,不是「把问题抄给我」。
+     */
+    fun regenerateFromMessage(messageId: Long) {
         GlobalScope.launch(Dispatchers.Main) {
+            if (agentChatState.isStreaming.value) return@launch   // 正在回答时不重入
             val msgs = agentChatState.messages
-            val idx = msgs.indexOfFirst { it.id == assistantId }
+            val idx = msgs.indexOfFirst { it.id == messageId }
             if (idx < 0) return@launch
-            val prevUser = (idx - 1 downTo 0).firstOrNull { msgs[it].role == "user" }?.let { msgs[it] }
-                ?: return@launch
-            // Delete assistant + any tool rows after it in the same turn
-            val turnId = msgs[idx].turnId
-            val toDelete = msgs.filter { it.id == assistantId || (turnId != 0L && it.turnId == turnId && it.role == "tool") }
-            toDelete.forEach { agentChatState.deleteMessage(it.id) }
-            agentChatState.input.value = prevUser.content
+            // 定位这一轮的提问:点 user 就是它自己,点 assistant 就往上找最近的 user
+            val userIdx = if (msgs[idx].role == "user") idx
+            else (idx - 1 downTo 0).firstOrNull { msgs[it].role == "user" } ?: return@launch
+            val prompt = msgs[userIdx].content
+            if (prompt.isBlank()) return@launch
+
+            // 连同这条提问本身一起删掉——重新发送时会再落一条新的,否则会出现两条一样的提问
+            msgs.drop(userIdx).map { it.id }.forEach { agentChatState.deleteMessage(it) }
             agentCore.clearHistory()
             agentChatState.loadHistoryForSession(currentSessionId)
+            agentChatState.input.value = prompt
+            agentChatState.send()
         }
     }
 

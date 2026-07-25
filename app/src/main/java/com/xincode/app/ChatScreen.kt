@@ -498,7 +498,9 @@ fun ChatScreen(
                         MessageBubble(
                             group.userMessage,
                             isStreamingMessage = chatState.isStreaming.value && group.userMessage == chatState.messages.lastOrNull(),
-                            onDelete = { onDeleteMessage(group.userMessage.id) }
+                            onDelete = { onDeleteMessage(group.userMessage.id) },
+                            // 点用户消息的「重答」= 用同样的问题重新问一遍
+                            onRegenerate = { onRegenerate(group.userMessage.id) }
                         )
                     group.isFlat && group.assistantMessage != null ->
                         MessageBubble(
@@ -507,7 +509,8 @@ fun ChatScreen(
                             onRetry = if (group.assistantMessage.content.startsWith("✗ ")) {
                                 { onRegenerate(group.assistantMessage.id) }
                             } else null,
-                            onDelete = { onDeleteMessage(group.assistantMessage.id) }
+                            onDelete = { onDeleteMessage(group.assistantMessage.id) },
+                            onRegenerate = { onRegenerate(group.assistantMessage.id) }
                         )
                     group.isFlat && group.toolMessages.isNotEmpty() ->
                         group.toolMessages.forEach { toolMsg ->
@@ -521,7 +524,11 @@ fun ChatScreen(
                             }
                         }
                     else ->
-                        AgentTurnBlock(group, isStreaming = chatState.isStreaming.value)
+                        AgentTurnBlock(
+                            group,
+                            isStreaming = chatState.isStreaming.value,
+                            onRegenerate = group.assistantMessage?.let { a -> { onRegenerate(a.id) } }
+                        )
                 }
             }
             // Confirmation card (rendered in chat flow)
@@ -1741,7 +1748,7 @@ private fun McpPickerDialog(mcpNames: List<String>, onPick: (String) -> Unit, on
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean = false, onRetry: (() -> Unit)? = null, onDelete: (() -> Unit)? = null) {
+private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean = false, onRetry: (() -> Unit)? = null, onDelete: (() -> Unit)? = null, onRegenerate: (() -> Unit)? = null) {
     val isUser = msg.role == "user"
     val isTool = msg.role == "tool"
     val isError = msg.content.startsWith("✗ ")
@@ -1857,6 +1864,15 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
                 modifier = if (isUser) Modifier.fillMaxWidth() else Modifier
             )
         }
+
+        // 常驻操作行。工具消息不给(它自己有展开/折叠),流式进行中也不给。
+        if (!isTool && !isStreamingMessage) {
+            MessageActionsRow(
+                content = msg.content,
+                onRegenerate = onRegenerate,
+                alignEnd = isUser
+            )
+        }
     }
     // Subtle separator between messages
     Box(Modifier.fillMaxWidth().padding(top = 6.dp).height(0.5.dp).background(Border))
@@ -1883,6 +1899,53 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
             onDelete = if (onDelete != null) { { onDelete(); showMenu = false } } else null,
             onDismiss = { showMenu = false }
         )
+    }
+}
+
+/**
+ * 消息下方常驻的操作行(复制 / 重答)。
+ *
+ * 之前这些操作只藏在长按菜单里,而且交错时间线走的是 AgentTurnBlock,那条路根本没接
+ * 长按菜单 —— 等于绝大多数回复都没有任何可操作入口。所以改成常驻小字按钮,两处都用它。
+ * 样式压到最低(10sp、次要色),不抢正文。
+ */
+@Composable
+fun MessageActionsRow(
+    content: String,
+    onRegenerate: (() -> Unit)? = null,
+    alignEnd: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    if (content.isBlank() && onRegenerate == null) return
+    val xc = LocalXinColors.current
+    val context = LocalContext.current
+    Row(
+        modifier.fillMaxWidth().padding(top = 2.dp),
+        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (content.isNotBlank()) {
+            Text(
+                "复制",
+                fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.faint,
+                modifier = Modifier
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        cm?.setPrimaryClip(ClipData.newPlainText("xincode", content))
+                        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                    }
+                    .padding(horizontal = 6.dp, vertical = 4.dp)
+            )
+        }
+        if (onRegenerate != null) {
+            Text(
+                "重答",
+                fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.faint,
+                modifier = Modifier
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onRegenerate() }
+                    .padding(horizontal = 6.dp, vertical = 4.dp)
+            )
+        }
     }
 }
 

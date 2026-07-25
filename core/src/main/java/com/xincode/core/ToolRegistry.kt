@@ -25,6 +25,16 @@ class ToolRegistry {
     @Volatile
     var collabAllowlist: Set<String> = emptySet()
 
+    /**
+     * 身份卡工具白名单:非空时只暴露列出的工具。
+     *
+     * 与 [collabAllowlist] 是【两道独立的闸门,同时生效】(取交集),不是互相覆盖:
+     * 协作模式限制的是「主脑只能派活」,身份卡限制的是「这个角色本来就不该碰某些工具」。
+     * 两个都开时,只有同时满足两边的工具才可见——这是符合直觉的收紧,反过来会让任一限制失效。
+     */
+    @Volatile
+    var identityAllowlist: Set<String> = emptySet()
+
     private fun isAvailableCached(tool: Tool): Boolean {
         val now = System.currentTimeMillis()
         val hit = availabilityCache[tool.name]
@@ -70,6 +80,8 @@ class ToolRegistry {
         for (tool in tools.values.sortedBy { it.name }) {
             // 协作模式:白名单非空时,只放行编排类工具,其余「动手」工具对主脑隐藏(强制派活)。
             if (collabAllowlist.isNotEmpty() && tool.name !in collabAllowlist) continue
+            // 身份卡白名单:与上面那道是「都要满足」的关系,不是二选一。
+            if (identityAllowlist.isNotEmpty() && tool.name !in identityAllowlist) continue
             // Hermes-③ 服务门控:前置条件不满足的工具零 schema 成本、模型不可见。
             if (!isAvailableCached(tool)) continue
             val entry = JSONObject().apply {

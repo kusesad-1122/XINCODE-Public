@@ -54,7 +54,7 @@ sealed class ToolBlockAction {
 @OptIn(ExperimentalCoroutinesApi::class)
 class AgentCore(
     private val openAiClient: OpenAiClient,
-    private val toolRegistry: ToolRegistry = ToolRegistry(),
+    val toolRegistry: ToolRegistry = ToolRegistry(),   // 身份卡白名单等需要外部按会话调整
     private val systemPrompt: String = "You are a helpful assistant. Respond in Chinese.",
     private val securityGate: SecurityGate? = null,
     private var confirmHandler: (suspend (GateCommand, String) -> ToolConfirmResult)? = null,

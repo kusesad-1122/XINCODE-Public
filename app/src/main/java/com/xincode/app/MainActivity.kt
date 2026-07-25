@@ -417,11 +417,15 @@ class MainActivity : ComponentActivity() {
                         IdentityEditScreen(
                             identity = target,
                             onBack = { currentPage = "identity_list" },
-                            onSave = { name, prompt, temp ->
+                            onSave = { r ->
                                 if (target != null) {
-                                    app.updateIdentity(target.copy(name = name, systemPrompt = prompt, temperature = temp))
+                                    app.updateIdentity(target.copy(
+                                        name = r.name, systemPrompt = r.systemPrompt, temperature = r.temperature,
+                                        description = r.description, openingStatement = r.openingStatement,
+                                        marks = r.marks, allowedTools = r.allowedTools
+                                    ))
                                 } else {
-                                    app.createIdentity(name, prompt, temp)
+                                    app.createIdentity(r)
                                 }
                                 currentPage = "identity_list"
                             },

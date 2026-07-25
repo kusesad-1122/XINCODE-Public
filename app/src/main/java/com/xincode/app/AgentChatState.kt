@@ -534,6 +534,13 @@ class AgentChatState(
                     // gap-09 采样参数:从 identity 卡注入(null=不发)。
                     agentCore.maxTokens = identity?.maxTokens
                     agentCore.topP = identity?.topP
+                    // 身份卡工具白名单:留空=不限制。每回合重设,这样编辑身份卡后下一回合就生效。
+                    agentCore.toolRegistry.identityAllowlist =
+                        identity?.allowedTools.orEmpty()
+                            .split(',', '，')          // 中文逗号一起认,手机上很容易打成全角
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .toSet()
                     // gap-10 上下文窗口/自动压缩阈值:全局设置覆盖 > 供应商配置。
                     val activeCfg = database.providerConfigDao().getActive()
                     val winOverride = settings?.contextWindowOverride ?: 0

@@ -18,7 +18,7 @@ import com.xincode.app.R
 private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, androidx.compose.ui.text.font.FontWeight.Normal))
 
 @Composable
-fun AgentTurnBlock(group: TurnGroup, isStreaming: Boolean = false) {
+fun AgentTurnBlock(group: TurnGroup, isStreaming: Boolean = false, onRegenerate: (() -> Unit)? = null) {
     val toolCount = group.toolMessages.size
     val hasReasoning = group.assistantMessage?.reasoning?.isNotEmpty() == true
     val xc = LocalXinColors.current
@@ -32,6 +32,7 @@ fun AgentTurnBlock(group: TurnGroup, isStreaming: Boolean = false) {
                 if (asst.content.isNotEmpty()) {
                     Text("xincode", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Green)
                     MarkdownContent(asst.content)
+                    if (!isStreaming) MessageActionsRow(asst.content, onRegenerate)
                 }
                 Box(Modifier.fillMaxWidth().height(0.5.dp).background(Sub.copy(alpha = 0.3f)))
             }
@@ -63,6 +64,8 @@ fun AgentTurnBlock(group: TurnGroup, isStreaming: Boolean = false) {
                     color = Green
                 )
                 MarkdownContent(asst.content, modifier = Modifier.padding(top = 2.dp, bottom = 2.dp))
+                // 交错时间线里的每段回复也要能复制/重答 —— 这条路以前完全没有操作入口。
+                if (!isStreaming) MessageActionsRow(asst.content, onRegenerate)
             }
         }
 

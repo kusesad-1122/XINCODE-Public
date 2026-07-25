@@ -38,12 +38,16 @@ private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.No
 fun IdentityEditScreen(
     identity: IdentityEntity?,
     onBack: () -> Unit,
-    onSave: (name: String, systemPrompt: String, temperature: Float) -> Unit,
+    onSave: (IdentityEditResult) -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
     var name by remember { mutableStateOf(identity?.name ?: "") }
     var prompt by remember { mutableStateOf(identity?.systemPrompt ?: "") }
     var temperature by remember { mutableStateOf(identity?.temperature ?: 1.0f) }
+    var description by remember { mutableStateOf(identity?.description ?: "") }
+    var opening by remember { mutableStateOf(identity?.openingStatement ?: "") }
+    var marks by remember { mutableStateOf(identity?.marks ?: "") }
+    var allowedTools by remember { mutableStateOf(identity?.allowedTools ?: "") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
     Column(
@@ -60,7 +64,11 @@ fun IdentityEditScreen(
                 color = if (name.isNotBlank()) Green else Faint,
                 modifier = Modifier
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, enabled = name.isNotBlank()) {
-                        onSave(name.trim(), prompt, temperature)
+                        onSave(IdentityEditResult(
+                            name = name.trim(), systemPrompt = prompt, temperature = temperature,
+                            description = description.trim(), openingStatement = opening.trim(),
+                            marks = marks.trim(), allowedTools = allowedTools.trim()
+                        ))
                     }
                     .padding(horizontal = 8.dp, vertical = 2.dp)
             )
@@ -83,6 +91,11 @@ fun IdentityEditScreen(
             ),
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = JetBrainsMono)
         )
+
+        Spacer(Modifier.height(20.dp))
+        Text("描述(只在列表里显示,不进提示词)", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
+        Spacer(Modifier.height(4.dp))
+        IdField(description, { description = it }, "一句话说明这张卡是干嘛的", singleLine = true)
 
         Spacer(Modifier.height(20.dp))
         Text("角色设定", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
@@ -112,6 +125,25 @@ fun IdentityEditScreen(
             colors = SliderDefaults.colors(thumbColor = Green, activeTrackColor = Green, inactiveTrackColor = Border)
         )
 
+        Spacer(Modifier.height(20.dp))
+        Text("开场白", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
+        Text("用这张卡新建会话时,自动作为 AI 的第一句话。留空则不加。",
+            fontSize = 10.sp, fontFamily = JetBrainsMono, color = Faint, lineHeight = 14.sp,
+            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
+        IdField(opening, { opening = it }, "例如:我是代码评审助手,把要看的文件发我。", minHeight = 80.dp)
+
+        Spacer(Modifier.height(20.dp))
+        Text("允许的工具(逗号分隔,留空=不限制)", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
+        Text("填了之后这张卡只能用列出的工具。比如「文档撰写」不该能执行 shell,就只留 file_read,file_write。",
+            fontSize = 10.sp, fontFamily = JetBrainsMono, color = Faint, lineHeight = 14.sp,
+            modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
+        IdField(allowedTools, { allowedTools = it }, "file_read,file_write,web_search", singleLine = true)
+
+        Spacer(Modifier.height(20.dp))
+        Text("备注(不会进提示词)", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
+        Spacer(Modifier.height(4.dp))
+        IdField(marks, { marks = it }, "给自己看的记录", minHeight = 60.dp)
+
         if (onDelete != null) {
             Spacer(Modifier.height(24.dp))
             Box(Modifier.fillMaxWidth().height(0.5.dp).background(Border))
@@ -137,4 +169,38 @@ fun IdentityEditScreen(
             containerColor = Bg
         )
     }
+}
+
+/** 身份编辑结果。字段一多就别再堆参数了,免得调用处对不上号。 */
+data class IdentityEditResult(
+    val name: String,
+    val systemPrompt: String,
+    val temperature: Float,
+    val description: String = "",
+    val openingStatement: String = "",
+    val marks: String = "",
+    val allowedTools: String = ""
+)
+
+@Composable
+private fun IdField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    singleLine: Boolean = false,
+    minHeight: androidx.compose.ui.unit.Dp = 0.dp
+) {
+    TextField(
+        value = value, onValueChange = onValueChange, singleLine = singleLine,
+        placeholder = { Text(placeholder, fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
+        modifier = Modifier.fillMaxWidth()
+            .let { if (minHeight > 0.dp) it.heightIn(min = minHeight) else it }
+            .border(0.5.dp, Border, RoundedCornerShape(4.dp)),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
+            cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink,
+            focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
+        ),
+        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = JetBrainsMono)
+    )
 }
