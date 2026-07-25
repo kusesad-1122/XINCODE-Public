@@ -314,12 +314,18 @@ fun SupplierConfigScreen(
                 }
             }
             if (effectiveBaseUrl.isNotBlank()) {
-                val suffixHint = when (selectedApiPathType) {
-                    "anthropic" -> "/v1/messages"
-                    "openai" -> "/v1/chat/completions"
-                    else -> ""
+                // 预览必须与 OpenAiClient.chatEndpoint 的拼法一致:先剥掉用户可能自带的 /v1,再补全,
+                // 否则界面显示的地址和实际请求的地址不一样,排查问题时更误导。
+                val shown = if (selectedApiPathType == "custom") {
+                    effectiveBaseUrl.trim().trimEnd('/')
+                } else {
+                    val base = effectiveBaseUrl.trim().trimEnd('/').removeSuffix("/v1").trimEnd('/')
+                    base + when (selectedApiPathType) {
+                        "anthropic" -> "/v1/messages"
+                        else -> "/v1/chat/completions"
+                    }
                 }
-                Text(effectiveBaseUrl + suffixHint, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Faint, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
+                Text(shown, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Faint, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
             }
             Spacer(Modifier.height(12.dp))
 

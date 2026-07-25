@@ -66,12 +66,23 @@ class OpenAiClient(
         return this
     }
 
+    /**
+     * 归一化 base_url:去掉结尾的 `/`,并去掉用户可能已经写上的 `/v1`。
+     *
+     * 很多供应商文档给出的 base_url 就带 `/v1`(如 https://x.com/v1),用户照抄后我们再拼一次
+     * `/v1/chat/completions` 就变成 `/v1/v1/chat/completions` → 404/400,且极难自查。
+     * 这里统一剥掉尾部 `/v1`,由 [chatEndpoint] 负责补全,做到「带不带 v1 都能用」。
+     */
+    private fun normalizeBase(baseUrl: String): String =
+        baseUrl.trim().trimEnd('/').removeSuffix("/v1").trimEnd('/')
+
     /** Build the correct API endpoint path based on apiPathType. */
     private fun chatEndpoint(baseUrl: String, apiPathType: String): String {
-        return baseUrl + when (apiPathType) {
+        // custom = 用户提供完整 URL,原样使用(不归一化、不追加)。
+        if (apiPathType == "custom") return baseUrl.trim().trimEnd('/')
+        return normalizeBase(baseUrl) + when (apiPathType) {
             "anthropic" -> "/v1/messages"
             "responses" -> "/v1/responses"   // gap-07 OpenAI Responses 后端
-            "custom" -> ""
             else -> "/v1/chat/completions"
         }
     }
@@ -108,7 +119,8 @@ class OpenAiClient(
      */
     suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
-            val url = "${baseUrl.trimEnd('/')}/v1/models"
+            // 同样归一化:base_url 自带 /v1 时不再拼成 /v1/v1/models。
+            val url = "${normalizeBase(baseUrl)}/v1/models"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer $apiKey")

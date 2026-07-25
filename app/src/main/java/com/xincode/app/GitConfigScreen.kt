@@ -61,7 +61,9 @@ fun GitConfigScreen(database: AppDatabase, keystore: KeystoreProvider, onBack: (
         withContext(Dispatchers.IO) {
             user = database.settingDao().get("git_user_name") ?: ""
             email = database.settingDao().get("git_user_email") ?: ""
-            clientId = database.settingDao().get("github_oauth_client_id") ?: ""
+            // 优先用用户自填(高级用法:自建 OAuth App);否则用 XINCODE 内置的公共 Client ID。
+            clientId = database.settingDao().get("github_oauth_client_id")
+                ?.takeIf { it.isNotBlank() } ?: GithubAuth.DEFAULT_CLIENT_ID
             val enc = database.settingDao().get("git_token_enc")
             if (!enc.isNullOrBlank()) token = try {
                 keystore.decrypt(android.util.Base64.decode(enc, android.util.Base64.NO_WRAP))
@@ -86,8 +88,8 @@ fun GitConfigScreen(database: AppDatabase, keystore: KeystoreProvider, onBack: (
     /** OAuth 设备流登录:拿设备码 → 打开授权网址 → 轮询拿 token → 回填用户名。免手动建 PAT。 */
     fun loginOAuth() {
         if (loggingIn) return
-        val cid = clientId.trim()
-        if (cid.isBlank()) { status = "请先填 OAuth App 的 Client ID(下方有注册入口)"; return }
+        val cid = clientId.trim().ifBlank { GithubAuth.DEFAULT_CLIENT_ID }
+        if (cid.isBlank()) { status = "本次构建未内置 OAuth Client ID,请在上方填入自建 OAuth App 的 Client ID(需勾选 Device Flow)"; return }
         loggingIn = true; deviceUserCode = ""; deviceVerifyUri = ""; status = "正在申请设备码…"
         scope.launch {
             val dc = GithubAuth.requestDeviceCode(cid).getOrElse {
@@ -171,17 +173,21 @@ fun GitConfigScreen(database: AppDatabase, keystore: KeystoreProvider, onBack: (
             Text("Git 接入", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
             Spacer(Modifier.weight(1f))
         }
-        Text("推荐用 OAuth 直接登录 GitHub 账户(免手动建 Token)。登录后可:添加官方远程 MCP(免 root/免 node)让 AI 直接用 GitHub API 管仓库/PR/Issue/文件,或配置到 Linux 环境走终端 git。",
+        Text("点「登录 GitHub」用你的账户授权即可(无需手动建 Token)。登录后可:添加官方远程 MCP(免 root/免 node)让 AI 直接用 GitHub API 管仓库/PR/Issue/文件,或配置到 Linux 环境走终端 git。",
             fontSize = 11.sp, fontFamily = Mono, color = xc.sub, modifier = Modifier.padding(horizontal = 16.dp))
 
         // —— OAuth 登录 ——
-        Column(Modifier.padding(horizontal = 16.dp).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Field("OAuth App Client ID", clientId, { clientId = it }, xc)
+        // 已内置公共 Client ID 时,用户无需填写任何东西,直接点登录(与 gh CLI / Claude Code 同做法)。
+        // 仅当未内置(空)时,才要求自填——留给自建 OAuth App 的高级用户。
+        if (GithubAuth.DEFAULT_CLIENT_ID.isBlank()) {
+            Column(Modifier.padding(horizontal = 16.dp).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Field("OAuth App Client ID", clientId, { clientId = it }, xc)
+            }
+            Text("没有 Client ID?点这里注册一个 OAuth App(务必勾选 Enable Device Flow) ›", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
+                modifier = Modifier.padding(16.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                    try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/settings/developers")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+                })
         }
-        Text("没有 Client ID?点这里注册一个 OAuth App(务必勾选 Enable Device Flow) ›", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
-            modifier = Modifier.padding(16.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/settings/developers")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
-            })
 
         if (deviceUserCode.isNotBlank()) {
             Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)) {

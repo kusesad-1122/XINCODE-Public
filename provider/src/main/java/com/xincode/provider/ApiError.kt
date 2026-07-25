@@ -30,6 +30,14 @@ sealed class ApiError(
     /** 5xx — server-side failure */
     class ServerError(code: Int, cause: Throwable? = null) : ApiError("服务器错误 ($code)", cause)
 
+    /**
+     * 4xx(400/404/422 等)——请求本身被供应商拒绝。
+     * [detail] 是【服务器返回的原文原因】(如 "model xxx is not supported"、"unsupported parameter: tools")。
+     * 必须原样透出:此前这类错误被压成一句 "HTTP 400",用户和模型都无从判断问题出在哪。
+     */
+    class RequestError(val code: Int, val detail: String = "", cause: Throwable? = null) :
+        ApiError(if (detail.isBlank()) "请求被拒绝 ($code)" else "请求被拒绝 ($code):$detail", cause)
+
     /** Catch-all for unclassified errors */
     class UnknownError(message: String, cause: Throwable? = null) : ApiError(message, cause)
 
@@ -42,10 +50,18 @@ sealed class ApiError(
         fun from(e: Throwable, httpCode: Int? = null): ApiError {
             // HTTP status code classification (takes priority when available)
             if (httpCode != null) {
+                // 调用方通常把服务器返回的原因塞在 message 里(形如 "HTTP 400: model xxx not supported")。
+                // 把冒号后的原文抽出来带上——丢掉它等于让用户对着一句 "HTTP 400" 干瞪眼。
+                val detail = (e.message ?: "")
+                    .substringAfter("HTTP $httpCode:", "")
+                    .trim()
+                    .ifBlank { (e.message ?: "").takeIf { it.isNotBlank() && !it.equals("HTTP $httpCode", true) }.orEmpty() }
+                    .take(300)
                 return when (httpCode) {
                     401, 403 -> AuthError(e)
                     in 500..599 -> ServerError(httpCode, e)
-                    else -> UnknownError("HTTP $httpCode", e)
+                    in 400..499 -> RequestError(httpCode, detail, e)
+                    else -> UnknownError(if (detail.isBlank()) "HTTP $httpCode" else "HTTP $httpCode:$detail", e)
                 }
             }
 

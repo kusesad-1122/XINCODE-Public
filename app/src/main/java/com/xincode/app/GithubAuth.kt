@@ -21,6 +21,21 @@ import java.util.concurrent.TimeUnit
  * New OAuth App,并在该 App 里勾选 "Enable Device Flow"。
  */
 object GithubAuth {
+
+    /**
+     * XINCODE 内置的 GitHub OAuth App Client ID —— 由项目维护者【注册一次】,所有用户共用。
+     *
+     * 普通用户【不需要】自己去注册 OAuth App:点「登录 GitHub」即可走设备流授权。
+     * 这与 GitHub CLI(gh)、Claude Code 等的做法一致。
+     *
+     * 为什么可以直接写进开源代码:设备授权流(Device Flow)【不使用 client_secret】,
+     * client_id 本身是公开标识符,不构成凭据泄露——gh CLI 的 client_id 同样是公开的。
+     * 真正的凭据是用户授权后拿到的 access_token,那只存在用户自己的设备上。
+     *
+     * 留空时,UI 会退回到「让用户自填 Client ID」的模式(自建 OAuth App 的高级用户可用)。
+     */
+    const val DEFAULT_CLIENT_ID = ""
+
     private val http = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
