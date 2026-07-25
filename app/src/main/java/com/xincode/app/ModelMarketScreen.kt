@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -18,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -186,7 +189,12 @@ object ProviderPresets {
 
 /** 「免费模型 / 供应商市场」:分免费/付费两区,每个供应商带官网入口 + 一键添加(填 key)。 */
 @Composable
-fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack: () -> Unit) {
+fun ModelMarketScreen(
+    database: AppDatabase,
+    keystore: KeystoreProvider,
+    openAiClient: com.xincode.provider.OpenAiClient,
+    onBack: () -> Unit
+) {
     val xc = LocalXinColors.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -240,6 +248,27 @@ fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack:
         var oauthBusy by remember(p) { mutableStateOf(false) }
         var oauthUserCode by remember(p) { mutableStateOf("") }
         var oauthVerifyUri by remember(p) { mutableStateOf("") }
+        // 授权拿到的令牌先存这儿。授权成功但还没选模型时对话框不关闭,
+        // 再次点确认必须复用它,否则用户得在网页上重新授权一遍。
+        var oauthToken by remember(p) { mutableStateOf("") }
+        // 现拉的模型列表。预设自带的 models 往往只是几个代表性型号,而 OpenCode Zen /
+        // Nous / Ollama 这类干脆是空的 —— 不给拉取入口的话,用户根本不知道该填什么。
+        var fetched by remember(p) { mutableStateOf<List<String>>(emptyList()) }
+        var fetching by remember(p) { mutableStateOf(false) }
+
+        /** 用当前已有的凭据拉一次模型列表。token 为空时回落到输入框里的 key。 */
+        fun fetchModels(tokenOverride: String = "") {
+            val k = tokenOverride.ifBlank { key.trim() }
+            if (k.isBlank()) { toast = "先填 API Key 再拉取"; return }
+            fetching = true; toast = "正在拉取模型列表…"
+            scope.launch {
+                val r = openAiClient.listModels(p.baseUrl, k)
+                fetched = r.getOrDefault(emptyList())
+                fetching = false
+                toast = if (fetched.isEmpty()) "拉取失败或该供应商不提供列表接口,可手动填写模型 ID"
+                        else "已拉取 ${fetched.size} 个模型,点选即可填入"
+            }
+        }
         AlertDialog(
             onDismissRequest = { keyDialogFor = null },
             title = { Text("添加 ${p.name}", fontSize = 14.sp, fontFamily = Mono, color = xc.ink) },
@@ -266,7 +295,7 @@ fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack:
                             Text("点下方「登录授权」→ 浏览器完成授权 → 自动获取访问令牌。", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
                         }
                         Spacer(Modifier.height(10.dp))
-                        TField(model, { model = it }, "模型 ID(登录后可在供应商配置里拉取)", xc)
+                        TField(model, { model = it }, "模型 ID(登录后会自动拉取)", xc)
                     } else {
                         Text("官网注册领取 API Key ›", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
                             modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { openSite(p.site) })
@@ -275,6 +304,45 @@ fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack:
                         Spacer(Modifier.height(8.dp))
                         TField(model, { model = it }, "模型 ID(可改)", xc)
                     }
+
+                    // 拉取入口。OAuth 供应商登录成功后会自动拉一次,这里仍保留手动重拉。
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (fetching) "拉取中…" else "↻ 拉取模型列表",
+                            fontSize = 11.sp, fontFamily = Mono,
+                            color = if (fetching) xc.faint else xc.green,
+                            modifier = Modifier
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    if (!fetching) fetchModels()
+                                }
+                                .padding(vertical = 4.dp)
+                        )
+                        if (fetched.isNotEmpty()) {
+                            Text("  共 ${fetched.size} 个", fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
+                        }
+                    }
+
+                    // 拉到的列表:点一行就填进上面的模型 ID 输入框,省得手抄。
+                    if (fetched.isNotEmpty()) {
+                        Column(
+                            Modifier.fillMaxWidth()
+                                .heightIn(max = 160.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            fetched.forEach { m ->
+                                Text(
+                                    m, fontSize = 11.sp, fontFamily = Mono,
+                                    color = if (m == model) xc.ink else xc.sub,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.fillMaxWidth()
+                                        .background(if (m == model) xc.activeBg else xc.bg)
+                                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { model = m }
+                                        .padding(horizontal = 6.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -282,6 +350,38 @@ fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack:
                     // OAuth 分支:走设备码登录,拿到 token 后按同样方式落库。
                     if (p.oauth) {
                         if (oauthBusy) return@TextButton
+
+                        /** 用给定令牌落库并启用。抽出来是因为「授权完」和「选完模型再确认」两条路都要走它。 */
+                        suspend fun persist(tok: String, m: String) {
+                            withContext(Dispatchers.IO) {
+                                val enc = android.util.Base64.encodeToString(keystore.encrypt(tok), android.util.Base64.NO_WRAP)
+                                database.providerConfigDao().deactivateAll()
+                                val id = database.providerConfigDao().insert(
+                                    ProviderConfigEntity(
+                                        name = p.name, supplierId = p.supplierId, baseUrl = p.baseUrl,
+                                        apiKeyEnc = enc, model = m,
+                                        enabledModelIds = (p.models + fetched + m).filter { it.isNotBlank() }.distinct(),
+                                        isActive = true, apiPathType = p.apiPathType, contextWindow = p.contextWindow
+                                    )
+                                )
+                                database.providerConfigDao().setActive(id)
+                            }
+                            toast = "已登录并启用 ${p.name}"
+                            oauthBusy = false; oauthUserCode = ""
+                            keyDialogFor = null
+                        }
+
+                        // 已经授权过了(上一次点击拿到了 token,只是当时在等用户选模型):
+                        // 直接落库,绝不重走设备码流程——否则用户要在网页上再授权一遍。
+                        val existing = oauthToken
+                        if (existing.isNotBlank()) {
+                            val m = model.trim()
+                            if (m.isBlank()) { toast = "请先选择或填写模型 ID"; return@TextButton }
+                            oauthBusy = true
+                            scope.launch { persist(existing, m) }
+                            return@TextButton
+                        }
+
                         oauthBusy = true; oauthUserCode = ""; toast = "正在申请设备码…"
                         scope.launch {
                             val dc = NousAuth.requestDeviceCode().getOrElse {
@@ -296,23 +396,26 @@ fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack:
                                     toast = "登录失败:${it.message?.take(100)}"
                                     oauthBusy = false; oauthUserCode = ""; return@launch
                                 }
-                            val m = model.trim()
-                            withContext(Dispatchers.IO) {
-                                val enc = android.util.Base64.encodeToString(keystore.encrypt(tok), android.util.Base64.NO_WRAP)
-                                database.providerConfigDao().deactivateAll()
-                                val id = database.providerConfigDao().insert(
-                                    ProviderConfigEntity(
-                                        name = p.name, supplierId = p.supplierId, baseUrl = p.baseUrl,
-                                        apiKeyEnc = enc, model = m,
-                                        enabledModelIds = (p.models + m).filter { it.isNotBlank() }.distinct(),
-                                        isActive = true, apiPathType = p.apiPathType, contextWindow = p.contextWindow
-                                    )
-                                )
-                                database.providerConfigDao().setActive(id)
+                            // 令牌先存住。下面若因为要选模型而中途返回,再次点确认时才不用重新授权。
+                            oauthToken = tok
+                            // OAuth 预设通常没有 defaultModel,授权完还让用户自己猜模型 ID 就白登录了,
+                            // 所以这里自动拉一次列表。
+                            if (model.isBlank()) {
+                                toast = "授权成功,正在拉取模型列表…"
+                                val r = openAiClient.listModels(p.baseUrl, tok)
+                                fetched = r.getOrDefault(emptyList())
+                                if (fetched.isNotEmpty()) {
+                                    model = fetched.first()
+                                    toast = "已拉取 ${fetched.size} 个模型,选好后点「确认添加」"
+                                    oauthUserCode = ""   // 授权已完成,用户码没用了,收起来
+                                    oauthBusy = false
+                                    return@launch
+                                }
+                                toast = "授权成功,但该供应商未提供模型列表,请手填模型 ID 后确认"
+                                oauthUserCode = ""; oauthBusy = false
+                                return@launch
                             }
-                            toast = "已登录并启用 ${p.name}"
-                            oauthBusy = false; oauthUserCode = ""
-                            keyDialogFor = null
+                            persist(tok, model.trim())
                         }
                         return@TextButton
                     }
@@ -340,6 +443,8 @@ fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack:
                     Text(
                         when {
                             p.oauth && oauthBusy -> "登录中…(等待网页授权)"
+                            // 已授权、只差选模型:文案要跟着变,否则用户以为还要再登录一次
+                            p.oauth && oauthToken.isNotBlank() -> "确认添加"
                             p.oauth -> "登录授权"
                             else -> "添加并启用"
                         },
@@ -367,6 +472,14 @@ private fun PresetCard(p: ProviderPreset, xc: XinColors, onSite: () -> Unit, onA
                 p.free -> "免费" to xc.green
                 p.plan -> "套餐" to Color(0xFF6FB3E0)   // 订阅制:与按量付费区分开
                 else -> "付费" to Color(0xFFF2C14E)
+            }
+            // 可登录授权的单独标一个:免手填 Key 是很实在的差别,埋在对话框里用户翻不到。
+            if (p.oauth) {
+                Box(Modifier.clip(RoundedCornerShape(10.dp)).background(xc.green.copy(alpha = 0.15f))
+                    .padding(horizontal = 8.dp, vertical = 3.dp)) {
+                    Text("免 Key 登录", fontSize = 10.sp, fontFamily = Mono, color = xc.green)
+                }
+                Spacer(Modifier.width(6.dp))
             }
             Box(Modifier.clip(RoundedCornerShape(10.dp)).background(bc.copy(alpha = 0.15f)).padding(horizontal = 8.dp, vertical = 3.dp)) {
                 Text(badge, fontSize = 10.sp, fontFamily = Mono, color = bc)

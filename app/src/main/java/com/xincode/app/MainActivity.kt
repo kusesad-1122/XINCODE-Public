@@ -300,6 +300,7 @@ class MainActivity : ComponentActivity() {
                     "model_market" -> ModelMarketScreen(
                         database = app.database,
                         keystore = app.keystore,
+                        openAiClient = app.openAiClient,
                         onBack = { currentPage = "settings" }
                     )
                     "git_config" -> GitConfigScreen(
