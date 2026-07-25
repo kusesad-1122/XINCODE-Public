@@ -54,11 +54,21 @@ object UsageRecorder {
                 // 全零就别记了:有些供应商在流式最后一帧给个空 usage,记下来只会污染统计
                 if (input == 0L && output == 0L) return@runCatching
 
+                // 【关键】OpenAI / DeepSeek 的 prompt_tokens 是【含】缓存命中的
+                // (DeepSeek 文档写明 prompt_tokens = cache_hit + cache_miss);
+                // Anthropic 的 input_tokens 则【不含】,缓存是独立字段。
+                // 不区分就会把缓存算两遍:总量虚高,命中率被压到实际值的一半左右,
+                // 成本也跟着估高。provider 层用 input_includes_cache 显式标了语义。
+                val includesCache = usage.optBoolean("input_includes_cache", true)
+                val netInput = if (includesCache)
+                    (input - cacheRead - cacheWrite).coerceAtLeast(0)
+                else input
+
                 database.usageRecordDao().insert(
                     UsageRecordEntity(
                         sessionId = sessionId,
                         model = model, provider = provider, source = source,
-                        inputTokens = input, outputTokens = output,
+                        inputTokens = netInput, outputTokens = output,
                         cacheReadTokens = cacheRead, cacheWriteTokens = cacheWrite,
                         reasoningTokens = reasoning
                     )

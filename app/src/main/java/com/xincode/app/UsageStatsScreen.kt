@@ -67,7 +67,9 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
     val totalInput = daily.sumOf { it.input }
     val totalOutput = daily.sumOf { it.output }
     val totalCacheRead = daily.sumOf { it.cacheRead }
-    // 命中率的分母是「本可以计费的输入」= 实付输入 + 缓存命中,不是 input 单独一项
+    // 命中率 = 缓存命中 / 本可计费的总输入。
+    // 入库时已经把「含缓存」的供应商扣成净输入了(见 UsageRecorder),
+    // 所以这里的分母 input + cacheRead 才是真正的总输入,不会重复计算。
     val hitRate = if (totalInput + totalCacheRead > 0)
         totalCacheRead.toDouble() / (totalInput + totalCacheRead) * 100 else 0.0
 

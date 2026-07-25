@@ -607,6 +607,8 @@ class OpenAiClient(
             var outputTokens = 0
             // Anthropic 的正常收尾是 message_stop;没见到就说明流被掐断(见 AgentStreamResult.truncated)。
             var sawTerminator = false
+            var cacheReadTokens = 0
+            var cacheWriteTokens = 0
 
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: break
@@ -616,7 +618,11 @@ class OpenAiClient(
                 val evt = try { JSONObject(payload) } catch (_: Exception) { continue }
                 when (evt.optString("type")) {
                     "message_start" -> {
-                        inputTokens = evt.optJSONObject("message")?.optJSONObject("usage")?.optInt("input_tokens", 0) ?: 0
+                        val u = evt.optJSONObject("message")?.optJSONObject("usage")
+                        inputTokens = u?.optInt("input_tokens", 0) ?: 0
+                        // 之前完全没取这两个,导致 Anthropic 的缓存统计恒为 0
+                        cacheReadTokens = u?.optInt("cache_read_input_tokens", 0) ?: 0
+                        cacheWriteTokens = u?.optInt("cache_creation_input_tokens", 0) ?: 0
                     }
                     "content_block_start" -> {
                         val idx = evt.optInt("index", 0)
@@ -665,6 +671,12 @@ class OpenAiClient(
                 put("prompt_tokens", inputTokens)
                 put("completion_tokens", outputTokens)
                 put("total_tokens", inputTokens + outputTokens)
+                put("cache_read_input_tokens", cacheReadTokens)
+                put("cache_creation_input_tokens", cacheWriteTokens)
+                // 关键语义标记:Anthropic 的 input_tokens【不含】缓存部分,缓存是独立字段。
+                // 而 OpenAI/DeepSeek 的 prompt_tokens 是【含】缓存的。两者混在一起统计,
+                // 缓存命中率会被算错一倍——下游 UsageRecorder 靠这个标记决定要不要扣减。
+                put("input_includes_cache", false)
             }
             if (!sawTerminator) Log.w(TAG, "⚠ Anthropic SSE truncated: no message_stop")
             Log.i(TAG, "✓ Anthropic SSE complete: ${contentBuf.length} chars, ${toolCalls.size} tool_use")
