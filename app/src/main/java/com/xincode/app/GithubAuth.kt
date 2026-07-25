@@ -34,7 +34,7 @@ object GithubAuth {
      *
      * 留空时,UI 会退回到「让用户自填 Client ID」的模式(自建 OAuth App 的高级用户可用)。
      */
-    const val DEFAULT_CLIENT_ID = ""
+    const val DEFAULT_CLIENT_ID = "Ov23liNcXbIH77QpgWAa"
 
     private val http = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
