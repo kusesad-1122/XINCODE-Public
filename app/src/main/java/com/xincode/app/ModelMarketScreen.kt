@@ -52,7 +52,9 @@ data class ProviderPreset(
     val free: Boolean,
     val apiPathType: String = "openai",
     val contextWindow: Int = 0,
-    val plan: Boolean = false  // 订阅套餐类(coding plan / 代币计划等)
+    val plan: Boolean = false,  // 订阅套餐类(coding plan / 代币计划等)
+    /** true = 走 OAuth 设备码登录拿 token,不需要用户手填 API Key。 */
+    val oauth: Boolean = false
 )
 
 object ProviderPresets {
@@ -87,6 +89,12 @@ object ProviderPresets {
         ProviderPreset("Moonshot Kimi", "moonshot", "https://api.moonshot.cn/v1",
             "moonshot-v1-8k", listOf("moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"),
             "https://platform.moonshot.cn/", "月之暗面 Kimi,按量付费", free = false, contextWindow = 128000),
+
+        // —— OAuth 登录(无需手填 API Key)——
+        ProviderPreset("Nous Portal(账号登录)", "nous", NousAuth.INFERENCE_BASE_URL,
+            "", listOf(),
+            NousAuth.PORTAL_BASE_URL, "用 Nous 账号授权登录即可,无需手动申请 API Key(设备码流程)",
+            free = true, oauth = true),
 
         // —— 订阅套餐(Plan):按月订阅、非按量计费 ——
         ProviderPreset("小米 MiMo 代币计划(中国)", "xiaomi-plan-cn", "https://token-plan-cn.xiaomimimo.com/v1",
@@ -228,6 +236,10 @@ fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack:
     keyDialogFor?.let { p ->
         var key by remember(p) { mutableStateOf("") }
         var model by remember(p) { mutableStateOf(p.defaultModel) }
+        // OAuth 设备码登录用:轮询中标记 + 待用户输入的用户码 + 授权网址。
+        var oauthBusy by remember(p) { mutableStateOf(false) }
+        var oauthUserCode by remember(p) { mutableStateOf("") }
+        var oauthVerifyUri by remember(p) { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { keyDialogFor = null },
             title = { Text("添加 ${p.name}", fontSize = 14.sp, fontFamily = Mono, color = xc.ink) },
@@ -235,16 +247,76 @@ fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack:
                 Column {
                     Text(p.note, fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
                     Spacer(Modifier.height(8.dp))
-                    Text("官网注册领取 API Key ›", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
-                        modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { openSite(p.site) })
-                    Spacer(Modifier.height(10.dp))
-                    TField(key, { key = it }, "粘贴 API Key", xc)
-                    Spacer(Modifier.height(8.dp))
-                    TField(model, { model = it }, "模型 ID(可改)", xc)
+                    if (p.oauth) {
+                        // OAuth 预设:不需要手填 Key,点下方按钮走设备码授权。
+                        if (oauthUserCode.isNotBlank()) {
+                            Text("在打开的网页里输入用户码(点码可复制):", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                            Text(oauthUserCode, fontSize = 22.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink,
+                                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager)
+                                        ?.setPrimaryClip(android.content.ClipData.newPlainText("code", oauthUserCode))
+                                    toast = "用户码已复制"
+                                })
+                            if (oauthVerifyUri.isNotBlank()) {
+                                Spacer(Modifier.height(6.dp))
+                                Text("重新打开授权网页 ›", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
+                                    modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { openSite(oauthVerifyUri) })
+                            }
+                        } else {
+                            Text("点下方「登录授权」→ 浏览器完成授权 → 自动获取访问令牌。", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        TField(model, { model = it }, "模型 ID(登录后可在供应商配置里拉取)", xc)
+                    } else {
+                        Text("官网注册领取 API Key ›", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
+                            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { openSite(p.site) })
+                        Spacer(Modifier.height(10.dp))
+                        TField(key, { key = it }, "粘贴 API Key", xc)
+                        Spacer(Modifier.height(8.dp))
+                        TField(model, { model = it }, "模型 ID(可改)", xc)
+                    }
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
+                TextButton(enabled = !oauthBusy, onClick = {
+                    // OAuth 分支:走设备码登录,拿到 token 后按同样方式落库。
+                    if (p.oauth) {
+                        if (oauthBusy) return@TextButton
+                        oauthBusy = true; oauthUserCode = ""; toast = "正在申请设备码…"
+                        scope.launch {
+                            val dc = NousAuth.requestDeviceCode().getOrElse {
+                                toast = "申请失败:${it.message?.take(100)}"; oauthBusy = false; return@launch
+                            }
+                            oauthUserCode = dc.userCode
+                            oauthVerifyUri = dc.verificationUriComplete
+                            toast = "请在网页完成授权(自动检测)"
+                            openSite(dc.verificationUriComplete)
+                            val tok = NousAuth.pollForToken(dc.deviceCode, dc.interval, dc.expiresIn) { tick -> toast = tick }
+                                .getOrElse {
+                                    toast = "登录失败:${it.message?.take(100)}"
+                                    oauthBusy = false; oauthUserCode = ""; return@launch
+                                }
+                            val m = model.trim()
+                            withContext(Dispatchers.IO) {
+                                val enc = android.util.Base64.encodeToString(keystore.encrypt(tok), android.util.Base64.NO_WRAP)
+                                database.providerConfigDao().deactivateAll()
+                                val id = database.providerConfigDao().insert(
+                                    ProviderConfigEntity(
+                                        name = p.name, supplierId = p.supplierId, baseUrl = p.baseUrl,
+                                        apiKeyEnc = enc, model = m,
+                                        enabledModelIds = (p.models + m).filter { it.isNotBlank() }.distinct(),
+                                        isActive = true, apiPathType = p.apiPathType, contextWindow = p.contextWindow
+                                    )
+                                )
+                                database.providerConfigDao().setActive(id)
+                            }
+                            toast = "已登录并启用 ${p.name}"
+                            oauthBusy = false; oauthUserCode = ""
+                            keyDialogFor = null
+                        }
+                        return@TextButton
+                    }
+
                     val k = key.trim(); val m = model.trim()
                     if (k.isBlank() || m.isBlank()) { toast = "请填 key 和模型"; return@TextButton }
                     scope.launch {
@@ -264,7 +336,16 @@ fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack:
                         toast = "已添加并启用 ${p.name}"
                         keyDialogFor = null
                     }
-                }) { Text("添加并启用", fontFamily = Mono, color = xc.green) }
+                }) {
+                    Text(
+                        when {
+                            p.oauth && oauthBusy -> "登录中…(等待网页授权)"
+                            p.oauth -> "登录授权"
+                            else -> "添加并启用"
+                        },
+                        fontFamily = Mono, color = xc.green
+                    )
+                }
             },
             dismissButton = { TextButton(onClick = { keyDialogFor = null }) { Text("取消", fontFamily = Mono, color = xc.sub) } },
             containerColor = xc.bg
