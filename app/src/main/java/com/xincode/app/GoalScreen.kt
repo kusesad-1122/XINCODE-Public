@@ -21,12 +21,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val GBg = Color(0xFFF9F9F6)
-private val GInk = Color(0xFF1A1A17)
-private val GSub = Color(0xFF86857B)
-private val GGreen = Color(0xFF6E8050)
-private val GRed = Color(0xFFA8514A)
-private val GBorder = Color(0xFFE6E4DC)
+private val GBg: Color @Composable get() = LocalXinColors.current.bg
+private val GInk: Color @Composable get() = LocalXinColors.current.ink
+private val GSub: Color @Composable get() = LocalXinColors.current.sub
+private val GGreen: Color @Composable get() = LocalXinColors.current.green
+private val GRed: Color @Composable get() = LocalXinColors.current.red
+private val GBorder: Color @Composable get() = LocalXinColors.current.border
 private val GMono = FontFamily(Font(com.xincode.app.R.font.jetbrains_mono, FontWeight.Normal))
 
 /**

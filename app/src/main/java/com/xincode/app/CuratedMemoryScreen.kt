@@ -25,12 +25,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Bg = Color(0xFFF9F9F6)
-private val Ink = Color(0xFF1A1A17)
-private val Sub = Color(0xFF86857B)
-private val Faint = Color(0xFFB7B6AB)
-private val Green = Color(0xFF6E8050)
-private val Border = Color(0xFFE6E4DC)
+private val Bg: Color @Composable get() = LocalXinColors.current.bg
+private val Ink: Color @Composable get() = LocalXinColors.current.ink
+private val Sub: Color @Composable get() = LocalXinColors.current.sub
+private val Faint: Color @Composable get() = LocalXinColors.current.faint
+private val Green: Color @Composable get() = LocalXinColors.current.green
+private val Border: Color @Composable get() = LocalXinColors.current.border
 private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
 
 /**
@@ -97,7 +97,7 @@ private fun EditBlock(title: String, hint: String, value: String, counter: Strin
     Text(title, fontSize = 12.sp, fontFamily = JetBrainsMono, color = Ink)
     Text(hint, fontSize = 9.sp, fontFamily = JetBrainsMono, color = Faint)
     Spacer(Modifier.height(4.dp))
-    Box(Modifier.fillMaxWidth().border(0.5.dp, Border).background(Color.White).padding(8.dp)) {
+    Box(Modifier.fillMaxWidth().border(0.5.dp, Border).background(LocalXinColors.current.bgElevated).padding(8.dp)) {
         BasicTextField(
             value = value,
             onValueChange = onChange,

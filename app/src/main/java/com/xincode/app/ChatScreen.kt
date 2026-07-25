@@ -918,7 +918,7 @@ fun ChatScreen(
                                 val isActive = name == currentModel
                                 Row(
                                     Modifier.fillMaxWidth()
-                                        .background(if (isActive) Color(0xFFF0EFEA) else Bg)
+                                        .background(if (isActive) LocalXinColors.current.activeBg else Bg)
                                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                             showMainMenu = false
                                             showEffortMenu = false

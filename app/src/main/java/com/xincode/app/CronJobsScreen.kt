@@ -27,13 +27,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private val Bg = Color(0xFFF9F9F6)
-private val Ink = Color(0xFF1A1A17)
-private val Sub = Color(0xFF86857B)
-private val Faint = Color(0xFFB7B6AB)
-private val Green = Color(0xFF6E8050)
-private val Red = Color(0xFFA8514A)
-private val Border = Color(0xFFE6E4DC)
+private val Bg: Color @Composable get() = LocalXinColors.current.bg
+private val Ink: Color @Composable get() = LocalXinColors.current.ink
+private val Sub: Color @Composable get() = LocalXinColors.current.sub
+private val Faint: Color @Composable get() = LocalXinColors.current.faint
+private val Green: Color @Composable get() = LocalXinColors.current.green
+private val Red: Color @Composable get() = LocalXinColors.current.red
+private val Border: Color @Composable get() = LocalXinColors.current.border
 private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
 
 /**

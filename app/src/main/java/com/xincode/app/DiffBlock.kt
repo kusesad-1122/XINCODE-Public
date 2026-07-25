@@ -15,13 +15,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.app.R
 
-private val Bg = Color(0xFFF9F9F6)
-private val Ink = Color(0xFF1A1A17)
-private val Sub = Color(0xFF86857B)
-private val Faint = Color(0xFFB7B6AB)
-private val Green = Color(0xFF6E8050)
-private val Red = Color(0xFFA8514A)
-private val Border = Color(0x1A1A1A17)
+private val Bg: Color @Composable get() = LocalXinColors.current.bg
+private val Ink: Color @Composable get() = LocalXinColors.current.ink
+private val Sub: Color @Composable get() = LocalXinColors.current.sub
+private val Faint: Color @Composable get() = LocalXinColors.current.faint
+private val Green: Color @Composable get() = LocalXinColors.current.green
+private val Red: Color @Composable get() = LocalXinColors.current.red
+private val Border: Color @Composable get() = LocalXinColors.current.divider
 private val GreenBg = Color(0x1A6E8050)   // 10% green background for ADD
 private val RedBg = Color(0x1AA8514A)      // 10% red background for DELETE
 private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))

@@ -23,10 +23,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.app.R
 
-private val Ink = Color(0xFF1A1A17)
-private val Sub = Color(0xFF86857B)
-private val Faint = Color(0xFFB7B6AB)
-private val Border = Color(0x1A1A1A17)
+private val Ink: Color @Composable get() = LocalXinColors.current.ink
+private val Sub: Color @Composable get() = LocalXinColors.current.sub
+private val Faint: Color @Composable get() = LocalXinColors.current.faint
+private val Border: Color @Composable get() = LocalXinColors.current.divider
 private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
 
 @Composable
@@ -37,7 +37,7 @@ fun InlineCodeBlock(language: String?, code: String, modifier: Modifier = Modifi
     Column(
         modifier.fillMaxWidth().padding(vertical = 4.dp)
             .border(0.5.dp, Border)
-            .background(Color(0xFFF9F9F6))
+            .background(LocalXinColors.current.bgElevated)
     ) {
         // Language label + copy button row
         Row(

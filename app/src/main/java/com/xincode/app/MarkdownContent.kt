@@ -11,7 +11,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.xincode.app.R
 
-private val Ink = Color(0xFF1A1A17)
+private val Ink: Color @Composable get() = LocalXinColors.current.ink
 private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
 
 @Composable

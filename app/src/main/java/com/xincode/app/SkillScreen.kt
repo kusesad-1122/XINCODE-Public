@@ -29,11 +29,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // Terminal palette — consistent with ChatScreen/WorkflowScreen
-private val SkBg = Color(0xFFF9F9F6)
-private val SkInk = Color(0xFF1A1A17)
-private val SkSub = Color(0xFF86857B)
-private val SkFaint = Color(0xFFB7B6AB)
-private val SkBorder = Color(0xFFE6E4DC)
+private val SkBg: Color @Composable get() = LocalXinColors.current.bg
+private val SkInk: Color @Composable get() = LocalXinColors.current.ink
+private val SkSub: Color @Composable get() = LocalXinColors.current.sub
+private val SkFaint: Color @Composable get() = LocalXinColors.current.faint
+private val SkBorder: Color @Composable get() = LocalXinColors.current.border
 private val SkMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
 
 /**

@@ -22,12 +22,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val BgAL = Color(0xFFF9F9F6)
-private val InkAL = Color(0xFF1A1A17)
-private val SubAL = Color(0xFF86857B)
-private val FaintAL = Color(0xFFB7B6AB)
-private val GreenAL = Color(0xFF6E8050)
-private val RedAL = Color(0xFFA8514A)
+private val BgAL: Color @Composable get() = LocalXinColors.current.bg
+private val InkAL: Color @Composable get() = LocalXinColors.current.ink
+private val SubAL: Color @Composable get() = LocalXinColors.current.sub
+private val FaintAL: Color @Composable get() = LocalXinColors.current.faint
+private val GreenAL: Color @Composable get() = LocalXinColors.current.green
+private val RedAL: Color @Composable get() = LocalXinColors.current.red
 private val JetBrainsMonoAL = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
 
 @Composable

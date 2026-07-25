@@ -38,7 +38,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
-private val Ink = Color(0xFF1A1A17)
+private val Ink: Color @Composable get() = LocalXinColors.current.ink
 
 class MainActivity : ComponentActivity() {
 
@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
                 drawerContent = {
                     ModalDrawerSheet(
                         drawerTonalElevation = 0.dp,
-                        drawerContainerColor = Color(0xFFF9F9F6),
+                        drawerContainerColor = LocalXinColors.current.bg,
                         drawerShape = RoundedCornerShape(0.dp)
                     ) {
                         SidebarContent(

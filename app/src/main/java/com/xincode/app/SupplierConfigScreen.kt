@@ -38,13 +38,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 // --- palette ---
-private val Bg = Color(0xFFF9F9F6)
-private val Ink = Color(0xFF1A1A17)
-private val Sub = Color(0xFF86857B)
-private val Faint = Color(0xFFB7B6AB)
-private val Green = Color(0xFF6E8050)
-private val Red = Color(0xFFA8514A)
-private val Border = Color(0xFFE6E4DC)
+private val Bg: Color @Composable get() = LocalXinColors.current.bg
+private val Ink: Color @Composable get() = LocalXinColors.current.ink
+private val Sub: Color @Composable get() = LocalXinColors.current.sub
+private val Faint: Color @Composable get() = LocalXinColors.current.faint
+private val Green: Color @Composable get() = LocalXinColors.current.green
+private val Red: Color @Composable get() = LocalXinColors.current.red
+private val Border: Color @Composable get() = LocalXinColors.current.border
 
 private const val TAG = "XincodeUI"
 
@@ -249,7 +249,7 @@ fun SupplierConfigScreen(
         } else {
             savedConfigs.forEach { cfg ->
                 val isActive = cfg.id == activeId
-                Row(Modifier.fillMaxWidth().background(if (isActive) Color(0xFFF0EFEA) else Bg)
+                Row(Modifier.fillMaxWidth().background(if (isActive) LocalXinColors.current.activeBg else Bg)
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { activateConfig(cfg.id) }
                     .padding(horizontal = 8.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically) {
@@ -302,7 +302,7 @@ fun SupplierConfigScreen(
                             Text(sup.name, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
                                 color = if (sup.id == selectedSupplierId) Ink else Sub,
                                 modifier = Modifier.fillMaxWidth()
-                                    .background(if (sup.id == selectedSupplierId) Color(0xFFF0EFEA) else Bg)
+                                    .background(if (sup.id == selectedSupplierId) LocalXinColors.current.activeBg else Bg)
                                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                         selectedSupplierId = sup.id; showSupplierDropdown = false
                                         model = sup.defaultModel; models = emptyList()
@@ -353,7 +353,7 @@ fun SupplierConfigScreen(
                                 Text(label, fontSize = 11.sp, fontFamily = FontFamily.Monospace,
                                     color = if (id == selectedApiPathType) Ink else Sub,
                                     modifier = Modifier.fillMaxWidth()
-                                        .background(if (id == selectedApiPathType) Color(0xFFF0EFEA) else Bg)
+                                        .background(if (id == selectedApiPathType) LocalXinColors.current.activeBg else Bg)
                                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                             selectedApiPathType = id; showApiPathDropdown = false
                                         }.padding(horizontal = 12.dp, vertical = 7.dp))
@@ -399,7 +399,7 @@ fun SupplierConfigScreen(
                             val isChecked = m in checkedModelIds
                             val isUnavailable = editingConfig != null && m in (editingConfig?.enabledModelIds ?: emptyList()) && m !in models
                             Row(Modifier.fillMaxWidth()
-                                .background(if (m == model) Color(0xFFF0EFEA) else Bg)
+                                .background(if (m == model) LocalXinColors.current.activeBg else Bg)
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                     val newSet = if (isChecked) checkedModelIds - m else checkedModelIds + m
                                     if (newSet.isEmpty()) { status = "✗ 至少保留一个启用模型"; return@clickable }
