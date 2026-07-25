@@ -35,7 +35,12 @@ import kotlinx.coroutines.withContext
 
 private val Mono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
 
-/** 供应商预置。free=true 归入「免费模型」区(自己注册领 key,每日有额度/限速);否则「付费供应商」区。 */
+/**
+ * 供应商预置,分三区展示:
+ *  - [free] = true            → 「免费 / 免费额度」(自己注册领 key,有每日额度或限速)
+ *  - [plan] = true            → 「订阅套餐(Plan)」(按月订阅、非按量计费,如各家 coding plan / 代币计划)
+ *  - 两者皆 false             → 「按量付费」
+ */
 data class ProviderPreset(
     val name: String,
     val supplierId: String,
@@ -46,7 +51,8 @@ data class ProviderPreset(
     val note: String,
     val free: Boolean,
     val apiPathType: String = "openai",
-    val contextWindow: Int = 0
+    val contextWindow: Int = 0,
+    val plan: Boolean = false  // 订阅套餐类(coding plan / 代币计划等)
 )
 
 object ProviderPresets {
@@ -80,7 +86,93 @@ object ProviderPresets {
             "https://platform.openai.com/", "官方 API,按量付费", free = false, contextWindow = 128000),
         ProviderPreset("Moonshot Kimi", "moonshot", "https://api.moonshot.cn/v1",
             "moonshot-v1-8k", listOf("moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"),
-            "https://platform.moonshot.cn/", "月之暗面 Kimi,按量付费", free = false, contextWindow = 128000)
+            "https://platform.moonshot.cn/", "月之暗面 Kimi,按量付费", free = false, contextWindow = 128000),
+
+        // —— 订阅套餐(Plan):按月订阅、非按量计费 ——
+        ProviderPreset("小米 MiMo 代币计划(中国)", "xiaomi-plan-cn", "https://token-plan-cn.xiaomimimo.com/v1",
+            "mimo-v2.5", listOf("mimo-v2.5", "mimo-v2.5-pro"),
+            "https://xiaomimimo.com/", "小米代币计划,订阅制;注意只勾对话模型(带 -tts/-asr 的是语音模型,用于对话会报错)",
+            free = false, plan = true, contextWindow = 128000),
+        ProviderPreset("小米 MiMo 代币计划(新加坡)", "xiaomi-plan-sgp", "https://token-plan-sgp.xiaomimimo.com/v1",
+            "mimo-v2.5", listOf("mimo-v2.5", "mimo-v2.5-pro"),
+            "https://xiaomimimo.com/", "小米代币计划,新加坡节点", free = false, plan = true, contextWindow = 128000),
+        ProviderPreset("小米 MiMo 代币计划(阿姆斯特丹)", "xiaomi-plan-ams", "https://token-plan-ams.xiaomimimo.com/v1",
+            "mimo-v2.5", listOf("mimo-v2.5", "mimo-v2.5-pro"),
+            "https://xiaomimimo.com/", "小米代币计划,欧洲节点", free = false, plan = true, contextWindow = 128000),
+        ProviderPreset("智谱 GLM 编程套餐(国内)", "zhipu-coding-cn", "https://open.bigmodel.cn/api/coding/paas/v4",
+            "glm-4.6", listOf("glm-4.6", "glm-4.5-air"),
+            "https://open.bigmodel.cn/", "智谱编程套餐,订阅制,与按量计费分开", free = false, plan = true, contextWindow = 128000),
+        ProviderPreset("Z.AI 编程套餐(国际)", "zai-coding", "https://api.z.ai/api/coding/paas/v4",
+            "glm-4.6", listOf("glm-4.6", "glm-4.5-air"),
+            "https://z.ai/", "Z.AI 编程套餐,订阅制", free = false, plan = true, contextWindow = 128000),
+        ProviderPreset("Kimi 编程套餐", "kimi-coding", "https://api.kimi.com/coding",
+            "", listOf(),
+            "https://platform.moonshot.cn/", "Kimi 编程套餐,订阅制", free = false, plan = true, contextWindow = 128000),
+        ProviderPreset("阶跃 StepFun Step Plan(国内)", "stepfun-plan-cn", "https://api.stepfun.com/step_plan/v1",
+            "", listOf(),
+            "https://platform.stepfun.com/", "阶跃星辰 Step Plan 订阅套餐", free = false, plan = true),
+        ProviderPreset("阶跃 StepFun Step Plan(国际)", "stepfun-plan-intl", "https://api.stepfun.ai/step_plan/v1",
+            "", listOf(),
+            "https://stepfun.ai/", "阶跃星辰 Step Plan 订阅套餐,国际节点", free = false, plan = true),
+        ProviderPreset("阿里云编程套餐", "alibaba-coding-plan", "https://coding-intl.dashscope.aliyuncs.com/v1",
+            "", listOf(),
+            "https://dashscope.console.aliyun.com/", "阿里云 Coding Plan 订阅套餐", free = false, plan = true),
+
+        // —— 按量付费(补充)——
+        ProviderPreset("小米 MiMo(按量)", "xiaomi", "https://api.xiaomimimo.com/v1",
+            "mimo-v2.5", listOf("mimo-v2.5", "mimo-v2.5-pro"),
+            "https://xiaomimimo.com/", "小米 MiMo 按量计费接口", free = false, contextWindow = 128000),
+        ProviderPreset("Z.AI / GLM(国际)", "zai", "https://api.z.ai/api/paas/v4",
+            "glm-4.6", listOf("glm-4.6", "glm-4.5-air"),
+            "https://z.ai/", "智谱国际站,按量付费", free = false, contextWindow = 128000),
+        ProviderPreset("Kimi / Moonshot(国际)", "kimi-intl", "https://api.moonshot.ai/v1",
+            "kimi-k2-0905-preview", listOf("kimi-k2-0905-preview", "moonshot-v1-128k"),
+            "https://platform.moonshot.ai/", "Moonshot 国际站", free = false, contextWindow = 128000),
+        ProviderPreset("Google AI Studio", "gemini", "https://generativelanguage.googleapis.com/v1beta",
+            "gemini-2.0-flash", listOf("gemini-2.0-flash", "gemini-1.5-pro"),
+            "https://aistudio.google.com/", "Google AI Studio,有免费额度;需能连外网", free = true, contextWindow = 1000000),
+        ProviderPreset("xAI Grok", "xai", "https://api.x.ai/v1",
+            "grok-2", listOf("grok-2", "grok-2-mini"),
+            "https://console.x.ai/", "xAI 官方 API,按量付费", free = false, contextWindow = 128000),
+        ProviderPreset("MiniMax(国内)", "minimax-cn", "https://api.minimaxi.com/v1",
+            "", listOf(),
+            "https://platform.minimaxi.com/", "MiniMax 国内站", free = false),
+        ProviderPreset("MiniMax(国际)", "minimax", "https://api.minimax.io/v1",
+            "", listOf(),
+            "https://www.minimax.io/", "MiniMax 国际站", free = false),
+        ProviderPreset("LongCat(美团)", "longcat", "https://api.longcat.chat/openai/v1",
+            "", listOf(),
+            "https://longcat.chat/", "美团 LongCat,OpenAI 兼容", free = false),
+        ProviderPreset("腾讯 TokenHub", "tencent-tokenhub", "https://tokenhub.tencentmaas.com/v1",
+            "", listOf(),
+            "https://tokenhub.tencentmaas.com/", "腾讯混元 TokenHub", free = false),
+        ProviderPreset("NVIDIA NIM", "nvidia", "https://integrate.api.nvidia.com/v1",
+            "", listOf(),
+            "https://build.nvidia.com/", "NVIDIA NIM,注册有免费额度", free = true),
+        ProviderPreset("Hugging Face Router", "huggingface", "https://router.huggingface.co/v1",
+            "", listOf(),
+            "https://huggingface.co/settings/tokens", "HF 推理路由,聚合多家模型", free = true),
+        ProviderPreset("Novita AI", "novita", "https://api.novita.ai/openai/v1",
+            "", listOf(),
+            "https://novita.ai/", "Novita,OpenAI 兼容,按量付费", free = false),
+        ProviderPreset("Vercel AI Gateway", "vercel-ai-gateway", "https://ai-gateway.vercel.sh",
+            "", listOf(),
+            "https://vercel.com/docs/ai-gateway", "Vercel AI 网关,聚合多家供应商", free = false),
+        ProviderPreset("GMI Cloud", "gmi", "https://api.gmi-serving.com/v1",
+            "", listOf(),
+            "https://www.gmicloud.ai/", "GMI Cloud 推理服务", free = false),
+        ProviderPreset("Kilo Code", "kilocode", "https://api.kilo.ai/api/gateway",
+            "", listOf(),
+            "https://kilo.ai/", "Kilo Code 网关", free = false),
+        ProviderPreset("Ollama Cloud", "ollama-cloud", "https://ollama.com/v1",
+            "", listOf(),
+            "https://ollama.com/", "Ollama 云端托管模型", free = false),
+        ProviderPreset("LM Studio(本地)", "lmstudio", "http://127.0.0.1:1234/v1",
+            "", listOf(),
+            "https://lmstudio.ai/", "本机 LM Studio 服务;手机上需指向局域网内的电脑地址", free = true),
+        ProviderPreset("Ollama(本地)", "ollama", "http://localhost:11434/v1",
+            "", listOf(),
+            "https://ollama.com/", "本机 Ollama;手机上需改成局域网内电脑的 IP", free = true)
     )
 }
 
@@ -109,14 +201,24 @@ fun ModelMarketScreen(database: AppDatabase, keystore: KeystoreProvider, onBack:
             Text(it, fontSize = 11.sp, fontFamily = Mono, color = xc.green, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // 三区:免费额度 / 订阅套餐(plan) / 按量付费。列表在外部先算好,避免在 items 里反复 filter。
+            val freeList = ProviderPresets.ALL.filter { it.free }
+            val planList = ProviderPresets.ALL.filter { it.plan }
+            val payList = ProviderPresets.ALL.filter { !it.free && !it.plan }
+
             item { SectionLabel("免费 / 免费额度(自己注册领 key,每日有额度或限速)", xc) }
-            items(ProviderPresets.ALL.filter { it.free }.size) { i ->
-                val p = ProviderPresets.ALL.filter { it.free }[i]
+            items(freeList.size) { i ->
+                val p = freeList[i]
                 PresetCard(p, xc, onSite = { openSite(p.site) }, onAdd = { keyDialogFor = p })
             }
-            item { Spacer(Modifier.height(6.dp)); SectionLabel("付费供应商(购买 API 额度 / 订阅 coding plan)", xc) }
-            items(ProviderPresets.ALL.filter { !it.free }.size) { i ->
-                val p = ProviderPresets.ALL.filter { !it.free }[i]
+            item { Spacer(Modifier.height(6.dp)); SectionLabel("订阅套餐 Plan(按月订阅,非按量计费)", xc) }
+            items(planList.size) { i ->
+                val p = planList[i]
+                PresetCard(p, xc, onSite = { openSite(p.site) }, onAdd = { keyDialogFor = p })
+            }
+            item { Spacer(Modifier.height(6.dp)); SectionLabel("按量付费(购买 API 额度)", xc) }
+            items(payList.size) { i ->
+                val p = payList[i]
                 PresetCard(p, xc, onSite = { openSite(p.site) }, onAdd = { keyDialogFor = p })
             }
         }
@@ -180,7 +282,11 @@ private fun PresetCard(p: ProviderPreset, xc: XinColors, onSite: () -> Unit, onA
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(xc.bgElevated).padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(p.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink, modifier = Modifier.weight(1f))
-            val (badge, bc) = if (p.free) "免费" to xc.green else "付费" to Color(0xFFF2C14E)
+            val (badge, bc) = when {
+                p.free -> "免费" to xc.green
+                p.plan -> "套餐" to Color(0xFF6FB3E0)   // 订阅制:与按量付费区分开
+                else -> "付费" to Color(0xFFF2C14E)
+            }
             Box(Modifier.clip(RoundedCornerShape(10.dp)).background(bc.copy(alpha = 0.15f)).padding(horizontal = 8.dp, vertical = 3.dp)) {
                 Text(badge, fontSize = 10.sp, fontFamily = Mono, color = bc)
             }
