@@ -22,7 +22,6 @@ fun AgentTurnBlock(group: TurnGroup, isStreaming: Boolean = false) {
     val toolCount = group.toolMessages.size
     val hasReasoning = group.assistantMessage?.reasoning?.isNotEmpty() == true
     val xc = LocalXinColors.current
-    val Ink = xc.ink
     val Sub = xc.sub
     val Green = xc.green
 
@@ -44,70 +43,72 @@ fun AgentTurnBlock(group: TurnGroup, isStreaming: Boolean = false) {
     // 用户要求:工具调用【默认收起】,想看时再点开(不再默认展开)。
     var expanded by remember(group.turnId) { mutableStateOf(false) }  // 默认收起
 
+    // 一「步」= 先说的那段话 + 为此做的操作。按真实顺序自上而下呈现:
+    //   xincode  先确认现有素材与入口。
+    //     ▸ 读取 app/SettingsScreen.kt
+    //     ▸ 执行 gradlew compileDebugKotlin
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
 
-        // 容器顶部:折叠按钮 + 标题
-        Row(
-            Modifier.fillMaxWidth()
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { expanded = !expanded }
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                if (expanded) "▾" else "▸",
-                fontSize = 11.sp,
-                color = Sub,
-                modifier = Modifier.padding(end = 4.dp)
-            )
-            Text(
-                "思考与工具调用 ($toolCount)",
-                fontSize = 11.sp,
-                color = Ink,
-                fontFamily = JetBrainsMono
-            )
-        }
-
-        // 容器内容(展开时)
-        if (expanded) {
-            Column(Modifier.padding(start = 12.dp, top = 2.dp, bottom = 4.dp)) {
-                // Reasoning 折叠区
-                group.assistantMessage?.let { asst ->
-                    ReasoningFoldable(
-                        msg = asst,
-                        isCurrentStreaming = isStreaming && asst.reasoning.isNotEmpty()
-                    )
-                }
-
-                // Tool messages 列表
-                group.toolMessages.forEach { tool ->
-                    tool.contentBlock?.let { block ->
-                        when (block) {
-                            is MessageContent.ToolCall -> ToolCallRow(block, modifier = Modifier)
-                            is MessageContent.FileRead -> CodeBlock(block, Modifier.padding(vertical = 1.dp))
-                            is MessageContent.FileEdit -> DiffBlock(block, Modifier.padding(vertical = 1.dp))
-                            else -> {}
-                        }
-                    }
-                }
-            }
-        }
-
-        // 容器外:content 展平
+        // 1. 这一步的说明文字(先说)
         group.assistantMessage?.let { asst ->
+            ReasoningFoldable(
+                msg = asst,
+                isCurrentStreaming = isStreaming && asst.reasoning.isNotEmpty()
+            )
             if (asst.content.isNotEmpty()) {
-                Spacer(Modifier.height(4.dp))
                 Text(
                     "xincode",
                     fontSize = 10.sp,
                     fontFamily = JetBrainsMono,
                     color = Green
                 )
-                MarkdownContent(asst.content, modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
+                MarkdownContent(asst.content, modifier = Modifier.padding(top = 2.dp, bottom = 2.dp))
             }
         }
 
-        // 容器底部:细线分隔
-        Box(Modifier.fillMaxWidth().height(0.5.dp).background(Sub.copy(alpha = 0.3f)))
+        // 2. 这一步做的操作(后做)——每个工具一行,点行内箭头看详情。
+        //    工具多时可整体折叠,避免一步里刷屏。
+        if (toolCount > 0) {
+            if (toolCount > 3) {
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { expanded = !expanded }
+                        .padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        if (expanded) "▾" else "▸",
+                        fontSize = 11.sp,
+                        color = Sub,
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                    Text(
+                        if (expanded) "收起 $toolCount 步操作" else "展开 $toolCount 步操作",
+                        fontSize = 10.sp,
+                        color = Sub,
+                        fontFamily = JetBrainsMono
+                    )
+                }
+            }
+            // ≤3 个工具直接铺开(读起来就是时间线);多于 3 个才需要点开。
+            if (toolCount <= 3 || expanded) {
+                Column(Modifier.padding(start = 8.dp)) {
+                    group.toolMessages.forEach { tool ->
+                        tool.contentBlock?.let { block ->
+                            when (block) {
+                                is MessageContent.ToolCall -> ToolCallRow(block, modifier = Modifier)
+                                is MessageContent.FileRead -> CodeBlock(block, Modifier.padding(vertical = 1.dp))
+                                is MessageContent.FileEdit -> DiffBlock(block, Modifier.padding(vertical = 1.dp))
+                                else -> {}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 步与步之间的细线分隔
+        Box(Modifier.fillMaxWidth().padding(top = 4.dp).height(0.5.dp).background(Sub.copy(alpha = 0.3f)))
     }
 }
 

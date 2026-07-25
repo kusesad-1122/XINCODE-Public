@@ -135,23 +135,14 @@ fun ToolCallRow(toolCall: MessageContent.ToolCall, modifier: Modifier = Modifier
             )
             Spacer(Modifier.width(6.dp))
 
-            // 2. Tool name(字体调小)
+            // 2+3. 折叠态显示「人话」标签(动词 + 参数摘要),如「读取 app/Settings.kt」「搜索网页:天气」,
+            // 而不是裸工具名 + 一坨 JSON。展开后仍能看到原始命令与完整输出,排查不受影响。
             Text(
-                toolCall.toolName,
+                // 用 fullParams(原始 JSON)解析,paramsSummary 已被加工过、不再是合法 JSON。
+                ToolLabels.labelOf(toolCall.toolName, toolCall.fullParams.ifBlank { toolCall.paramsSummary }),
                 fontSize = 9.sp,
                 fontFamily = JetBrainsMono,
                 color = if (toolCall.status == ToolStatus.FAILED || toolCall.status == ToolStatus.DENIED) Red else Ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.width(8.dp))
-
-            // 3. paramsSummary — flex, ellipsis(字体调小)
-            Text(
-                toolCall.paramsSummary,
-                fontSize = 9.sp,
-                fontFamily = JetBrainsMono,
-                color = Sub,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
