@@ -431,9 +431,12 @@ class AgentChatState(
     private fun steer(text: String) {
         input.value = ""
         scope.launch {
-            val userMsg = MessageEntity(role = "user", content = text, sessionId = currentSessionId, turnId = agentCore.currentTurnId)
+            // turnId 必须为 0(默认):groupByTurn 对 turnId>0 的分组【只取 assistant 与 tool】,
+            // 带 turnId 的 user 消息会被整组丢弃、界面上完全看不到这条插话。
+            // turnId=0 走 flat 路径,像普通用户消息一样单独平铺显示。
+            val userMsg = MessageEntity(role = "user", content = text, sessionId = currentSessionId)
             val userId = withContext(Dispatchers.IO) { messageDao.insert(userMsg) }
-            messages.add(ChatState.MessageUi(userId, "user", text, userMsg.timestamp, turnId = agentCore.currentTurnId))
+            messages.add(ChatState.MessageUi(userId, "user", text, userMsg.timestamp))
             launch(Dispatchers.IO) {
                 try {
                     val uf = MemoryExtractor.extractUserFact(text, userId)

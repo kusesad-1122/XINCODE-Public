@@ -392,13 +392,14 @@ class OpenAiClient(
                         put("thinking", JSONObject().apply {
                             put("type", "enabled")
                         })
+                        // reasoning_effort 的合法取值只有 low / medium / high。
+                        // 此前 UI 的「Max」档直接发 "max",绝大多数供应商会直接 400
+                        // (实测报错:Input should be 'low', 'medium' or 'high')。
+                        // UI 档位保持不变,这里把 Max 归并到 high 发送。
                         val effort = when (thinkingLevel) {
                             0 -> "low"
                             1 -> "medium"
-                            2 -> "high"
-                            3 -> "high"
-                            4 -> "max"
-                            else -> "high"
+                            else -> "high"   // 2=High、3、4(Max)统一发 high
                         }
                         put("reasoning_effort", effort)
                         Log.d(TAG, "thinking=enabled reasoning_effort=$effort")

@@ -523,6 +523,14 @@ class AgentCore(
 
             // Check: no tool_calls → final response, done
             if (result.toolCalls.isEmpty()) {
+                // 中途插话修复:用户最常在「AI 正在输出最终回答」时插话,而这一步本会直接 return,
+                // 导致排队的 pendingRedirect 永远没人消费——表现为「发了消息但 AI 毫无反应」。
+                // 此处若发现有排队指令,就不结束循环,继续下一轮,由循环顶部把它作为新 user 消息注入。
+                if (pendingRedirect != null) {
+                    _state.value = AgentState.Responding(iteration)
+                    Log.i(TAG, "final answer done but redirect pending → continue loop")
+                    continue
+                }
                 _state.value = AgentState.Responding(iteration)
                 clearCursor()  // conversation complete
                 _state.value = AgentState.Idle
