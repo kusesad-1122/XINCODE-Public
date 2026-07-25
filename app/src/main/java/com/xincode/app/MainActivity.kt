@@ -262,6 +262,7 @@ class MainActivity : ComponentActivity() {
                         workspaceRoot = app.workspaceRootGlobal,
                         onUpdateWorkspaceRoot = { path -> app.updateWorkspaceRoot(path) },
                         onNavigateToAuxModels = { currentPage = "aux_models" },
+                        onNavigateToFunctionModels = { currentPage = "function_models" },
                         onNavigateToSubAgents = { currentPage = "sub_agents" },
                         onNavigateToEnvConfig = { currentPage = "env_config" },
                         onNavigateToAbout = { currentPage = "about" },
@@ -361,6 +362,11 @@ class MainActivity : ComponentActivity() {
                         keystore = app.keystore,
                         onBack = { currentPage = "settings" }
                     )
+                    "function_models" -> FunctionModelsScreen(
+                        database = app.database,
+                        keystore = app.keystore,
+                        onBack = { currentPage = "settings" }
+                    )
                     "sub_agents" -> SubAgentsScreen(
                         database = app.database,
                         onBack = { currentPage = "settings" }
@@ -441,7 +447,7 @@ class MainActivity : ComponentActivity() {
 private fun parentPageOf(page: String): String = when (page) {
     "settings" -> "chat"
     "supplier", "model_market", "git_config", "audit", "memory_storage", "skills", "mcp", "curated_memory",
-    "cron_jobs", "aux_models", "sub_agents", "env_config", "context_compress", "about" -> "settings"
+    "cron_jobs", "aux_models", "function_models", "sub_agents", "env_config", "context_compress", "about" -> "settings"
     "replay" -> "workflow"
     "identity_edit" -> "identity_list"
     "identity_list" -> "settings"

@@ -117,6 +117,11 @@ fun SupplierConfigScreen(
     var showSupplierDropdown by remember { mutableStateOf(false) }
     var selectedApiPathType by remember { mutableStateOf("openai") }
     var showApiPathDropdown by remember { mutableStateOf(false) }
+    // 能力声明。ToolCall 默认开:老配置迁移后也是 1,不能让人升级完 agent 就不动了。
+    var capVision by remember { mutableStateOf(false) }
+    var capAudio by remember { mutableStateOf(false) }
+    var capVideo by remember { mutableStateOf(false) }
+    var capToolCall by remember { mutableStateOf(true) }
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var modelsLoading by remember { mutableStateOf(false) }
     /**
@@ -173,6 +178,7 @@ fun SupplierConfigScreen(
         baseUrl = ""; apiKey = ""; model = ""; models = emptyList()
         editingApiKey = ""; checkedModelIds = emptySet(); selectedApiPathType = "openai"
         manualModelIds = emptySet(); newModelId = ""
+        capVision = false; capAudio = false; capVideo = false; capToolCall = true
         showForm = true; status = ""
     }
 
@@ -185,6 +191,8 @@ fun SupplierConfigScreen(
         // 手填保存过的模型再进来编辑就整个不见了,只能重填一遍。
         manualModelIds = cfg.enabledModelIds.toSet()
         newModelId = ""
+        capVision = cfg.supportsVision; capAudio = cfg.supportsAudio
+        capVideo = cfg.supportsVideo; capToolCall = cfg.supportsToolCall
         selectedApiPathType = cfg.apiPathType
         // Decrypt stored key so user can refresh models without re-entering
         editingApiKey = try {
@@ -249,7 +257,13 @@ fun SupplierConfigScreen(
                 baseUrl = url, apiKeyEnc = keyEnc, model = model,
                 enabledModelIds = checkedModelIds.toList(),
                 isActive = editingConfig?.isActive ?: savedConfigs.isEmpty(),
-                apiPathType = selectedApiPathType
+                apiPathType = selectedApiPathType,
+                supportsVision = capVision, supportsAudio = capAudio,
+                supportsVideo = capVideo, supportsToolCall = capToolCall,
+                // 编辑时保留原有的上下文窗口/压缩阈值,别被默认值悄悄清掉
+                contextWindow = editingConfig?.contextWindow ?: 0,
+                autoCompactThresholdPercent = editingConfig?.autoCompactThresholdPercent ?: 85,
+                extraHeadersJson = editingConfig?.extraHeadersJson ?: ""
             )
             if (editingConfig != null) {
                 withContext(Dispatchers.IO) { configDao.update(entity) }
@@ -527,6 +541,36 @@ fun SupplierConfigScreen(
             }
             Spacer(Modifier.height(16.dp))
 
+            // ---- 能力声明 ----
+            Label("模型能力")
+            CapabilityRow(
+                "模型支持识图", "启用后图片直接发给该模型;关闭则交由 describe_image 转给视觉副模型",
+                capVision
+            ) { capVision = it }
+            CapabilityRow(
+                "模型支持音频解析", "启用后音频直接发给该模型;关闭则走 transcribe_audio 转写",
+                capAudio
+            ) { capAudio = it }
+            CapabilityRow(
+                "模型支持视频解析", "声明用,当前暂无视频直传链路,勾选仅用于功能分配时的匹配提示",
+                capVideo
+            ) { capVideo = it }
+            CapabilityRow(
+                "模型支持 ToolCall",
+                if (capToolCall) "使用 API 原生工具调用接口(需要模型支持)"
+                else "关闭后不会发送 tools 字段,该模型将无法调用任何工具,只能纯聊天",
+                capToolCall
+            ) { capToolCall = it }
+            if (!capToolCall) {
+                Text(
+                    "注意:关闭 ToolCall 后这套配置只能对话,不能执行工具。",
+                    fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Red,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 Text("取消", fontSize = 13.sp, fontFamily = FontFamily.Monospace, color = Sub,
                     modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showForm = false }.padding(horizontal = 12.dp, vertical = 8.dp))
@@ -570,6 +614,39 @@ fun SupplierConfigScreen(
                 containerColor = Bg
             )
         }
+    }
+}
+
+/** 能力开关行:左侧标题+说明,右侧开关。说明文字随开关状态变化,让后果当场可见。 */
+@Composable
+private fun CapabilityRow(
+    title: String,
+    hint: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onChange(!checked) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Ink)
+            Text(hint, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Faint,
+                lineHeight = 14.sp, modifier = Modifier.padding(top = 2.dp))
+        }
+        androidx.compose.material3.Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            colors = androidx.compose.material3.SwitchDefaults.colors(
+                checkedThumbColor = Bg,
+                checkedTrackColor = Green,
+                uncheckedThumbColor = Sub,
+                uncheckedTrackColor = Bg,
+                uncheckedBorderColor = Faint
+            )
+        )
     }
 }
 

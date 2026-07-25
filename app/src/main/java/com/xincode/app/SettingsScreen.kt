@@ -60,6 +60,7 @@ fun SettingsScreen(
     workspaceRoot: String = "",                   // 全局工作区根(空=默认 /storage/emulated/0/XINCODE)
     onUpdateWorkspaceRoot: (String) -> Unit = {},
     onNavigateToAuxModels: () -> Unit = {},       // 模型委托(视觉/推理/翻译/转写副模型)
+    onNavigateToFunctionModels: () -> Unit = {},  // 功能模型配置(每个内部调用点各指一套已存配置)
     onNavigateToSubAgents: () -> Unit = {},       // 子智能体
     onNavigateToEnvConfig: () -> Unit = {},       // 环境配置(内置开发环境/工具安装)
     onNavigateToAbout: () -> Unit = {}            // 关于页(版本/检查更新/项目地址/许可)
@@ -199,7 +200,8 @@ fun SettingsScreen(
             )
         }
         SettingRow("环境配置", "安装 Node/Python/uv/SSH/JDK/Gradle/Rust/Go 等开发环境") { onNavigateToEnvConfig() }
-        SettingRow("模型委托", "视觉/推理/翻译/转写各配一个副模型") { onNavigateToAuxModels() }
+        SettingRow("功能模型配置", "上下文总结/后台复盘/子智能体/Goal 裁判等各自指定模型") { onNavigateToFunctionModels() }
+        SettingRow("模型委托", "视觉/推理/翻译/转写各配一个副模型(另填 URL 与 Key)") { onNavigateToAuxModels() }
         SettingRow("子智能体", "主脑指挥的专职子智能体(各管各的技能),可自建") { onNavigateToSubAgents() }
         SettingRow("Skills 技能", "管理可复用提示词模板") { onNavigateToSkills() }
         SettingRow("MCP 服务器", "外部工具协议服务器管理") { onNavigateToMcp() }

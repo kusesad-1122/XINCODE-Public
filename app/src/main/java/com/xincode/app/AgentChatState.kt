@@ -25,7 +25,9 @@ import androidx.compose.runtime.mutableStateOf
 class AgentChatState(
     private val database: AppDatabase,
     private val agentCore: AgentCore,
-    private val openAiClient: com.xincode.provider.OpenAiClient
+    private val openAiClient: com.xincode.provider.OpenAiClient,
+    /** 上下文压缩专用 client(功能模型配置 key="compact");未单独配置时行为与 openAiClient 一致。 */
+    private val compactClient: com.xincode.provider.OpenAiClient = openAiClient
 ) : ChatStateLike {
     companion object {
         private const val TAG = "AgentChatState"
@@ -388,7 +390,7 @@ class AgentChatState(
             }
             val ruleLine = if (!customRule.isNullOrBlank()) "\n额外要求：$customRule" else ""
             val prompt = "以下是一段对话历史。请用不超过 800 字的中文总结用户目标、关键决策、未完成项，为后续会话保留上下文。只输出总结，不要开场白。$ruleLine\n\n$history"
-            openAiClient.chat(prompt).getOrNull()?.takeIf { it.isNotBlank() } ?: return false
+            compactClient.chat(prompt).getOrNull()?.takeIf { it.isNotBlank() } ?: return false
         } catch (_: Exception) { return false }
 
         withContext(Dispatchers.IO) {

@@ -48,6 +48,12 @@ class XincodeApplication : Application() {
     lateinit var keystore: KeystoreProvider
         private set
     lateinit var openAiClient: OpenAiClient
+    /** 功能模型配置绑定的 client —— 见 FunctionModels。未单独配置时行为与 openAiClient 一致。 */
+    lateinit var reviewClient: OpenAiClient
+    lateinit var subAgentClient: OpenAiClient
+    lateinit var wolfpackClient: OpenAiClient
+    lateinit var cronClient: OpenAiClient
+    lateinit var compactClient: OpenAiClient
         private set
     lateinit var chatState: ChatState
         private set
@@ -177,6 +183,13 @@ override fun onCreate() {
         database = AppDatabase.getInstance(this)
         keystore = KeystoreProvider()
         openAiClient = OpenAiClient(database, keystore)
+        // 按功能绑定的 client:各自去读【功能模型配置】,没配就自动回落到活跃配置。
+        // 分别 new 而不是复用单例,是因为 functionKey 是构造参数(避免并发串配置)。
+        reviewClient = OpenAiClient(database, keystore, functionKey = "review")
+        subAgentClient = OpenAiClient(database, keystore, functionKey = "subagent")
+        wolfpackClient = OpenAiClient(database, keystore, functionKey = "wolfpack")
+        cronClient = OpenAiClient(database, keystore, functionKey = "cron")
+        compactClient = OpenAiClient(database, keystore, functionKey = "compact")
 
         // Legacy ChatState (kept for fallback)
         chatState = ChatState(database, openAiClient)
@@ -246,7 +259,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         toolRegistry.register(GrepTool())
         toolRegistry.register(GlobTool())
         toolRegistry.register(InvokeSkillTool(database))
-        toolRegistry.register(WolfpackOrchestrator(openAiClient))
+        toolRegistry.register(WolfpackOrchestrator(wolfpackClient))
         toolRegistry.register(AgentPlanTool(planState))
         // AI 的可视终端工具:在内置 Ubuntu 环境跑命令,输出实时镜像到终端页(未部署则不暴露)。
         toolRegistry.register(EnvExecTool(terminalState))
@@ -267,7 +280,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         toolRegistry.register(AskReasoningTool(database, keystore))        // 深度推理
         toolRegistry.register(TranslateTool(database, keystore))           // 翻译
         // 子智能体调度:主脑把任务拆给专职子智能体并行处理(带指挥室动画状态)。
-        toolRegistry.register(SubAgentTool(toolRegistry, openAiClient, database, securityGate, subAgentScene))
+        toolRegistry.register(SubAgentTool(toolRegistry, subAgentClient, database, securityGate, subAgentScene))
 
         // Web tools — search + fetch
         val webSearchTool = WebSearchTool().also { this.webSearchTool = it }
@@ -309,7 +322,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         backgroundReviewRunner = BackgroundReviewRunner(
             reviewCoreFactory = {
                 AgentCore(
-                    openAiClient = openAiClient,
+                    openAiClient = reviewClient,
                     toolRegistry = reviewToolRegistry,
                     securityGate = securityGate,
                     cursorDao = null,
@@ -501,7 +514,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
      * 不触碰主对话。isReviewFork=true 避免它自己再触发后台复盘。
      */
     fun buildIsolatedAgentCore(): AgentCore = AgentCore(
-        openAiClient = openAiClient,
+        openAiClient = cronClient,
         toolRegistry = toolRegistry,
         securityGate = securityGate,
         cursorDao = null,
@@ -544,7 +557,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             }
         }
         core.updateLimits(currentPowerMode.maxIterations, currentPowerMode.totalTimeoutMs)
-        val chat = AgentChatState(database, core, openAiClient)
+        val chat = AgentChatState(database, core, openAiClient, compactClient)
         chat.currentSessionId = sessionId
         chat.thinkingEnabled = thinkingEnabled
         chat.thinkingLevel = thinkingLevel
@@ -682,15 +695,22 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         refreshForegroundService()
     }
 
-    /** 用当前活跃供应商构造独立裁判(与干活模型分离)。 */
+    /**
+     * 构造独立裁判。优先用【功能模型配置】里给 judge 指定的那套,没指定才用活跃配置。
+     * 一轮评估要投 3 票,单配便宜模型省下来的量很可观。
+     */
     private fun buildGoalJudge(): com.xincode.provider.JudgeService = runBlocking {
-        val cfg = database.providerConfigDao().getActive()
+        val dao = database.providerConfigDao()
+        val assignedId = database.settingDao().get("fn_judge_config_id")?.toLongOrNull() ?: 0L
+        val modelOverride = database.settingDao().get("fn_judge_model")?.trim().orEmpty()
+        // 指定的配置被删掉时回落到活跃配置,别让 Goal 模式跟着一起挂
+        val cfg = (if (assignedId > 0) dao.getById(assignedId) else null) ?: dao.getActive()
         val key = cfg?.apiKeyEnc?.takeIf { it.isNotBlank() }
             ?.let { keystore.decrypt(android.util.Base64.decode(it, android.util.Base64.NO_WRAP)) } ?: ""
         com.xincode.provider.JudgeService(
             baseUrl = cfg?.baseUrl ?: "",
             apiKey = key,
-            model = cfg?.model ?: ""
+            model = modelOverride.ifBlank { cfg?.model ?: "" }
         )
     }
 

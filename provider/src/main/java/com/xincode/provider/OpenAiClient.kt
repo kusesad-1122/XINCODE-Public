@@ -16,9 +16,18 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
+/**
+ * @param functionKey 非空时,这个 client 走【功能模型配置】而不是当前活跃配置,
+ *   用于让上下文压缩、子智能体、定时任务、Goal 裁判等各用各的模型。
+ *   键名与 app 层 `FunctionModels` 约定一致:`fn_<key>_config_id` / `fn_<key>_model`。
+ *   做成构造参数而不是可变字段,是因为 OpenAiClient 以单例注入居多,
+ *   可变字段会让并发调用互相串配置。需要独立模型的地方各 new 一个即可——
+ *   这个类很轻,只持有 database/keystore 引用,HTTP client 是进程级共享的。
+ */
 class OpenAiClient(
     private val database: AppDatabase,
-    private val keystore: KeystoreProvider
+    private val keystore: KeystoreProvider,
+    private val functionKey: String? = null
 ) {
     companion object {
         private const val TAG = "XincodeProvider"
@@ -48,7 +57,13 @@ class OpenAiClient(
         val apiPathType: String,
         val extraHeadersJson: String = "",
         val contextWindow: Int = 0,
-        val autoCompactThresholdPercent: Int = 85
+        val autoCompactThresholdPercent: Int = 85,
+        // 能力声明。目前只有 supportsToolCall 直接影响请求体(false 时不发 tools);
+        // 其余三个供上层做匹配提示。
+        val supportsVision: Boolean = false,
+        val supportsAudio: Boolean = false,
+        val supportsVideo: Boolean = false,
+        val supportsToolCall: Boolean = true
     )
 
     /** gap-08:把 provider 配置里的 extra_headers(JSON 对象)verbatim 注入请求(可覆盖默认头)。 */
@@ -99,12 +114,21 @@ class OpenAiClient(
     private suspend fun resolveConfig(): Result<ResolvedConfig> {
         return try {
             val cfgDao = database.providerConfigDao()
-            val active = cfgDao.getActive()
+            // 功能模型配置:指定了就用指定的那套。指定的配置被删掉时【回落到活跃配置】,
+            // 而不是让这个功能直接报错——删一个供应商不该顺带把定时任务也弄挂。
+            var modelOverride = ""
+            val assigned = if (functionKey != null) {
+                val id = database.settingDao().get("fn_${functionKey}_config_id")?.toLongOrNull() ?: 0L
+                modelOverride = database.settingDao().get("fn_${functionKey}_model")?.trim().orEmpty()
+                if (id > 0) cfgDao.getById(id) else null
+            } else null
+
+            val active = assigned ?: cfgDao.getActive()
                 ?: return Result.failure(IllegalStateException("未找到活跃配置，请先在供应商配置中创建"))
             val baseUrl = active.baseUrl.ifBlank {
                 return Result.failure(IllegalStateException("base_url 未配置"))
             }
-            val model = active.model.ifBlank {
+            val model = modelOverride.ifBlank { active.model }.ifBlank {
                 return Result.failure(IllegalStateException("model 未配置"))
             }
             val apiKey = keystore.decrypt(Base64.decode(active.apiKeyEnc, Base64.NO_WRAP))
@@ -112,7 +136,11 @@ class OpenAiClient(
                 baseUrl.trimEnd('/'), model, apiKey, active.apiPathType,
                 extraHeadersJson = active.extraHeadersJson,
                 contextWindow = active.contextWindow,
-                autoCompactThresholdPercent = active.autoCompactThresholdPercent
+                autoCompactThresholdPercent = active.autoCompactThresholdPercent,
+                supportsVision = active.supportsVision,
+                supportsAudio = active.supportsAudio,
+                supportsVideo = active.supportsVideo,
+                supportsToolCall = active.supportsToolCall
             ))
         } catch (e: Exception) {
             Result.failure(e)
@@ -376,7 +404,9 @@ class OpenAiClient(
                 val body = JSONObject().apply {
                     put("model", cfg.model)
                     put("messages", JSONArray(messages))
-                    if (tools.length() > 0) {
+                    // 供应商配置里关掉「模型支持 ToolCall」就不发 tools:有些网关收到不认识的
+                    // tools 字段直接 400,关掉是让这类端点至少能聊天的唯一出路。
+                    if (tools.length() > 0 && cfg.supportsToolCall) {
                         put("tools", tools)
                     }
                     put("temperature", temperature)
@@ -403,11 +433,12 @@ class OpenAiClient(
                         }
                         put("reasoning_effort", effort)
                         Log.d(TAG, "thinking=enabled reasoning_effort=$effort")
-                    } else {
-                        put("thinking", JSONObject().apply {
-                            put("type", "disabled")
-                        })
-                        Log.d(TAG, "thinking=disabled")
+                    }
+                    // 关闭思考时【不发】任何字段。thinking 是 DeepSeek 私有扩展,
+                    // 以前连 disabled 也无条件发,严格校验的网关会直接 400 拒掉整个请求
+                    // ——表现成「这个供应商配好了却完全用不了」,且报错跟思考毫无关系。
+                    else {
+                        Log.d(TAG, "thinking=disabled (omitting field)")
                     }
                 }
 
@@ -530,7 +561,7 @@ class OpenAiClient(
                     put("cache_control", JSONObject().put("type", "ephemeral"))
                 }))
                 put("messages", anthMessages)
-                if (tools.length() > 0) put("tools", convertToolsToAnthropic(tools))
+                if (tools.length() > 0 && cfg.supportsToolCall) put("tools", convertToolsToAnthropic(tools))
                 put("temperature", temperature)
                 if (topP != null) put("top_p", topP)
                 if (thinkingEnabled) {
@@ -542,7 +573,9 @@ class OpenAiClient(
             }
 
             val request = Request.Builder()
-                .url(cfg.baseUrl + "/v1/messages")
+                // 必须走 chatEndpoint:base_url 自带 /v1 时硬拼会变成 /v1/v1/messages → 404。
+                // chat_completions 分支早就修了,这两条分支之前漏掉。
+                .url(chatEndpoint(cfg.baseUrl, "anthropic"))
                 .addHeader("x-api-key", cfg.apiKey)
                 .addHeader("anthropic-version", "2023-06-01")
                 .addHeader("content-type", "application/json")
@@ -675,7 +708,7 @@ class OpenAiClient(
                 put("model", cfg.model)
                 if (instructions.isNotBlank()) put("instructions", instructions)
                 put("input", input)
-                if (tools.length() > 0) put("tools", convertToolsToResponses(tools))
+                if (tools.length() > 0 && cfg.supportsToolCall) put("tools", convertToolsToResponses(tools))
                 put("temperature", temperature)
                 if (maxTokens != null && maxTokens > 0) put("max_output_tokens", maxTokens)
                 if (topP != null) put("top_p", topP)
@@ -684,7 +717,8 @@ class OpenAiClient(
             }
 
             val request = Request.Builder()
-                .url(cfg.baseUrl + "/v1/responses")
+                // 同上:base_url 带 /v1 时硬拼会变成 /v1/v1/responses → 404。
+                .url(chatEndpoint(cfg.baseUrl, "responses"))
                 .addHeader("Authorization", "Bearer ${cfg.apiKey}")
                 .addHeader("Content-Type", "application/json")
                 .applyExtraHeaders(cfg.extraHeadersJson) // gap-08
@@ -1198,17 +1232,25 @@ class OpenAiClient(
                 Log.w(TAG, "embeddings: config resolution failed: ${it.message}")
                 return@withContext null
             }
+            // 模型名以前写死 text-embedding-3-small —— 非 OpenAI 供应商基本都没有这个模型,
+            // 记忆向量化会一直静默失败。现在优先用【功能模型配置】里给 embedding 指定的模型。
+            val embModel = database.settingDao().get("fn_embedding_model")?.trim()
+                ?.ifBlank { null } ?: "text-embedding-3-small"
             val body = JSONObject().apply {
-                put("model", "text-embedding-3-small")
+                put("model", embModel)
                 put("input", input)
             }
+            // 端点同样要按版本段拼:base_url 自带 /v1 时硬拼会变成 /v1/v1/embeddings。
+            val embUrl = trimBase(cfg.baseUrl).let {
+                if (hasVersionSegment(it)) "$it/embeddings" else "$it/v1/embeddings"
+            }
             val request = Request.Builder()
-                .url("${cfg.baseUrl}/v1/embeddings")
+                .url(embUrl)
                 .addHeader("Authorization", "Bearer ${cfg.apiKey}")
                 .addHeader("Content-Type", "application/json")
                 .post(body.toString().toRequestBody(JSON))
                 .build()
-            Log.d(TAG, "→ POST ${cfg.baseUrl}/v1/embeddings len=${input.length}")
+            Log.d(TAG, "→ POST $embUrl model=$embModel len=${input.length}")
             val response = httpClient.newCall(request).execute()
             val responseBody = response.body?.string() ?: ""
             if (!response.isSuccessful) {

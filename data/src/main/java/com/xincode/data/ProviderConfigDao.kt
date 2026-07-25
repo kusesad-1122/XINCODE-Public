@@ -25,4 +25,8 @@ interface ProviderConfigDao {
 
     @Query("SELECT * FROM provider_configs WHERE isActive = 1 LIMIT 1")
     suspend fun getActive(): ProviderConfigEntity?
+
+    /** 功能模型配置按 id 取指定配置(取不到时由调用方回落到 getActive)。 */
+    @Query("SELECT * FROM provider_configs WHERE id = :id")
+    suspend fun getById(id: Long): ProviderConfigEntity?
 }

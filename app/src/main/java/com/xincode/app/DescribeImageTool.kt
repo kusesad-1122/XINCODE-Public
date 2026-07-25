@@ -51,10 +51,8 @@ class DescribeImageTool(
 
     // 服务门控:未配置副视觉端点则不暴露。
     override fun isAvailable(): Boolean = kotlinx.coroutines.runBlocking {
-        try {
-            !database.settingDao().get("aux_vision_base_url").isNullOrBlank() &&
-                !database.settingDao().get("aux_vision_api_key").isNullOrBlank()
-        } catch (_: Exception) { false }
+        // 走 AuxModels:手填的视觉端点、或【功能模型配置】里给 vision 指了一套配置,都算可用。
+        try { AuxModels.isConfigured(database, "vision") } catch (_: Exception) { false }
     }
 
     override suspend fun execute(params: Map<String, String>): ToolResult = withContext(Dispatchers.IO) {
@@ -63,12 +61,14 @@ class DescribeImageTool(
             ?: "详细描述这张图片的内容;若有文字请原样转录。"
         if (image.isEmpty()) return@withContext ToolResult.Error("缺少 image")
 
-        val baseUrl = database.settingDao().get("aux_vision_base_url")?.trim().orEmpty()
-        val keyEnc = database.settingDao().get("aux_vision_api_key").orEmpty()
-        val model = database.settingDao().get("aux_vision_model")?.trim()?.ifBlank { "gpt-4o-mini" } ?: "gpt-4o-mini"
-        if (baseUrl.isEmpty() || keyEnc.isEmpty())
-            return@withContext ToolResult.Error("未配置视觉副模型(设置 → 视觉委托)")
-        val apiKey = try { keystore.decrypt(Base64.decode(keyEnc, Base64.NO_WRAP)) } catch (_: Exception) { keyEnc }
+        // 同上,统一由 AuxModels 解析(手填委托端点优先,其次功能模型配置)。
+        val resolved = AuxModels.resolve(database, keystore, "vision")
+            ?: return@withContext ToolResult.Error(
+                "未配置视觉模型(设置 → 功能模型配置 → 图像识别,或 设置 → 模型委托)"
+            )
+        val baseUrl = resolved.baseUrl
+        val apiKey = resolved.apiKey
+        val model = resolved.model.ifBlank { "gpt-4o-mini" }
 
         // 组装 image_url:URL 直传,本地路径转 data URI。
         val imageUrl = if (image.startsWith("http://") || image.startsWith("https://")) image
