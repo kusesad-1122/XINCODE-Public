@@ -53,12 +53,14 @@ fun ProfilesScreen(database: AppDatabase, onBack: () -> Unit) {
     var newName by remember { mutableStateOf("") }
     var importText by remember { mutableStateOf("") }
     var renaming by remember { mutableStateOf<Profiles.Profile?>(null) }
+    var trashed by remember { mutableStateOf<List<Profiles.Trashed>>(emptyList()) }
 
     fun reload() {
         scope.launch {
             withContext(Dispatchers.IO) {
                 profiles = Profiles.list(database)
                 currentId = Profiles.currentId(database)
+                trashed = Profiles.listTrashed(database)
             }
         }
     }
@@ -138,11 +140,43 @@ fun ProfilesScreen(database: AppDatabase, onBack: () -> Unit) {
                                 scope.launch {
                                     withContext(Dispatchers.IO) { Profiles.delete(database, p.id) }
                                     reload()
+                                    Toast.makeText(ctx, "已删除,可在下方「最近删除」恢复", Toast.LENGTH_LONG).show()
                                 }
                             }
                         }
                     }
                 }
+            }
+
+            // 回收站:删除是先备份再删的,这里给回恢复入口 —— 备份了不给入口等于没备份。
+            if (trashed.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text("最近删除", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                Spacer(Modifier.height(4.dp))
+                trashed.forEach { t ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            .clip(RoundedCornerShape(8.dp)).background(xc.bgElevated).padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(t.name, fontSize = 12.sp, fontFamily = Mono, color = xc.faint,
+                            modifier = Modifier.weight(1f))
+                        Act("恢复", xc.green) {
+                            scope.launch {
+                                withContext(Dispatchers.IO) { Profiles.restore(database, t.id) }
+                                reload()
+                            }
+                        }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("彻底清空回收站", fontSize = 10.sp, fontFamily = Mono, color = xc.red,
+                    modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        scope.launch {
+                            withContext(Dispatchers.IO) { Profiles.emptyTrash(database) }
+                            reload()
+                        }
+                    })
             }
 
             Spacer(Modifier.height(8.dp))

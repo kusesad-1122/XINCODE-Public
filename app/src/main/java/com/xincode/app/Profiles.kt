@@ -29,6 +29,7 @@ object Profiles {
     /** 当前 profile 存在这个键里。它本身【不分】profile,否则就自我指涉了。 */
     private const val KEY_CURRENT = "profile_current_id"
     private const val KEY_LIST = "profile_list"      // JSON 数组:[{id,name}]
+    private const val KEY_TRASH_PREFIX = "profile_trash_"   // 删除备份
 
     const val DEFAULT_ID = 0L
 
@@ -100,12 +101,59 @@ object Profiles {
     /**
      * 删除 profile,连同它的所有键。
      * 默认 profile 不可删 —— 删了之后所有未加前缀的键就没有归属了。
+     *
+     * 删除【前先备份】。hermes-studio 在剥离 profile 凭证前会存一份 .env.bak,
+     * 这个习惯值得学:配置是用户花时间攒出来的,一次误点不该让它彻底消失。
+     * 备份存在 settings 里(键 profile_trash_<id>),用 [restore] 可以整套恢复。
      */
     suspend fun delete(db: AppDatabase, id: Long) {
         if (id == DEFAULT_ID) return
+        val dao = db.settingDao()
+        val name = list(db).firstOrNull { it.id == id }?.name.orEmpty()
+        // 先备份再删。顺序反了的话中途失败就真没了。
+        runCatching {
+            val backup = JSONObject().put("name", name)
+            val kv = JSONObject()
+            dao.getByPrefix("p$id.").forEach { kv.put(it.key.removePrefix("p$id."), it.value) }
+            backup.put("settings", kv)
+            backup.put("deletedAt", System.currentTimeMillis())
+            dao.put("$KEY_TRASH_PREFIX$id", backup.toString())
+        }
         saveList(db, list(db).filter { it.id != id })
-        runCatching { db.settingDao().deleteByPrefix("p$id.") }
+        runCatching { dao.deleteByPrefix("p$id.") }
         if (currentId(db) == id) setCurrent(db, DEFAULT_ID)
+    }
+
+    /** 被删除的 profile(可恢复)。 */
+    data class Trashed(val id: Long, val name: String, val deletedAt: Long)
+
+    suspend fun listTrashed(db: AppDatabase): List<Trashed> =
+        runCatching {
+            db.settingDao().getByPrefix(KEY_TRASH_PREFIX).mapNotNull { e ->
+                val id = e.key.removePrefix(KEY_TRASH_PREFIX).toLongOrNull() ?: return@mapNotNull null
+                val o = runCatching { JSONObject(e.value) }.getOrNull() ?: return@mapNotNull null
+                Trashed(id, o.optString("name", "配置 $id"), o.optLong("deletedAt", 0))
+            }.sortedByDescending { it.deletedAt }
+        }.getOrDefault(emptyList())
+
+    /** 恢复一个被删除的 profile。返回恢复后的 id(与原 id 相同)。 */
+    suspend fun restore(db: AppDatabase, id: Long): Boolean {
+        val dao = db.settingDao()
+        val raw = dao.get("$KEY_TRASH_PREFIX$id") ?: return false
+        val o = runCatching { JSONObject(raw) }.getOrNull() ?: return false
+        val name = o.optString("name", "配置 $id")
+        val kv = o.optJSONObject("settings") ?: JSONObject()
+        // 名单里已经有同 id 就不重复添加(避免重复点恢复产生两条)
+        val current = list(db)
+        if (current.none { it.id == id }) saveList(db, current + Profile(id, name))
+        kv.keys().forEach { k -> runCatching { dao.put("p$id.$k", kv.optString(k, "")) } }
+        runCatching { dao.deleteByPrefix("$KEY_TRASH_PREFIX$id") }
+        return true
+    }
+
+    /** 永久清空回收站。 */
+    suspend fun emptyTrash(db: AppDatabase) {
+        runCatching { db.settingDao().deleteByPrefix(KEY_TRASH_PREFIX) }
     }
 
     /** 克隆:把源 profile 的所有受隔离键复制一份到新 profile 下。 */
