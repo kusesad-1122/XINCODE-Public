@@ -30,7 +30,11 @@ android {
     signingConfigs {
         if (keystorePropertiesFile.exists()) {
             create("release") {
-                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                // 必须用 rootProject.file():在 app 模块里 file("x.jks") 会相对【app/ 目录】解析,
+                // 而 keystore.properties 与 .jks 都放在【仓库根】(CI 的 Decode keystore 步骤也写在根),
+                // 用 file() 会去找 app/xincode-release.jks 从而报 "Keystore file not found"。
+                // rootProject.file() 以仓库根为基准;若给的是绝对路径也能正确处理。
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")
