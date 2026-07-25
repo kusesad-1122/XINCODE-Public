@@ -264,6 +264,7 @@ class MainActivity : ComponentActivity() {
                         onNavigateToAuxModels = { currentPage = "aux_models" },
                         onNavigateToSubAgents = { currentPage = "sub_agents" },
                         onNavigateToEnvConfig = { currentPage = "env_config" },
+                        onNavigateToAbout = { currentPage = "about" },
                         darkMode = app.darkMode,
                         onUpdateDarkMode = { app.updateDarkMode(it) },
                         rootDetector = app.rootDetector,
@@ -367,6 +368,7 @@ class MainActivity : ComponentActivity() {
                         database = app.database,
                         onBack = { currentPage = "settings" }
                     )
+                    "about" -> AboutScreen(app = app, onBack = { currentPage = "settings" })
                     "env_config" -> EnvConfigScreen(
                         onBack = { currentPage = "settings" },
                         onOpenTerminal = { terminalOrigin = "env_config"; currentPage = "terminal" }
@@ -438,7 +440,7 @@ class MainActivity : ComponentActivity() {
 private fun parentPageOf(page: String): String = when (page) {
     "settings" -> "chat"
     "supplier", "model_market", "git_config", "audit", "memory_storage", "skills", "mcp", "curated_memory",
-    "cron_jobs", "aux_models", "sub_agents", "env_config", "context_compress" -> "settings"
+    "cron_jobs", "aux_models", "sub_agents", "env_config", "context_compress", "about" -> "settings"
     "replay" -> "workflow"
     "identity_edit" -> "identity_list"
     "identity_list" -> "settings"

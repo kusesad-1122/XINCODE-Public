@@ -61,7 +61,8 @@ fun SettingsScreen(
     onUpdateWorkspaceRoot: (String) -> Unit = {},
     onNavigateToAuxModels: () -> Unit = {},       // 模型委托(视觉/推理/翻译/转写副模型)
     onNavigateToSubAgents: () -> Unit = {},       // 子智能体
-    onNavigateToEnvConfig: () -> Unit = {}        // 环境配置(内置开发环境/工具安装)
+    onNavigateToEnvConfig: () -> Unit = {},       // 环境配置(内置开发环境/工具安装)
+    onNavigateToAbout: () -> Unit = {}            // 关于页(版本/检查更新/项目地址/许可)
 ) {
     val xc = LocalXinColors.current
     val Bg = xc.bg
@@ -244,8 +245,7 @@ fun SettingsScreen(
         // ── Section: 关于 ──
         SectionDivider()
         SectionHeader("关于")
-        SettingRow("版本", "1.02") { /* no-op */ }
-        SettingRow("XINCODE", "纯 Kotlin 原生 Android AI Agent") { /* no-op */ }
+        SettingRow("关于 XINCODE", "版本信息、检查更新、项目地址与开源许可") { onNavigateToAbout() }
     }
 }
 

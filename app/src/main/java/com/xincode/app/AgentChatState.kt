@@ -570,10 +570,15 @@ class AgentChatState(
                 agentCore.currentTurnId = turnId
 
                 // Insert empty assistant placeholder
+                // 交错时间线:一轮内可能产生【多段】assistant 文字(每次调用工具前的那段各自成条),
+                // 因此 id/索引必须可变——工具调用发生时定稿当前段、另起一条,渲染时即可与工具结果按序交错。
                 val asstMsg = MessageEntity(role = "assistant", content = "", sessionId = currentSessionId, turnId = agentCore.currentTurnId)
-                val asstId = withContext(Dispatchers.IO) { messageDao.insert(asstMsg) }
+                var asstId = withContext(Dispatchers.IO) { messageDao.insert(asstMsg) }
                 messages.add(ChatState.MessageUi(asstId, "assistant", "", asstMsg.timestamp, turnId = agentCore.currentTurnId))
-                val asstIdx = messages.size - 1
+                var asstIdx = messages.size - 1
+                // 由 onToolBlock(agent 协程)置位、consumer(主线程)消费:跨线程只传一个布尔信号,
+                // 真正的分段动作全部在主线程完成,避免并发改 messages/buffer 造成丢字或错位。
+                val wantNewSegment = java.util.concurrent.atomic.AtomicBoolean(false)
 
                 // Token consumer: 16ms frame-aligned
                 val tokenChannel = Channel<String>(Channel.UNLIMITED)
@@ -599,6 +604,28 @@ class AgentChatState(
                                 lastDbUpdate = now
                             }
                         }
+
+                        // 交错分段:工具即将执行 → 把已产出的文字定稿为一段,后续 token 写入新的一条。
+                        // 只在【已有非空文字】时才切,避免连续调工具时插入一堆空消息。
+                        if (wantNewSegment.compareAndSet(true, false)) {
+                            val seg = buffer.toString()
+                            if (seg.isNotBlank() && asstIdx >= 0) {
+                                messages[asstIdx] = messages[asstIdx].copy(content = seg)
+                                val finishedId = asstId
+                                launch(Dispatchers.IO) { messageDao.updateContent(finishedId, seg) }
+
+                                val nextMsg = MessageEntity(
+                                    role = "assistant", content = "",
+                                    sessionId = currentSessionId, turnId = agentCore.currentTurnId
+                                )
+                                val nextId = withContext(Dispatchers.IO) { messageDao.insert(nextMsg) }
+                                messages.add(ChatState.MessageUi(nextId, "assistant", "", nextMsg.timestamp, turnId = agentCore.currentTurnId))
+                                asstIdx = messages.size - 1
+                                asstId = nextId
+                                buffer.setLength(0)
+                                lastDbUpdate = 0L
+                            }
+                        }
                     }
                     // Final drain
                     while (true) {
@@ -616,7 +643,9 @@ class AgentChatState(
                 // Collect tokens from AgentCore → feed to channel
                 val tokenCollector = s.launch {
                     var tcCnt = 0
-                    agentCore.tokenFlow.collectLatest { token ->
+                    // 必须用 collect 而非 collectLatest:collectLatest 在新值到达时会【取消】上一个
+                    // 尚未跑完的处理,流式 token 密集到达时会真的丢字 —— 正是「回复被截断」的成因。
+                    agentCore.tokenFlow.collect { token ->
                         tcCnt++
                         if (tcCnt % 10 == 0) Log.d(TAG, "content tokens: $tcCnt")
                         tokenChannel.trySend(token)
@@ -629,7 +658,8 @@ class AgentChatState(
                 val reasoningBuf = StringBuilder()
                 var lastReasoningUpdate = 0L
                 val reasoningCollector = s.launch {
-                    agentCore.reasoningFlow.collectLatest { r ->
+                    // 同上:思考流也必须 collect,collectLatest 会丢片段。
+                    agentCore.reasoningFlow.collect { r ->
                         reasoningBuf.append(r)
                         val now = System.currentTimeMillis()
                         if (now - lastReasoningUpdate > 500 && asstIdx >= 0) {
@@ -643,6 +673,9 @@ class AgentChatState(
                 agentCore.onToolBlock = { action ->
                     when (action) {
                         is ToolBlockAction.PushCall -> {
+                            // 先请求分段:让此前产出的文字定稿成独立一条,工具块随后插入其下方,
+                            // 从而形成「说一段 → 做一步 → 再说一段」的交错时间线。
+                            wantNewSegment.set(true)
                             pushToolCallBlock(action.toolName, action.arguments, action.callIndex)
                         }
                         is ToolBlockAction.UpdateResult -> {
