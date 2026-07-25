@@ -719,7 +719,12 @@ fun ChatScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // 左组:[+] 附件 + 模式芯片(点击弹卡:普通聊天 / 计划模式 / 协作模式,各选 正常·完全访问)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // weight(fill=false):内容短时按需占位,内容长时【可被压缩】——
+                    // 否则「◆ 协作·完全访问」+ 长模型名会把右侧的发送键挤出屏幕(用户实测反馈)。
+                    Row(
+                        modifier = Modifier.weight(1f, fill = false),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         // [+] icon → attach file
                         XinIcon(icon = Icons.Outlined.Add, size = 18.dp, tint = if (showPlusCard) Green else Sub,
                             onClick = { showPlusCard = !showPlusCard })
@@ -740,6 +745,7 @@ fun ChatScreen(
                             fontFamily = JetBrainsMono,
                             color = modeColor,
                             maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                     showModeCard = !showModeCard
@@ -748,21 +754,31 @@ fun ChatScreen(
                         )
                     }
 
-                    // Model·Effort capsule
+                    // Model·Effort capsule —— 同样可压缩 + 省略号,长模型名(如 agnes-2.0-flash)不再顶掉发送键。
+                    // 左右留一点间距,避免与模式标签、圆环贴死(用户截图里「完全访问」和模型名挤成一团)。
                     Text(
                         "$modelDisplayName · $effortLabel ▾",
                         fontSize = 12.sp,
                         fontFamily = JetBrainsMono,
                         color = Sub,
                         maxLines = 1,
-                        modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                            showMainMenu = !showMainMenu
-                            showEffortMenu = false
-                        }
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .padding(horizontal = 8.dp)
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                showMainMenu = !showMainMenu
+                                showEffortMenu = false
+                            }
                     )
 
-                    // 右侧:上下文圆环 + 发送/停止键
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 右侧:上下文圆环 + 发送/停止键。
+                    // 【不加 weight】——Row 会先满足无 weight 子项的固有宽度,再把剩余空间分给带 weight 的,
+                    // 因此发送键永远优先保留位置,左侧模式/模型名再长也只会被省略,不会把它挤出屏幕。
+                    Row(
+                        modifier = Modifier.wrapContentWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                     // 上下文圆环:随占用绿→蓝→黄→红渐变填充;点击弹出统计卡片。
                     ContextRing(
                         usage = contextUsage,
