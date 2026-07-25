@@ -65,8 +65,14 @@ jobs:
           path: app/build/reports/lint-results-debug.html
 
   release:
-    if: github.ref == 'refs/tags/v*'
+    # 注意:GitHub Actions 的 == 是【字符串精确相等】,不支持通配符——
+    # 写成 github.ref == 'refs/tags/v*' 永远为 false,打了 tag 也不会跑这个 job。
+    # 必须用 startsWith 做前缀匹配。
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # action-gh-release 要往 Release 上传资产,需要写权限(默认 GITHUB_TOKEN 可能是只读)。
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
