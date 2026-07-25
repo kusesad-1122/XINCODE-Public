@@ -319,10 +319,12 @@ fun SupplierConfigScreen(
                 val shown = if (selectedApiPathType == "custom") {
                     effectiveBaseUrl.trim().trimEnd('/')
                 } else {
-                    val base = effectiveBaseUrl.trim().trimEnd('/').removeSuffix("/v1").trimEnd('/')
+                    val base = effectiveBaseUrl.trim().trimEnd('/')
+                    // 与 OpenAiClient.chatEndpoint 完全同一套规则:base_url 自带版本段(/v1、/v4…)时只接资源路径。
+                    val versioned = Regex("/v\\d+[a-zA-Z0-9]*$").containsMatchIn(base)
                     base + when (selectedApiPathType) {
-                        "anthropic" -> "/v1/messages"
-                        else -> "/v1/chat/completions"
+                        "anthropic" -> if (versioned) "/messages" else "/v1/messages"
+                        else -> if (versioned) "/chat/completions" else "/v1/chat/completions"
                     }
                 }
                 Text(shown, fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Faint, modifier = Modifier.padding(start = 4.dp, top = 4.dp))

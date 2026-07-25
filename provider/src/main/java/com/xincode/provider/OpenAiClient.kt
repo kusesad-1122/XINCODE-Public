@@ -67,23 +67,32 @@ class OpenAiClient(
     }
 
     /**
-     * 归一化 base_url:去掉结尾的 `/`,并去掉用户可能已经写上的 `/v1`。
+     * base_url 是否已经以「版本段」结尾(/v1、/v2、/v4、/v1beta…)。
      *
-     * 很多供应商文档给出的 base_url 就带 `/v1`(如 https://x.com/v1),用户照抄后我们再拼一次
-     * `/v1/chat/completions` 就变成 `/v1/v1/chat/completions` → 404/400,且极难自查。
-     * 这里统一剥掉尾部 `/v1`,由 [chatEndpoint] 负责补全,做到「带不带 v1 都能用」。
+     * 各家文档给的 base_url 五花八门:
+     *   - 不带版本:https://api.deepseek.com          → 需补 /v1/chat/completions
+     *   - 带 /v1  :https://api.openai.com/v1         → 只需补 /chat/completions
+     *   - 带 /v4  :https://open.bigmodel.cn/api/paas/v4(智谱)→ 只需补 /chat/completions
+     * 无脑拼 "/v1/chat/completions" 会产出 /v1/v1/... 或 /v4/v1/...,直接 404/400。
      */
-    private fun normalizeBase(baseUrl: String): String =
-        baseUrl.trim().trimEnd('/').removeSuffix("/v1").trimEnd('/')
+    private fun hasVersionSegment(base: String): Boolean =
+        Regex("/v\\d+[a-zA-Z0-9]*$").containsMatchIn(base)
 
-    /** Build the correct API endpoint path based on apiPathType. */
+    private fun trimBase(baseUrl: String): String = baseUrl.trim().trimEnd('/')
+
+    /**
+     * 按 base_url 是否自带版本段,拼出正确的端点——带版本就只接资源路径,不带才补 /v1。
+     * 这样「带不带 /v1」「用 /v4 的智谱」都能一次配通。
+     */
     private fun chatEndpoint(baseUrl: String, apiPathType: String): String {
-        // custom = 用户提供完整 URL,原样使用(不归一化、不追加)。
-        if (apiPathType == "custom") return baseUrl.trim().trimEnd('/')
-        return normalizeBase(baseUrl) + when (apiPathType) {
-            "anthropic" -> "/v1/messages"
-            "responses" -> "/v1/responses"   // gap-07 OpenAI Responses 后端
-            else -> "/v1/chat/completions"
+        // custom = 用户提供完整 URL,原样使用(不追加任何东西)。
+        if (apiPathType == "custom") return trimBase(baseUrl)
+        val base = trimBase(baseUrl)
+        val versioned = hasVersionSegment(base)
+        return base + when (apiPathType) {
+            "anthropic" -> if (versioned) "/messages" else "/v1/messages"
+            "responses" -> if (versioned) "/responses" else "/v1/responses"  // gap-07 OpenAI Responses 后端
+            else -> if (versioned) "/chat/completions" else "/v1/chat/completions"
         }
     }
 
@@ -119,8 +128,9 @@ class OpenAiClient(
      */
     suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
-            // 同样归一化:base_url 自带 /v1 时不再拼成 /v1/v1/models。
-            val url = "${normalizeBase(baseUrl)}/v1/models"
+            // 与 chatEndpoint 同一套规则:base_url 自带版本段(/v1、/v4…)时只接 /models。
+            val b = trimBase(baseUrl)
+            val url = if (hasVersionSegment(b)) "$b/models" else "$b/v1/models"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer $apiKey")

@@ -64,6 +64,29 @@ class MainActivity : ComponentActivity() {
             val drawerState = rememberDrawerState(DrawerValue.Closed)
             val drawerScope = rememberCoroutineScope()
 
+            // 启动时静默检查更新:失败/限流/已最新一律安静跳过,只有真有新版才弹窗。
+            var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
+            LaunchedEffect(Unit) {
+                updateInfo = UpdateChecker.check(
+                    context = this@MainActivity,
+                    settingGet = { k -> app.database.settingDao().get(k) },
+                    settingPut = { k, v -> app.database.settingDao().put(k, v) }
+                )
+            }
+            updateInfo?.let { info ->
+                UpdateDialog(
+                    info = info,
+                    currentVersion = UpdateChecker.currentVersion(this@MainActivity),
+                    onDismiss = { updateInfo = null },
+                    onSkip = {
+                        drawerScope.launch {
+                            UpdateChecker.skipVersion(info.version) { k, v -> app.database.settingDao().put(k, v) }
+                        }
+                        updateInfo = null
+                    }
+                )
+            }
+
             // Collect sessions from Room
             val sessions by app.sessionListFlow.collectAsState(initial = emptyList())
             val currentSessionId = app.currentSessionId
