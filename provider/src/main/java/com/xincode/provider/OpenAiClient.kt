@@ -446,12 +446,16 @@ class OpenAiClient(
                 // Accumulate tool_calls by index (tool_calls arrive in chunks across SSE events)
                 val tcAcc = mutableMapOf<Int, ToolCallAccumulator>()
                 var lastUsage: org.json.JSONObject? = null
+                // 是否见到了「本次响应正常结束」的标记([DONE] 或带 finish_reason 的 chunk)。
+                // 没见到就退出循环 = 连接被掐断,拿到的是半截回复。
+                var sawTerminator = false
 
                 while (!source.exhausted()) {
                     val line = source.readUtf8Line() ?: break
                     // Capture usage from final SSE chunk (DeepSeek cache stats)
                     val usage = parseSseUsage(line)
                     if (usage != null) lastUsage = usage
+                    if (sseHasFinishReason(line)) sawTerminator = true
                     val parsed = parseSseLineAgent(line, tcAcc)
                     when (parsed) {
                         is SseAgentEvent.Token -> {
@@ -462,7 +466,7 @@ class OpenAiClient(
                         is SseAgentEvent.Reasoning -> {
                             onReasoning(parsed.text)
                         }
-                        is SseAgentEvent.Done -> { /* stream end marker */ }
+                        is SseAgentEvent.Done -> sawTerminator = true
                         is SseAgentEvent.Skip -> { /* comment, empty, unparseable */ }
                     }
                 }
@@ -472,11 +476,19 @@ class OpenAiClient(
                     .filter { it.id.isNotEmpty() && it.name.isNotEmpty() }
                     .map { ToolCall(id = it.id, name = it.name, arguments = it.argsBuf.toString()) }
 
+                if (!sawTerminator) Log.w(TAG, "⚠ Agent SSE truncated: $tokenCount tokens, no [DONE]/finish_reason")
                 Log.i(TAG, "✓ Agent SSE complete: $tokenCount tokens, ${toolCalls.size} tool_calls")
-                onComplete(AgentStreamResult(content = contentBuf.toString(), toolCalls = toolCalls, usage = lastUsage))
-            } catch (e: Exception) {
-                Log.e(TAG, "✗ Agent SSE failed: ${e.message}", e)
-                onError(ApiError.from(e))
+                onComplete(AgentStreamResult(
+                    content = contentBuf.toString(), toolCalls = toolCalls, usage = lastUsage,
+                    truncated = !sawTerminator
+                ))
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c   // 用户点「停止」:必须原样上抛,否则取消语义丢失
+            } catch (t: Throwable) {
+                // 必须接到 Throwable:OOM / StackOverflowError 属于 Error,catch(Exception) 接不住,
+                // 而上层 callModel 的 continuation 只由 onComplete/onError 唤醒 —— 漏一个就永久挂起。
+                Log.e(TAG, "✗ Agent SSE failed: ${t.message}", t)
+                onError(ApiError.from(t as? Exception ?: IOException("流式请求异常: ${t::class.java.simpleName}: ${t.message}")))
             } finally {
                 response?.close()
             }
@@ -556,6 +568,8 @@ class OpenAiClient(
             val toolBlocks = HashMap<Int, Triple<String, String, StringBuilder>>()
             var inputTokens = 0
             var outputTokens = 0
+            // Anthropic 的正常收尾是 message_stop;没见到就说明流被掐断(见 AgentStreamResult.truncated)。
+            var sawTerminator = false
 
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: break
@@ -594,7 +608,7 @@ class OpenAiClient(
                     "message_delta" -> {
                         outputTokens = evt.optJSONObject("usage")?.optInt("output_tokens", outputTokens) ?: outputTokens
                     }
-                    "message_stop" -> { /* end */ }
+                    "message_stop" -> sawTerminator = true
                     "error" -> {
                         val m = evt.optJSONObject("error")?.optString("message") ?: "anthropic stream error"
                         onError(ApiError.from(IOException(m)))
@@ -613,11 +627,17 @@ class OpenAiClient(
                 put("completion_tokens", outputTokens)
                 put("total_tokens", inputTokens + outputTokens)
             }
+            if (!sawTerminator) Log.w(TAG, "⚠ Anthropic SSE truncated: no message_stop")
             Log.i(TAG, "✓ Anthropic SSE complete: ${contentBuf.length} chars, ${toolCalls.size} tool_use")
-            onComplete(AgentStreamResult(content = contentBuf.toString(), toolCalls = toolCalls, usage = usage))
-        } catch (e: Exception) {
-            Log.e(TAG, "✗ Anthropic SSE failed: ${e.message}", e)
-            onError(ApiError.from(e))
+            onComplete(AgentStreamResult(
+                content = contentBuf.toString(), toolCalls = toolCalls, usage = usage,
+                truncated = !sawTerminator
+            ))
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            Log.e(TAG, "✗ Anthropic SSE failed: ${t.message}", t)
+            onError(ApiError.from(t as? Exception ?: IOException("流式请求异常: ${t::class.java.simpleName}: ${t.message}")))
         } finally {
             response?.close()
         }
@@ -687,6 +707,9 @@ class OpenAiClient(
             val toolItems = HashMap<Int, Triple<String, String, StringBuilder>>()
             var inputTokens = 0
             var outputTokens = 0
+            // Responses 的正常收尾是 response.completed / response.incomplete;
+            // 没见到就说明流被掐断(见 AgentStreamResult.truncated)。
+            var sawTerminator = false
 
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: break
@@ -733,6 +756,7 @@ class OpenAiClient(
                         }
                     }
                     "response.completed", "response.incomplete" -> {
+                        sawTerminator = true
                         val usage = evt.optJSONObject("response")?.optJSONObject("usage")
                         if (usage != null) {
                             inputTokens = usage.optInt("input_tokens", inputTokens)
@@ -758,11 +782,17 @@ class OpenAiClient(
                 put("completion_tokens", outputTokens)
                 put("total_tokens", inputTokens + outputTokens)
             }
+            if (!sawTerminator) Log.w(TAG, "⚠ Responses SSE truncated: no response.completed")
             Log.i(TAG, "✓ Responses SSE complete: ${contentBuf.length} chars, ${toolCalls.size} function_call")
-            onComplete(AgentStreamResult(content = contentBuf.toString(), toolCalls = toolCalls, usage = usage))
-        } catch (e: Exception) {
-            Log.e(TAG, "✗ Responses SSE failed: ${e.message}", e)
-            onError(ApiError.from(e))
+            onComplete(AgentStreamResult(
+                content = contentBuf.toString(), toolCalls = toolCalls, usage = usage,
+                truncated = !sawTerminator
+            ))
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            Log.e(TAG, "✗ Responses SSE failed: ${t.message}", t)
+            onError(ApiError.from(t as? Exception ?: IOException("流式请求异常: ${t::class.java.simpleName}: ${t.message}")))
         } finally {
             response?.close()
         }
@@ -947,6 +977,24 @@ class OpenAiClient(
         var id: String = ""
         var name: String = ""
         val argsBuf = StringBuilder()
+    }
+
+    /**
+     * 这一行是否携带非空 finish_reason —— 即服务端宣告「本次生成到此为止」。
+     *
+     * 不少 OpenAI 兼容网关不发 `data: [DONE]`,只发带 finish_reason 的最后一个 chunk。
+     * 光认 [DONE] 会把这类供应商的每次正常回复都误判成截断,所以两个信号都认。
+     */
+    private fun sseHasFinishReason(raw: String): Boolean {
+        val line = raw.trimStart()
+        if (!line.startsWith("data:")) return false
+        val data = line.removePrefix("data:").trimStart()
+        if (data.isEmpty() || data == "[DONE]") return false
+        return try {
+            val choices = JSONObject(data).optJSONArray("choices") ?: return false
+            val first = choices.optJSONObject(0) ?: return false
+            !first.isNull("finish_reason") && first.optString("finish_reason").isNotEmpty()
+        } catch (_: Exception) { false }
     }
 
     /** What one SSE line yielded for the agent loop. */

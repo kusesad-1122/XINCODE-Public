@@ -65,6 +65,9 @@ class AgentCore(
     companion object {
         private const val TAG = "AgentCore"
 
+        /** 一个回合内允许自动续跑的最大次数(超过说明网络持续有问题,再试也是烧 token)。 */
+        private const val MAX_CONSECUTIVE_TRUNCATIONS = 3
+
         // ---- P1: Tool result compaction constants ----
         private const val TURN_END_RESULT_CAP_TOKENS = 3000
         private const val CHARS_PER_TOKEN = 4
@@ -83,6 +86,12 @@ class AgentCore(
     /** Last usage metrics from the most recent API call (for Room persistence). */
     var lastUsage: org.json.JSONObject? = null
         private set
+
+    /**
+     * 连续被截断的次数。收到完整流就清零;连续超过 [MAX_CONSECUTIVE_TRUNCATIONS] 就放弃并报错,
+     * 避免网络持续不好时无限续跑烧 token。
+     */
+    private var consecutiveTruncations = 0
 
     /** L3:本次 run(整轮/整任务)累计 token —— 供子智能体统计避免只算最后一次调用而少计。 */
     var cumulativePromptTokens: Long = 0L
@@ -468,6 +477,7 @@ class AgentCore(
         // 不再有 onTurnStart 回调:AgentChatState 直接读 currentTurnId
 
         var iteration = 0
+        consecutiveTruncations = 0
         while (iteration < maxIterations) {
             iteration++
             // 循环内不再重新计算 turnId
@@ -520,6 +530,37 @@ class AgentCore(
 
             // Add assistant response to history
             messages.add(buildAssistantMessage(result))
+
+            // 流被掐断(没收到 [DONE]/finish_reason/message_stop):拿到的是半截回复。
+            // 半截回复常常不含 tool_calls,若不拦住就会被下面当成「最终回答」→ 回合无声结束,
+            // 也就是用户反馈的「做一点就罢工」。这里改为自动续跑:让模型接着刚才断掉的地方往下写。
+            if (result.truncated) {
+                consecutiveTruncations++
+                Log.w(TAG, "stream truncated (#$consecutiveTruncations) at iter=$iteration, " +
+                        "contentLen=${result.content.length}, toolCalls=${result.toolCalls.size}")
+                if (consecutiveTruncations <= MAX_CONSECUTIVE_TRUNCATIONS) {
+                    // 只在「没有工具调用」时续跑。带工具调用的半截回复参数可能不完整,
+                    // 让它照常走工具流程反而危险,交给下面的正常分支(工具失败会有明确报错)。
+                    if (result.toolCalls.isEmpty()) {
+                        messages.add(org.json.JSONObject().apply {
+                            put("role", "user")
+                            put("content", "(系统提示:上一条回复因网络中断而截断。请从断点处继续,不要重复已经写过的内容。)")
+                        })
+                        _state.value = AgentState.Thinking(iteration)
+                        checkpointCursor()
+                        continue
+                    }
+                } else {
+                    _state.value = AgentState.Error(
+                        "响应流连续 $MAX_CONSECUTIVE_TRUNCATIONS 次被中断,已停止重试。请检查网络后重发。",
+                        iteration
+                    )
+                    clearCursor()
+                    return
+                }
+            } else {
+                consecutiveTruncations = 0
+            }
 
             // Check: no tool_calls → final response, done
             if (result.toolCalls.isEmpty()) {
@@ -786,7 +827,13 @@ class AgentCore(
         thinkingLevel: Int
     ): AgentStreamResult? = suspendCancellableCoroutine { cont ->
         // Launch inside coroutine since agentStream is suspend and this lambda is non-suspend
+        //
+        // 这个 continuation 只有 onComplete / onError 会唤醒。只要 agentStream 抛出了这两个回调都
+        // 覆盖不到的东西(Error 级异常、或将来某个新分支忘了回调),这里就会【永久挂起】——
+        // UI 停在「思考中」,不报错、不超时、不结束(用户反馈的「回复老不回」)。
+        // 因此下面 try/finally 兜底:无论怎么退出,continuation 必定被唤醒一次。
         val job = CoroutineScope(Dispatchers.IO).launch {
+            try {
             openAiClient.agentStream(
                 messages = messages,
                 tools = tools,
@@ -812,6 +859,25 @@ onComplete = { result ->
                     if (cont.isActive) cont.resume(null) {}
                 }
             )
+            } catch (c: CancellationException) {
+                throw c   // 用户点「停止」:保持取消语义,由 invokeOnCancellation 收尾
+            } catch (t: Throwable) {
+                Log.e(TAG, "callModel threw: ${t::class.java.simpleName}: ${t.message}", t)
+                _state.value = AgentState.Error(
+                    "模型请求异常(${t::class.java.simpleName}): ${t.message ?: "无详情"}", iteration
+                )
+            } finally {
+                // 兜底唤醒:走到这里若 continuation 仍未被唤醒,说明上面漏了回调。
+                // 宁可当作一次失败回合,也绝不能把整个 agent 循环永久卡死。
+                if (cont.isActive) {
+                    Log.w(TAG, "callModel finished without resuming — forcing null resume")
+                    // 状态若还没被置成错误,这里补一个:否则上层 `?: return` 会无声结束回合。
+                    if (_state.value !is AgentState.Error) {
+                        _state.value = AgentState.Error("模型请求未返回任何结果,已中止本回合", iteration)
+                    }
+                    cont.resume(null) {}
+                }
+            }
         }
         cont.invokeOnCancellation { job.cancel() }
     }
