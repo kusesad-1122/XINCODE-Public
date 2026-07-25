@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -118,6 +119,16 @@ fun SupplierConfigScreen(
     var showApiPathDropdown by remember { mutableStateOf(false) }
     var models by remember { mutableStateOf<List<String>>(emptyList()) }
     var modelsLoading by remember { mutableStateOf(false) }
+    /**
+     * 手动填写的模型 ID。
+     *
+     * 不少中转站不提供 /models 列表接口(或返回的列表跟实际可用的对不上),拉取拿不到东西,
+     * 配置就彻底走不下去。这里单独存一份手填集合,不跟拉取结果混在一起,原因有二:
+     *  1. 再次点「↻ 刷新」会整体覆盖 models,混在一起的话手填的会被冲掉;
+     *  2. 编辑已有配置时 models 是空的(等用户现拉),手填的必须仍然看得见。
+     */
+    var manualModelIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var newModelId by remember { mutableStateOf("") }
     var showModelDropdown by remember { mutableStateOf(false) }
     var pendingActivateId by remember { mutableStateOf<Long?>(null) }  // warn before activating
     var editingApiKey by remember { mutableStateOf("") }  // decrypted stored key for live fetch during edit
@@ -125,6 +136,8 @@ fun SupplierConfigScreen(
     val selectedSupplier = knownSuppliers.find { it.id == selectedSupplierId } ?: knownSuppliers.last()
     val isCustom = selectedSupplierId == "custom"
     val effectiveBaseUrl = if (isCustom) baseUrl else selectedSupplier.baseUrl
+    // 手填的排在拉取结果前面:刚添加的一眼就能看到,不用在几百个模型里翻。
+    val displayModels = (manualModelIds.toList() + models).distinct()
 
     fun loadConfigs() {
         scope.launch {
@@ -159,6 +172,7 @@ fun SupplierConfigScreen(
         editingConfig = null; configName = ""; selectedSupplierId = "deepseek"
         baseUrl = ""; apiKey = ""; model = ""; models = emptyList()
         editingApiKey = ""; checkedModelIds = emptySet(); selectedApiPathType = "openai"
+        manualModelIds = emptySet(); newModelId = ""
         showForm = true; status = ""
     }
 
@@ -167,6 +181,10 @@ fun SupplierConfigScreen(
         baseUrl = cfg.baseUrl; apiKey = ""; model = cfg.model
         models = emptyList()  // will be fetched live, same as startNew
         checkedModelIds = cfg.enabledModelIds.toSet()
+        // 已保存的模型直接进手填集合:models 此刻是空的(等用户现拉),不这样做的话
+        // 手填保存过的模型再进来编辑就整个不见了,只能重填一遍。
+        manualModelIds = cfg.enabledModelIds.toSet()
+        newModelId = ""
         selectedApiPathType = cfg.apiPathType
         // Decrypt stored key so user can refresh models without re-entering
         editingApiKey = try {
@@ -185,9 +203,26 @@ fun SupplierConfigScreen(
             val r = openAiClient.listModels(effectiveBaseUrl, key)
             models = r.getOrDefault(emptyList())
             modelsLoading = false
-            if (models.isEmpty()) status = "✗ 拉取失败或无可用模型"
+            if (models.isEmpty()) status = "✗ 拉取失败或无可用模型，可在下方手动填写模型 ID"
             else { showModelDropdown = true; status = "✓ 已加载 ${models.size} 个模型" }
         }
+    }
+
+    /**
+     * 手动加一个模型 ID(给不支持 /models 列表接口的中转站用)。
+     * 加完直接勾选;若当前还没有活动模型,顺带设为活动,省得用户再点一次。
+     */
+    fun addManualModel() {
+        val id = newModelId.trim()
+        if (id.isBlank()) return
+        if (id in manualModelIds || id in models) {
+            status = "✗ 「$id」已在列表中"; newModelId = ""; return
+        }
+        manualModelIds = manualModelIds + id
+        checkedModelIds = checkedModelIds + id
+        if (model.isBlank()) model = id
+        newModelId = ""
+        status = "✓ 已添加 $id"
     }
 
     fun saveConfig() {
@@ -380,14 +415,38 @@ fun SupplierConfigScreen(
             Spacer(Modifier.height(12.dp))
 
             Label("启用模型（多选）")
+            // 手填入口:中转站不给 /models 时的唯一出路,所以放在列表【上方】常驻,
+            // 而不是藏在「拉取失败」之后才出现——拉取成功但列表不全的情况同样需要它。
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TextField(
+                    value = newModelId,
+                    onValueChange = { newModelId = it },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    colors = fieldColors(),
+                    textStyle = fieldTextStyle(),
+                    placeholder = {
+                        Text("拉不到列表？直接填模型 ID，如 gpt-4o", color = Faint,
+                            fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { addManualModel() })
+                )
+                Text("+ 添加", fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                    color = if (newModelId.isBlank()) Faint else Green,
+                    modifier = Modifier
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { addManualModel() }
+                        .padding(horizontal = 10.dp, vertical = 8.dp))
+            }
+            Spacer(Modifier.height(6.dp))
             Box(Modifier.fillMaxWidth()) {
                 Column(Modifier.fillMaxWidth().border(1.dp, Faint).padding(4.dp).heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
                     if (modelsLoading) {
                         Text("加载中…", fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Faint,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                    } else if (models.isEmpty()) {
+                    } else if (displayModels.isEmpty()) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("点击右侧 ↻ 拉取模型列表", fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Faint,
+                            Text("点 ↻ 拉取，或在上方直接填模型 ID", fontSize = 12.sp, fontFamily = FontFamily.Monospace, color = Faint,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                             Text("↻", fontSize = 14.sp, fontFamily = FontFamily.Monospace, color = Sub,
                                 modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { fetchModels() }
@@ -403,9 +462,12 @@ fun SupplierConfigScreen(
                         }
                         Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
                         // Checkbox list
-                        models.forEach { m ->
+                        displayModels.forEach { m ->
                             val isChecked = m in checkedModelIds
-                            val isUnavailable = editingConfig != null && m in (editingConfig?.enabledModelIds ?: emptyList()) && m !in models
+                            val isManual = m in manualModelIds
+                            // 只有「确实拉到过列表」且该模型不在其中、又不是手填的,才算供应商已下线。
+                            // 手填的模型本来就不在拉取结果里,不能因此标红。
+                            val isUnavailable = models.isNotEmpty() && !isManual && m !in models
                             Row(Modifier.fillMaxWidth()
                                 .background(if (m == model) LocalXinColors.current.activeBg else Bg)
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
@@ -421,8 +483,15 @@ fun SupplierConfigScreen(
                                     modifier = Modifier.padding(end = 8.dp))
                                 // Model name
                                 Column(Modifier.weight(1f)) {
-                                    Text(m, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
-                                        color = if (m == model) Ink else Sub)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(m, fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                                            color = if (m == model) Ink else Sub)
+                                        // 标出哪些是自己填的,便于跟拉取来的区分(手填写错了才好找回来改)
+                                        if (isManual) {
+                                            Text("手填", fontSize = 8.sp, fontFamily = FontFamily.Monospace, color = Faint,
+                                                modifier = Modifier.padding(start = 6.dp))
+                                        }
+                                    }
                                     if (isUnavailable) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(
@@ -437,6 +506,20 @@ fun SupplierConfigScreen(
                                 }
                                 // Active marker
                                 if (m == model) Text("←", fontSize = 10.sp, color = Sub, modifier = Modifier.padding(start = 4.dp))
+                                // 手填的可以删掉(拉取来的不给删,刷新一下就回来了,给了反而误导)
+                                if (isManual) {
+                                    Text("✕", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Faint,
+                                        modifier = Modifier
+                                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                                manualModelIds = manualModelIds - m
+                                                val remaining = checkedModelIds - m
+                                                checkedModelIds = remaining
+                                                // 删掉的正好是活动模型 → 顺延到还勾着的第一个,别留空
+                                                if (model == m) model = remaining.firstOrNull().orEmpty()
+                                                status = "✓ 已移除 $m"
+                                            }
+                                            .padding(start = 8.dp, top = 2.dp, bottom = 2.dp))
+                                }
                             }
                         }
                     }
