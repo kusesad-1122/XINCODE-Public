@@ -42,13 +42,14 @@ object AuxModels {
 
     /** 读取某 task 的委托配置;未配置返回 null。 */
     suspend fun resolve(db: AppDatabase, keystore: KeystoreProvider, key: String): Resolved? {
-        val baseUrl = db.settingDao().get("aux_${key}_base_url")?.trim().orEmpty()
-        val keyEnc = db.settingDao().get("aux_${key}_api_key").orEmpty()
+        val p = Profiles.currentId(db)
+        val baseUrl = db.settingDao().get(Profiles.key(p, "aux_${key}_base_url"))?.trim().orEmpty()
+        val keyEnc = db.settingDao().get(Profiles.key(p, "aux_${key}_api_key")).orEmpty()
         // 这里没单独填 URL/Key 时,退而看【功能模型配置】有没有给这个 key 指定一套已存的供应商配置。
         // 两套机制的优先级:手填的委托端点 > 功能模型配置 > 不可用。
         // 手填优先,是因为用户特意填了外部端点,多半就是要绕开主供应商。
         if (baseUrl.isBlank() || keyEnc.isBlank()) return resolveFromFunctionConfig(db, keystore, key)
-        val model = db.settingDao().get("aux_${key}_model")?.trim()
+        val model = db.settingDao().get(Profiles.key(p, "aux_${key}_model"))?.trim()
             ?.ifBlank { TASKS.firstOrNull { it.key == key }?.defaultModel ?: "" } ?: ""
         val apiKey = try { keystore.decrypt(Base64.decode(keyEnc, Base64.NO_WRAP)) } catch (_: Exception) { keyEnc }
         return Resolved(baseUrl, apiKey, model)
@@ -58,30 +59,34 @@ object AuxModels {
     private suspend fun resolveFromFunctionConfig(
         db: AppDatabase, keystore: KeystoreProvider, key: String
     ): Resolved? {
-        val id = db.settingDao().get("fn_${key}_config_id")?.toLongOrNull() ?: 0L
+        val p = Profiles.currentId(db)
+        val id = db.settingDao().get(Profiles.key(p, "fn_${key}_config_id"))?.toLongOrNull() ?: 0L
         if (id <= 0) return null
         val cfg = db.providerConfigDao().getById(id) ?: return null
         if (cfg.baseUrl.isBlank() || cfg.apiKeyEnc.isBlank()) return null
-        val model = db.settingDao().get("fn_${key}_model")?.trim()?.ifBlank { null } ?: cfg.model
+        val model = db.settingDao().get(Profiles.key(p, "fn_${key}_model"))?.trim()?.ifBlank { null } ?: cfg.model
         val apiKey = try {
             keystore.decrypt(Base64.decode(cfg.apiKeyEnc, Base64.NO_WRAP))
         } catch (_: Exception) { return null }
         return Resolved(cfg.baseUrl, apiKey, model)
     }
 
-    suspend fun isConfigured(db: AppDatabase, key: String): Boolean =
-        (!db.settingDao().get("aux_${key}_base_url").isNullOrBlank() &&
-            !db.settingDao().get("aux_${key}_api_key").isNullOrBlank()) ||
+    suspend fun isConfigured(db: AppDatabase, key: String): Boolean {
+        val p = Profiles.currentId(db)
+        return (!db.settingDao().get(Profiles.key(p, "aux_${key}_base_url")).isNullOrBlank() &&
+            !db.settingDao().get(Profiles.key(p, "aux_${key}_api_key")).isNullOrBlank()) ||
             // 功能模型配置指了一套也算已配置,否则 describe_image 这类服务门控工具不会暴露
-            ((db.settingDao().get("fn_${key}_config_id")?.toLongOrNull() ?: 0L) > 0)
+            ((db.settingDao().get(Profiles.key(p, "fn_${key}_config_id"))?.toLongOrNull() ?: 0L) > 0)
+    }
 
     /** 保存某 task 的委托配置(apiKey 空=不改)。 */
     suspend fun save(db: AppDatabase, keystore: KeystoreProvider, key: String, baseUrl: String, apiKey: String, model: String) {
-        db.settingDao().put("aux_${key}_base_url", baseUrl.trim())
-        db.settingDao().put("aux_${key}_model", model.trim())
+        val p = Profiles.currentId(db)
+        db.settingDao().put(Profiles.key(p, "aux_${key}_base_url"), baseUrl.trim())
+        db.settingDao().put(Profiles.key(p, "aux_${key}_model"), model.trim())
         if (apiKey.isNotBlank()) {
             val enc = Base64.encodeToString(keystore.encrypt(apiKey), Base64.NO_WRAP)
-            db.settingDao().put("aux_${key}_api_key", enc)
+            db.settingDao().put(Profiles.key(p, "aux_${key}_api_key"), enc)
         }
     }
 

@@ -9,7 +9,7 @@ import androidx.room.*
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [SettingEntity::class, MessageEntity::class, ProviderConfigEntity::class, SessionEntity::class, StateCursorEntity::class, AuditLogEntity::class, MemoryEntity::class, TrajectoryEntity::class, SkillEntity::class, McpServerEntity::class, GlobalSettingsEntity::class, ProjectEntity::class, IdentityEntity::class, PermissionRuleEntity::class, HookEntity::class, CronJobEntity::class, SubAgentEntity::class], version = 31, exportSchema = false)
+@Database(entities = [SettingEntity::class, MessageEntity::class, ProviderConfigEntity::class, SessionEntity::class, StateCursorEntity::class, AuditLogEntity::class, MemoryEntity::class, TrajectoryEntity::class, SkillEntity::class, McpServerEntity::class, GlobalSettingsEntity::class, ProjectEntity::class, IdentityEntity::class, PermissionRuleEntity::class, HookEntity::class, CronJobEntity::class, SubAgentEntity::class, UsageRecordEntity::class, KanbanTaskEntity::class, GroupRoomEntity::class, GroupMemberEntity::class, GroupMessageEntity::class], version = 34, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
@@ -30,6 +30,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun identityDao(): IdentityDao
     abstract fun cronJobDao(): CronJobDao   // Hermes-⑦
     abstract fun subAgentDao(): SubAgentDao
+    abstract fun usageRecordDao(): UsageRecordDao
+    abstract fun kanbanTaskDao(): KanbanTaskDao
+    abstract fun groupRoomDao(): GroupRoomDao
 
     companion object {
         @Volatile
@@ -421,6 +424,87 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // 用量分析:按【每次模型调用】追加记录(messages 里的 usage 只存最后一次,会严重少算)。
+        private val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS usage_records (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        ts INTEGER NOT NULL DEFAULT 0,
+                        sessionId INTEGER NOT NULL DEFAULT 0,
+                        model TEXT NOT NULL DEFAULT '',
+                        provider TEXT NOT NULL DEFAULT '',
+                        source TEXT NOT NULL DEFAULT 'chat',
+                        inputTokens INTEGER NOT NULL DEFAULT 0,
+                        outputTokens INTEGER NOT NULL DEFAULT 0,
+                        cacheReadTokens INTEGER NOT NULL DEFAULT 0,
+                        cacheWriteTokens INTEGER NOT NULL DEFAULT 0,
+                        reasoningTokens INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                // 趋势与聚合全都按时间范围查,没这个索引数据一多就会全表扫。
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_usage_records_ts ON usage_records(ts)")
+            }
+        }
+
+        // 看板:跨会话的长期待办(与 agent_plan 的回合内临时清单分开)。
+        private val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS kanban_tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        title TEXT NOT NULL,
+                        note TEXT NOT NULL DEFAULT '',
+                        status TEXT NOT NULL DEFAULT 'todo',
+                        position INTEGER NOT NULL DEFAULT 0,
+                        sessionId INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL DEFAULT 0,
+                        updatedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+            }
+        }
+
+        // 群聊房间:房间 / 成员 / 消息三张表。
+        private val MIGRATION_33_34 = object : Migration(33, 34) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS group_rooms (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        name TEXT NOT NULL,
+                        note TEXT NOT NULL DEFAULT '',
+                        compactThreshold INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL DEFAULT 0,
+                        updatedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS group_members (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        roomId INTEGER NOT NULL,
+                        displayName TEXT NOT NULL,
+                        identityId INTEGER NOT NULL DEFAULT 0,
+                        providerConfigId INTEGER NOT NULL DEFAULT 0,
+                        model TEXT NOT NULL DEFAULT '',
+                        createdAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS group_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        roomId INTEGER NOT NULL,
+                        sender TEXT NOT NULL DEFAULT '',
+                        content TEXT NOT NULL,
+                        isDigest INTEGER NOT NULL DEFAULT 0,
+                        ts INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                // 消息与成员永远按 roomId 查,不建索引房间一多就全表扫
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_group_messages_roomId ON group_messages(roomId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_group_members_roomId ON group_members(roomId)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -428,7 +512,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "xincode.db"
                 )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31)
+                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34)
                     .addCallback(object : RoomDatabase.Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

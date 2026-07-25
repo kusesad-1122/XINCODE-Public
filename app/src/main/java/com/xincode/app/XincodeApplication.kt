@@ -48,6 +48,12 @@ class XincodeApplication : Application() {
     lateinit var keystore: KeystoreProvider
         private set
     lateinit var openAiClient: OpenAiClient
+
+    /** 用量记账用的当前模型/供应商名。切换配置时刷新;取不到时留空,不影响记账。 */
+    @Volatile
+    var currentModelName: String = ""
+    @Volatile
+    var currentProviderName: String = ""
     /** 功能模型配置绑定的 client —— 见 FunctionModels。未单独配置时行为与 openAiClient 一致。 */
     lateinit var reviewClient: OpenAiClient
     lateinit var subAgentClient: OpenAiClient
@@ -197,6 +203,14 @@ override fun onCreate() {
         Log.i("XINCODE", "=== APP START ===")
         installCrashGuard()
         pruneOldAttachments()
+        UsageRecorder.prune(database)
+        GlobalScope.launch(Dispatchers.IO) {
+            runCatching {
+                database.providerConfigDao().getActive()?.let {
+                    currentModelName = it.model; currentProviderName = it.name
+                }
+            }
+        }
         // Initialize shared HTTP disk cache
         HttpCacheProvider.init(cacheDir)
         database = AppDatabase.getInstance(this)
@@ -560,6 +574,13 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         )
         core.hookDispatcher = HookDispatcherImpl(database, shellExecTool, suExecTool)
         core.onBackgroundReview = { m, s, tail -> backgroundReviewRunner.onReview(m, s, tail) }
+        // 用量记录:每次模型调用都落一笔(不是每回合),否则工具回环的调用全被漏掉。
+        core.onUsageRecorded = { usage, sid ->
+            UsageRecorder.record(
+                database, usage, sid,
+                model = currentModelName, provider = currentProviderName, source = "chat"
+            )
+        }
         // P2: Prefix hash drift detection — persist computed hash and warn on drift
         core.onPrefixHashComputed = { hash, sid ->
             GlobalScope.launch(Dispatchers.IO) {

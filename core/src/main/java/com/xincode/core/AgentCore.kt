@@ -112,6 +112,12 @@ class AgentCore(
     // ---- tool block callback (set by AgentChatState) ----
     var onToolBlock: ((ToolBlockAction) -> Unit)? = null
 
+    /**
+     * 每次模型调用完成后回调一次(usage, sessionId),用于用量记录。
+     * 由外部接到 Room;core 模块不直接写库,免得把 DAO 依赖拖进来。
+     */
+    var onUsageRecorded: ((org.json.JSONObject, Long) -> Unit)? = null
+
     // ---- tool call index counter for UI block tracking ----
 
     // ---- observable state ----
@@ -889,6 +895,11 @@ onComplete = { result ->
                         result.usage?.let {
                             cumulativePromptTokens += it.optLong("prompt_tokens", 0).coerceAtLeast(0)
                             cumulativeCompletionTokens += it.optLong("completion_tokens", 0).coerceAtLeast(0)
+                        }
+                        // 用量分析:每次调用都记一笔。放在这里而不是回合结束时记,
+                        // 是因为一个回合里工具回环会调很多次模型,只记最后一次会严重少算。
+                        onUsageRecorded?.let { cb ->
+                            result.usage?.let { u -> runCatching { cb(u, sessionId) } }
                         }
                         if (cont.isActive) cont.resume(result) {}
                     },

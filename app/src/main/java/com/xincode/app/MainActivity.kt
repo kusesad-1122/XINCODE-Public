@@ -263,6 +263,12 @@ class MainActivity : ComponentActivity() {
                         onUpdateWorkspaceRoot = { path -> app.updateWorkspaceRoot(path) },
                         onNavigateToAuxModels = { currentPage = "aux_models" },
                         onNavigateToFunctionModels = { currentPage = "function_models" },
+                        onNavigateToLanDevices = { currentPage = "lan_devices" },
+                        onNavigateToLogs = { currentPage = "logs" },
+                        onNavigateToUsageStats = { currentPage = "usage_stats" },
+                        onNavigateToKanban = { currentPage = "kanban" },
+                        onNavigateToGroupRooms = { currentPage = "group_rooms" },
+                        onNavigateToProfiles = { currentPage = "profiles" },
                         onNavigateToSubAgents = { currentPage = "sub_agents" },
                         onNavigateToEnvConfig = { currentPage = "env_config" },
                         onNavigateToAbout = { currentPage = "about" },
@@ -362,6 +368,12 @@ class MainActivity : ComponentActivity() {
                         keystore = app.keystore,
                         onBack = { currentPage = "settings" }
                     )
+                    "lan_devices" -> LanDiscoveryScreen(onBack = { currentPage = "settings" })
+                    "logs" -> LogViewerScreen(onBack = { currentPage = "settings" })
+                    "usage_stats" -> UsageStatsScreen(database = app.database, onBack = { currentPage = "settings" })
+                    "kanban" -> KanbanScreen(database = app.database, planState = app.planState, onBack = { currentPage = "settings" })
+                    "group_rooms" -> GroupRoomsScreen(database = app.database, keystore = app.keystore, onBack = { currentPage = "settings" })
+                    "profiles" -> ProfilesScreen(database = app.database, onBack = { currentPage = "settings" })
                     "function_models" -> FunctionModelsScreen(
                         database = app.database,
                         keystore = app.keystore,
@@ -451,7 +463,8 @@ class MainActivity : ComponentActivity() {
 private fun parentPageOf(page: String): String = when (page) {
     "settings" -> "chat"
     "supplier", "model_market", "git_config", "audit", "memory_storage", "skills", "mcp", "curated_memory",
-    "cron_jobs", "aux_models", "function_models", "sub_agents", "env_config", "context_compress", "about" -> "settings"
+    "cron_jobs", "aux_models", "function_models", "sub_agents", "env_config", "context_compress", "about",
+    "lan_devices", "logs", "usage_stats", "kanban", "group_rooms", "profiles" -> "settings"
     "replay" -> "workflow"
     "identity_edit" -> "identity_list"
     "identity_list" -> "settings"

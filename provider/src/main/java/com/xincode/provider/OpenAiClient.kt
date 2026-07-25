@@ -118,8 +118,12 @@ class OpenAiClient(
             // 而不是让这个功能直接报错——删一个供应商不该顺带把定时任务也弄挂。
             var modelOverride = ""
             val assigned = if (functionKey != null) {
-                val id = database.settingDao().get("fn_${functionKey}_config_id")?.toLongOrNull() ?: 0L
-                modelOverride = database.settingDao().get("fn_${functionKey}_model")?.trim().orEmpty()
+                // 多 Profile:非默认 profile 的键带 p{N}. 前缀。这段逻辑必须与 app 层的
+                // Profiles.key() 保持一致 —— provider 模块不能反向依赖 app,所以在这里复刻。
+                val pid = database.settingDao().get("profile_current_id")?.toLongOrNull() ?: 0L
+                val pfx = if (pid > 0) "p$pid." else ""
+                val id = database.settingDao().get("${pfx}fn_${functionKey}_config_id")?.toLongOrNull() ?: 0L
+                modelOverride = database.settingDao().get("${pfx}fn_${functionKey}_model")?.trim().orEmpty()
                 if (id > 0) cfgDao.getById(id) else null
             } else null
 
@@ -1234,7 +1238,9 @@ class OpenAiClient(
             }
             // 模型名以前写死 text-embedding-3-small —— 非 OpenAI 供应商基本都没有这个模型,
             // 记忆向量化会一直静默失败。现在优先用【功能模型配置】里给 embedding 指定的模型。
-            val embModel = database.settingDao().get("fn_embedding_model")?.trim()
+            val embPid = database.settingDao().get("profile_current_id")?.toLongOrNull() ?: 0L
+            val embPfx = if (embPid > 0) "p$embPid." else ""
+            val embModel = database.settingDao().get("${embPfx}fn_embedding_model")?.trim()
                 ?.ifBlank { null } ?: "text-embedding-3-small"
             val body = JSONObject().apply {
                 put("model", embModel)

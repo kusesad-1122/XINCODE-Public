@@ -61,6 +61,12 @@ fun SettingsScreen(
     onUpdateWorkspaceRoot: (String) -> Unit = {},
     onNavigateToAuxModels: () -> Unit = {},       // 模型委托(视觉/推理/翻译/转写副模型)
     onNavigateToFunctionModels: () -> Unit = {},  // 功能模型配置(每个内部调用点各指一套已存配置)
+    onNavigateToLanDevices: () -> Unit = {},      // 局域网设备发现
+    onNavigateToLogs: () -> Unit = {},            // 日志查看
+    onNavigateToUsageStats: () -> Unit = {},      // 用量分析
+    onNavigateToKanban: () -> Unit = {},          // 看板
+    onNavigateToGroupRooms: () -> Unit = {},      // 群聊房间
+    onNavigateToProfiles: () -> Unit = {},        // 多配置环境
     onNavigateToSubAgents: () -> Unit = {},       // 子智能体
     onNavigateToEnvConfig: () -> Unit = {},       // 环境配置(内置开发环境/工具安装)
     onNavigateToAbout: () -> Unit = {}            // 关于页(版本/检查更新/项目地址/许可)
@@ -200,9 +206,15 @@ fun SettingsScreen(
             )
         }
         SettingRow("环境配置", "安装 Node/Python/uv/SSH/JDK/Gradle/Rust/Go 等开发环境") { onNavigateToEnvConfig() }
+        SettingRow("配置环境", "多套独立配置(工作/私用各一套),可克隆与导出导入") { onNavigateToProfiles() }
         SettingRow("功能模型配置", "上下文总结/后台复盘/子智能体/Goal 裁判等各自指定模型") { onNavigateToFunctionModels() }
         SettingRow("模型委托", "视觉/推理/翻译/转写各配一个副模型(另填 URL 与 Key)") { onNavigateToAuxModels() }
         SettingRow("子智能体", "主脑指挥的专职子智能体(各管各的技能),可自建") { onNavigateToSubAgents() }
+        SettingRow("局域网设备", "发现同一 Wi-Fi 下其它开着 XINCODE 的设备") { onNavigateToLanDevices() }
+        SettingRow("群聊房间", "多个智能体同处一室,@名字 点谁谁答") { onNavigateToGroupRooms() }
+        SettingRow("看板", "跨会话的长期待办,可把 AI 的计划一键导入") { onNavigateToKanban() }
+        SettingRow("用量分析", "30 天趋势、模型分布、缓存命中率与成本估算") { onNavigateToUsageStats() }
+        SettingRow("日志", "崩溃与运行日志,按级别/关键词过滤,可复制反馈") { onNavigateToLogs() }
         SettingRow("Skills 技能", "管理可复用提示词模板") { onNavigateToSkills() }
         SettingRow("MCP 服务器", "外部工具协议服务器管理") { onNavigateToMcp() }
         SettingRow("Git 接入", "OAuth 登录 GitHub + 远程/本地 MCP(免 root 也能用)") { onNavigateToGit() }

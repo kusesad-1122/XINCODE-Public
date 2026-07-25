@@ -105,14 +105,17 @@ object FunctionModels {
     data class Assignment(val configId: Long, val model: String)
 
     suspend fun get(db: AppDatabase, key: String): Assignment {
-        val id = db.settingDao().get("fn_${key}_config_id")?.toLongOrNull() ?: 0L
-        val model = db.settingDao().get("fn_${key}_model")?.trim().orEmpty()
+        // 走当前 profile 的键名(默认 profile 就是原键名,老数据不受影响)
+        val p = Profiles.currentId(db)
+        val id = db.settingDao().get(Profiles.key(p, "fn_${key}_config_id"))?.toLongOrNull() ?: 0L
+        val model = db.settingDao().get(Profiles.key(p, "fn_${key}_model"))?.trim().orEmpty()
         return Assignment(id, model)
     }
 
     suspend fun set(db: AppDatabase, key: String, configId: Long, model: String) {
-        db.settingDao().put("fn_${key}_config_id", configId.toString())
-        db.settingDao().put("fn_${key}_model", model.trim())
+        val p = Profiles.currentId(db)
+        db.settingDao().put(Profiles.key(p, "fn_${key}_config_id"), configId.toString())
+        db.settingDao().put(Profiles.key(p, "fn_${key}_model"), model.trim())
     }
 
     /** 清除指定功能的分配,回到「跟随主模型」。 */
