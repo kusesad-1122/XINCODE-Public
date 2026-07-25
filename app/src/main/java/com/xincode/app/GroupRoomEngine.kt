@@ -114,11 +114,10 @@ object GroupRoomEngine {
         val system = buildString {
             append("你现在在一个多人群聊里,你的名字是「${member.displayName}」。\n")
             append("群成员:$roster,以及用户。\n")
+            append("历史里 [某某]: 开头的是别人说的话,没有前缀的是你自己说过的。\n")
             append("规则:\n")
             append("- 只说你自己要说的话,不要替别人发言,不要模拟别人的回复。\n")
             append("- 不要在开头写自己的名字,系统会自动标注是谁说的。\n")
-            append("- 要点名某人时用 @名字,但【不要】为了礼貌而 @ 人 —— 被 @ 的人不会自动接话,\n")
-            append("  只有用户再发言时才会推进,滥用 @ 只会让对话看起来卡住。\n")
             append("- 简洁,群聊里没人想读长篇大论。\n")
             identity?.systemPrompt?.takeIf { it.isNotBlank() }?.let {
                 append("\n你的角色设定:\n").append(it).append("\n")
@@ -128,14 +127,9 @@ object GroupRoomEngine {
         val history = dao.getMessages(roomId)
         val messages = JSONArray()
         messages.put(JSONObject().put("role", "system").put("content", system))
-        // 整段历史作为一条 user 消息喂进去。不用多轮 role 交替,是因为群聊里有多个"助手",
-        // 硬套 user/assistant 交替会让模型分不清哪句是谁说的。
-        val transcript = history.joinToString("\n") { m ->
-            val who = if (m.sender.isBlank()) "用户" else m.sender
-            if (m.isDigest) "[之前的对话摘要]\n${m.content}" else "$who: ${m.content}"
-        }
+        messages.putAll(projectHistory(history, member.displayName))
         messages.put(JSONObject().put("role", "user")
-            .put("content", "$transcript\n\n(现在轮到你「${member.displayName}」说话)"))
+            .put("content", "(现在轮到你「${member.displayName}」说话)"))
 
         val body = JSONObject().apply {
             put("model", model)
@@ -221,6 +215,56 @@ object GroupRoomEngine {
                 Log.i(TAG, "room $roomId compacted: ${old.size} msgs → digest")
             }
         }
+    }
+
+    /**
+     * 把房间历史投影成【这个成员视角】的多轮对话。
+     *
+     * 关键在于每个成员看到的历史是不一样的:
+     *  - 自己说过的话 → role=assistant,无前缀
+     *  - 别人说的话   → role=user,内容前加 `[名字]: `
+     *
+     * 这样模型天然知道哪些话是自己说的,不必靠提示词反复叮嘱「别替别人发言」。
+     * 之前把整段历史拼成一条 user 消息,模型只能从文本里猜谁是谁,弱模型很容易
+     * 串台开始替别人说话。
+     *
+     * 另一个要点:投影时【去掉所有 @】。历史里的 @ 已经完成了路由使命,再喂给模型
+     * 只会诱导它照着模仿、也去 @ 别人 —— 而被 @ 的人并不会自动接话,徒增噪音。
+     * 从源头去掉比在系统提示里写「不要滥用 @」可靠得多。
+     */
+    private fun projectHistory(
+        history: List<GroupMessageEntity>,
+        ownName: String
+    ): List<JSONObject> {
+        val out = mutableListOf<JSONObject>()
+        for (m in history) {
+            if (m.isDigest) {
+                // 摘要用一问一答对注入,让它成为合法的对话轮次;
+                // 直接塞一条 user 会让后面紧跟的 user 消息连成两条同 role,部分服务端会拒。
+                out += JSONObject().put("role", "user").put("content", "[之前的对话摘要]\n${m.content}")
+                out += JSONObject().put("role", "assistant").put("content", "我已了解之前的对话内容。")
+                continue
+            }
+            val isOwn = m.sender.equals(ownName, ignoreCase = true)
+            val body = stripMentions(m.content)
+            out += if (isOwn) {
+                JSONObject().put("role", "assistant").put("content", body)
+            } else {
+                val who = if (m.sender.isBlank()) "用户" else m.sender
+                JSONObject().put("role", "user").put("content", "[$who]: $body")
+            }
+        }
+        return out
+    }
+
+    /** 去掉正文里的 @提及,并收拢因此产生的多余空格。 */
+    private fun stripMentions(content: String): String =
+        content.replace(Regex("@([^\\s@]+)"), "")
+            .replace(Regex("[ \\t]{2,}"), " ")
+            .trimStart()
+
+    private fun JSONArray.putAll(items: List<JSONObject>) {
+        items.forEach { put(it) }
     }
 
     /** 与 OpenAiClient 同一套版本段规则:base_url 自带 /v1 就不再补。 */
