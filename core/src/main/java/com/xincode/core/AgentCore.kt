@@ -68,6 +68,9 @@ class AgentCore(
         /** 一个回合内允许自动续跑的最大次数(超过说明网络持续有问题,再试也是烧 token)。 */
         private const val MAX_CONSECUTIVE_TRUNCATIONS = 3
 
+        /** 同一个工具报同样的错连续多少次就中止整轮,避免模型原地空转。 */
+        private const val MAX_REPEATED_TOOL_ERRORS = 3
+
         // ---- P1: Tool result compaction constants ----
         private const val TURN_END_RESULT_CAP_TOKENS = 3000
         private const val CHARS_PER_TOKEN = 4
@@ -92,6 +95,10 @@ class AgentCore(
      * 避免网络持续不好时无限续跑烧 token。
      */
     private var consecutiveTruncations = 0
+
+    /** 上一次工具失败的「工具名|错误信息」指纹,与 [repeatedToolErrors] 一起做死循环刹车。 */
+    private var lastToolErrorSignature: String? = null
+    private var repeatedToolErrors = 0
 
     /** L3:本次 run(整轮/整任务)累计 token —— 供子智能体统计避免只算最后一次调用而少计。 */
     var cumulativePromptTokens: Long = 0L
@@ -478,6 +485,7 @@ class AgentCore(
 
         var iteration = 0
         consecutiveTruncations = 0
+        lastToolErrorSignature = null; repeatedToolErrors = 0
         while (iteration < maxIterations) {
             iteration++
             // 循环内不再重新计算 turnId
@@ -700,6 +708,31 @@ class AgentCore(
                     durationMs = durationMs,
                     status = resultStatus
                 ))
+                // 死循环刹车:模型撞上同一个错误时往往会一模一样地再试一遍,而它看到的反馈
+                // 每次都相同,于是可以一直转下去(实测见过连转 9 轮同一个「未知工具」)。
+                // 这里按「工具名 + 错误信息」记连击数,连续同样的失败达到阈值就直接中止整轮,
+                // 并把原因如实告诉用户,而不是让它自己撞到天荒地老。
+                if (toolResult is ToolResult.Error) {
+                    val sig = "${call.name}|${toolResult.message}"
+                    if (sig == lastToolErrorSignature) {
+                        repeatedToolErrors++
+                    } else {
+                        lastToolErrorSignature = sig; repeatedToolErrors = 1
+                    }
+                    if (repeatedToolErrors >= MAX_REPEATED_TOOL_ERRORS) {
+                        Log.w(TAG, "aborting: same tool error x$repeatedToolErrors — $sig")
+                        _state.value = AgentState.Error(
+                            "「${call.name}」连续 $repeatedToolErrors 次同样失败,已中止以免空转。" +
+                                "最后的错误:${toolResult.message}",
+                            iteration
+                        )
+                        clearCursor()
+                        return
+                    }
+                } else {
+                    lastToolErrorSignature = null; repeatedToolErrors = 0
+                }
+
                 // Build content for model feedback (existing logic, keep unchanged)
                 val content = when (toolResult) {
                     is ToolResult.Success -> toolResult.output
@@ -707,6 +740,12 @@ class AgentCore(
                         append("错误: ${toolResult.message}")
                         if (toolResult.exitCode != null) append("\n退出码: ${toolResult.exitCode}")
                         if (!toolResult.stderr.isNullOrBlank()) append("\nstderr:\n${toolResult.stderr}")
+                        // 明确告诉模型「别再原样重试了」。只回错误不给指引时,模型很容易
+                        // 认为是偶发失败而重复同一个调用。
+                        if (repeatedToolErrors >= 2) {
+                            append("\n\n注意:这个调用已经连续失败 $repeatedToolErrors 次,原样重试不会有不同结果。" +
+                                "请先说明你判断的失败原因和打算换的做法,再调用工具;若无法解决,直接告诉用户。")
+                        }
                     }
                 }
 

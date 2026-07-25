@@ -94,7 +94,14 @@ data class Attachment(
     val content: String
 )
 
-/** Process a single URI from the document picker: validate whitelist + size, read content. */
+/**
+ * 处理选择器返回的一个 URI:图片落盘走路径,文本文件读内容。
+ *
+ * 大小【不设上限】(用户要求)。这意味着读取本身可能耗尽内存,所以:
+ *  - 图片一律不读进内存,只复制到私有目录、记录路径,交给 describe_image 按需 base64;
+ *  - 文本文件仍需读成字符串(要拼进消息),这一步用 OutOfMemoryError 兜底,
+ *    宁可给一句明确提示,也不能让整个应用因为选了个超大文件而崩掉。
+ */
 private fun processAttachmentUri(
     context: android.content.Context,
     uri: Uri,
@@ -112,14 +119,39 @@ private fun processAttachmentUri(
         }
     }
 
-    // Size check
-    if (size > 200 * 1024) {
-        Toast.makeText(context, "文件过大(>200KB): $fileName", Toast.LENGTH_SHORT).show()
+    val mime = resolver.getType(uri).orEmpty()
+    val ext = fileName.substringAfterLast('.', "").lowercase()
+
+    // ---- 图片:落盘存路径,不读内容 ----
+    // 以前图片和文本文件走同一条路,结果是两道坎都过不去:图片扩展名不在白名单里,
+    // 就算放行,reader().readText() 把二进制按 UTF-8 读出来也只是一堆乱码。
+    // 现在改为复制到应用私有目录、只记路径,由 describe_image 需要时再读。
+    // 顺带这也让「图片无上限」名副其实——图片根本不进消息体,多大都不占上下文。
+    if (mime.startsWith("image/") || ext in imageExts) {
+        try {
+            val dir = java.io.File(context.filesDir, "attachments").apply { mkdirs() }
+            val safeName = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+            val dest = java.io.File(dir, "${System.currentTimeMillis()}_$safeName")
+            resolver.openInputStream(uri)?.use { input ->
+                dest.outputStream().use { output -> input.copyTo(output) }   // 流式复制,不占内存
+            } ?: run {
+                Toast.makeText(context, "无法读取图片: $fileName", Toast.LENGTH_SHORT).show()
+                return
+            }
+            pending.value = pending.value + Attachment(
+                fileName = fileName,
+                absolutePath = dest.absolutePath,
+                sizeBytes = if (size > 0) size else dest.length(),
+                mimeType = mime.ifBlank { "image/$ext" },
+                content = ""      // 图片内容不入消息,只留路径
+            )
+        } catch (e: Exception) {
+            Toast.makeText(context, "图片保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
         return
     }
 
-    // Extension whitelist check
-    val ext = fileName.substringAfterLast('.', "").lowercase()
+    // ---- 文本文件:白名单 + 读内容 ----
     val nameNoExt = fileName.substringBeforeLast('.')
     val allowed = whiteList.contains(ext) || whiteListNoExt.contains(nameNoExt) ||
         whiteListNoExt.contains(fileName)
@@ -128,15 +160,17 @@ private fun processAttachmentUri(
         return
     }
 
-    // Read content
     try {
         val content = resolver.openInputStream(uri)?.use { it.reader().readText() } ?: ""
         pending.value = pending.value + Attachment(
             fileName = fileName,
             sizeBytes = size,
-            mimeType = resolver.getType(uri) ?: "",
+            mimeType = mime,
             content = content
         )
+    } catch (e: OutOfMemoryError) {
+        // 不设大小上限的代价:真的可能读不下。给明确原因,别让用户以为是文件坏了。
+        Toast.makeText(context, "文件太大,内存装不下:$fileName", Toast.LENGTH_LONG).show()
     } catch (e: Exception) {
         Toast.makeText(context, "读取失败: ${e.message}", Toast.LENGTH_SHORT).show()
     }
@@ -150,6 +184,17 @@ private val whiteList = setOf(
     "sql","graphql","gql","env","env.example"
 )
 private val whiteListNoExt = setOf("README","LICENSE","Makefile","Dockerfile","CMakeLists.txt")
+
+/** 图片扩展名。MIME 缺失时(部分文件管理器不给 type)靠它兜底判断。 */
+private val imageExts = setOf("jpg","jpeg","png","webp","gif","bmp","heic","heif","avif")
+
+/** 人类可读体积,用于附件 chip。 */
+private fun humanSize(bytes: Long): String = when {
+    bytes >= 1024L * 1024 * 1024 -> String.format("%.1fG", bytes / (1024.0 * 1024 * 1024))
+    bytes >= 1024L * 1024 -> String.format("%.1fM", bytes / (1024.0 * 1024))
+    bytes >= 1024L -> "${bytes / 1024}K"
+    else -> "${bytes}B"
+}
 
 // Palette now sourced from [LocalXinColors] — supports light/dark switching.
 // Kept as local vals inside each composable so existing code paths compile unchanged.
@@ -602,7 +647,13 @@ fun ChatScreen(
                     append(chatState.input.value.trim())
                     append("\n\n---\n附件:\n")
                     pendingAttachments.value.forEach { att ->
-                        append("\n### ${att.fileName}\n```\n${att.content}\n```\n")
+                        if (att.absolutePath.isNotEmpty()) {
+                            // 图片:只给路径。内容不进消息体,所以多大的图都不占上下文;
+                            // 要看图时模型自己调 describe_image(未配视觉副模型时该工具不暴露)。
+                            append("\n### ${att.fileName}(图片,路径:${att.absolutePath})\n")
+                        } else {
+                            append("\n### ${att.fileName}\n```\n${att.content}\n```\n")
+                        }
                     }
                     append("\n---\n")
                 }
@@ -677,8 +728,9 @@ fun ChatScreen(
                                     .padding(horizontal = 10.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                val isImage = att.absolutePath.isNotEmpty()
                                 Icon(
-                                    Icons.Outlined.Description,
+                                    if (isImage) Icons.Outlined.Image else Icons.Outlined.Description,
                                     contentDescription = null,
                                     modifier = Modifier.size(16.dp),
                                     tint = Ink
@@ -692,6 +744,17 @@ fun ChatScreen(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
+                                // 不再有大小上限,附件可能很大 —— 把体积标出来,
+                                // 免得用户在毫不知情的情况下把几十 MB 的文本塞进上下文。
+                                if (att.sizeBytes > 0) {
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        humanSize(att.sizeBytes),
+                                        fontSize = 10.sp,
+                                        fontFamily = JetBrainsMono,
+                                        color = Sub
+                                    )
+                                }
                                 Spacer(Modifier.width(4.dp))
                                 Icon(
                                     Icons.Outlined.Close,

@@ -584,24 +584,26 @@ class OpenAiClient(
                     "content_block_start" -> {
                         val idx = evt.optInt("index", 0)
                         val block = evt.optJSONObject("content_block")
-                        if (block?.optString("type") == "tool_use") {
-                            toolBlocks[idx] = Triple(block.optString("id"), block.optString("name"), StringBuilder())
+                        if (block?.optStr("type") == "tool_use") {
+                            toolBlocks[idx] = Triple(block.optStr("id"), block.optStr("name"), StringBuilder())
                         }
                     }
                     "content_block_delta" -> {
                         val idx = evt.optInt("index", 0)
                         val delta = evt.optJSONObject("delta")
-                        when (delta?.optString("type")) {
+                        when (delta?.optStr("type")) {
                             "text_delta" -> {
-                                val t = delta.optString("text", "")
+                                val t = delta.optStr("text")
                                 if (t.isNotEmpty()) { contentBuf.append(t); onToken(t) }
                             }
                             "thinking_delta" -> {
-                                val t = delta.optString("thinking", "")
+                                val t = delta.optStr("thinking")
                                 if (t.isNotEmpty()) onReasoning(t)
                             }
                             "input_json_delta" -> {
-                                toolBlocks[idx]?.third?.append(delta.optString("partial_json", ""))
+                                // 不能用 optString:partial_json 为 null 时会 append 字面 "null",
+                                // 直接毁掉正在拼装的参数 JSON。
+                                toolBlocks[idx]?.third?.append(delta.optStr("partial_json"))
                             }
                         }
                     }
@@ -717,41 +719,41 @@ class OpenAiClient(
                 val payload = line.substring(5).trim()
                 if (payload.isEmpty() || payload == "[DONE]") continue
                 val evt = try { JSONObject(payload) } catch (_: Exception) { continue }
-                when (evt.optString("type")) {
+                when (evt.optStr("type")) {
                     "response.output_text.delta" -> {
-                        val t = evt.optString("delta", "")
+                        val t = evt.optStr("delta")
                         if (t.isNotEmpty()) { contentBuf.append(t); onToken(t) }
                     }
                     "response.reasoning_summary_text.delta", "response.reasoning_text.delta" -> {
-                        val t = evt.optString("delta", "")
+                        val t = evt.optStr("delta")
                         if (t.isNotEmpty()) onReasoning(t)
                     }
                     "response.output_item.added" -> {
                         val idx = evt.optInt("output_index", toolItems.size)
                         val item = evt.optJSONObject("item")
-                        if (item?.optString("type") == "function_call") {
+                        if (item?.optStr("type") == "function_call") {
                             toolItems[idx] = Triple(
-                                item.optString("call_id").ifBlank { item.optString("id") },
-                                item.optString("name"),
-                                StringBuilder(item.optString("arguments", ""))
+                                item.optStr("call_id").ifBlank { item.optStr("id") },
+                                item.optStr("name"),
+                                StringBuilder(item.optStr("arguments"))
                             )
                         }
                     }
                     "response.function_call_arguments.delta" -> {
                         val idx = evt.optInt("output_index", -1)
-                        val d = evt.optString("delta", "")
+                        val d = evt.optStr("delta")
                         if (idx >= 0) toolItems[idx]?.third?.append(d)
                     }
                     "response.output_item.done" -> {
                         // 兜底:某些实现只在 done 事件里给出完整 function_call(arguments 齐全)。
                         val idx = evt.optInt("output_index", -1)
                         val item = evt.optJSONObject("item")
-                        if (idx >= 0 && item?.optString("type") == "function_call") {
-                            val callId = item.optString("call_id").ifBlank { item.optString("id") }
-                            val name = item.optString("name")
+                        if (idx >= 0 && item?.optStr("type") == "function_call") {
+                            val callId = item.optStr("call_id").ifBlank { item.optStr("id") }
+                            val name = item.optStr("name")
                             val existing = toolItems[idx]
                             if (existing == null || existing.third.isEmpty()) {
-                                toolItems[idx] = Triple(callId, name, StringBuilder(item.optString("arguments", "")))
+                                toolItems[idx] = Triple(callId, name, StringBuilder(item.optStr("arguments")))
                             }
                         }
                     }
@@ -972,6 +974,17 @@ class OpenAiClient(
 
     // -- SSE parsing internals ---------------------------------------------------
 
+    /**
+     * 安全取字符串:JSON null 一律当作「没有这个值」。
+     *
+     * 必须有这个函数,因为 org.json 的 optString 碰到 JSONObject.NULL 返回的是【字面字符串
+     * "null"】,而不是传入的默认值。流式增量里 name / arguments / delta 为 null 是常态,
+     * 直接用 optString 的后果是:工具名变成 "null" 派发失败、参数 JSON 里被塞进 "null" 而
+     * 解析不了、回复正文里凭空冒出 "null" 三个字。
+     */
+    private fun JSONObject.optStr(key: String): String =
+        if (isNull(key)) "" else optString(key, "")
+
     /** Accumulates a single tool_call's fields across streaming SSE chunks. */
     private class ToolCallAccumulator {
         var id: String = ""
@@ -1055,13 +1068,26 @@ class OpenAiClient(
                     val idx = tc.optInt("index", i)
                     val acc = tcAcc.getOrPut(idx) { ToolCallAccumulator() }
 
-                    // id and type may come in first chunk
-                    if (tc.has("id")) acc.id = tc.optString("id", "")
+                    // 关键:org.json 的 optString 遇到 JSON null 会返回【字面字符串 "null"】,
+                    // 而不是给的默认值。而多数供应商的增量 chunk 长这样:
+                    //   第 1 帧 {"id":"call_x","function":{"name":"web_search","arguments":""}}
+                    //   后续帧 {"function":{"name":null,"arguments":"{\"query\""}}
+                    // 原来的 has("name") + optString 会把已经正确的名字覆盖成 "null",
+                    // 于是派发时报「未知工具: null」,模型看到报错就重试,再次被覆盖 —— 无限循环。
+                    // 所以必须 isNull 判空,且不拿后到的空值覆盖已经拿到的值。
+                    if (!tc.isNull("id")) {
+                        val id = tc.optString("id", "")
+                        if (id.isNotEmpty()) acc.id = id
+                    }
                     // function sub-object
                     val func = tc.optJSONObject("function")
                     if (func != null) {
-                        if (func.has("name")) acc.name = func.optString("name", "")
-                        if (func.has("arguments")) {
+                        if (!func.isNull("name")) {
+                            val n = func.optString("name", "")
+                            if (n.isNotEmpty()) acc.name = n
+                        }
+                        // arguments 同理:append 一个字面 "null" 会直接毁掉参数 JSON。
+                        if (!func.isNull("arguments")) {
                             acc.argsBuf.append(func.optString("arguments", ""))
                         }
                     }
