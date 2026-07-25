@@ -371,7 +371,7 @@ class MainActivity : ComponentActivity() {
                     "lan_devices" -> LanDiscoveryScreen(onBack = { currentPage = "settings" })
                     "logs" -> LogViewerScreen(onBack = { currentPage = "settings" })
                     "usage_stats" -> UsageStatsScreen(database = app.database, onBack = { currentPage = "settings" })
-                    "kanban" -> KanbanScreen(database = app.database, planState = app.planState, onBack = { currentPage = "settings" })
+                    "kanban" -> KanbanScreen(database = app.database, planState = app.planState, runner = app.kanbanRunner, onBack = { currentPage = "settings" })
                     "group_rooms" -> GroupRoomsScreen(database = app.database, keystore = app.keystore, onBack = { currentPage = "settings" })
                     "profiles" -> ProfilesScreen(database = app.database, onBack = { currentPage = "settings" })
                     "function_models" -> FunctionModelsScreen(

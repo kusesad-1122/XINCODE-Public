@@ -130,6 +130,10 @@ class XincodeApplication : Application() {
      *  survives navigation and is visible from ChatScreen regardless of composition. */
     val planState = PlanState()
 
+    /** 看板执行器:把 ready 的任务交给隔离 AgentCore 去跑。 */
+    lateinit var kanbanRunner: KanbanRunner
+        private set
+
     /** 「智能体指挥室」像素动画状态(Application 级),由 dispatch_agents 实时更新。 */
     val subAgentScene = SubAgentSceneState()
 
@@ -204,6 +208,11 @@ override fun onCreate() {
         installCrashGuard()
         pruneOldAttachments()
         UsageRecorder.prune(database)
+        kanbanRunner = KanbanRunner(database) { buildIsolatedAgentCore() }
+        // 进程被杀时正在跑的任务会永远停在 running,重启后没人管它 —— 启动时统一收回 ready
+        GlobalScope.launch(Dispatchers.IO) {
+            runCatching { database.kanbanTaskDao().reclaimStuckRunning() }
+        }
         GlobalScope.launch(Dispatchers.IO) {
             runCatching {
                 database.providerConfigDao().getActive()?.let {

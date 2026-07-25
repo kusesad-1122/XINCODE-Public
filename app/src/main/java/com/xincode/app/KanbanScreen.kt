@@ -43,6 +43,7 @@ private val Mono = FontFamily.Monospace
 fun KanbanScreen(
     database: AppDatabase,
     planState: PlanState,
+    runner: KanbanRunner,
     onBack: () -> Unit
 ) {
     val xc = LocalXinColors.current
@@ -68,7 +69,10 @@ fun KanbanScreen(
     }
 
     fun move(task: KanbanTaskEntity, forward: Boolean) {
-        val order = listOf(STATUS_TODO, STATUS_DOING, STATUS_DONE)
+        val order = listOf(
+            STATUS_TODO, KanbanTaskEntity.STATUS_READY, KanbanTaskEntity.STATUS_RUNNING,
+            KanbanTaskEntity.STATUS_REVIEW, STATUS_DOING, STATUS_DONE
+        )
         val idx = order.indexOf(task.status).coerceAtLeast(0)
         val next = (if (forward) idx + 1 else idx - 1).coerceIn(0, order.size - 1)
         if (next == idx) return
@@ -79,9 +83,14 @@ fun KanbanScreen(
         }
     }
 
+    // 六种状态。前三种是你自己做,后三种是智能体在做 —— 看板因此不只是清单,是工作队列。
     val columns = listOf(
         Triple(STATUS_TODO, "待办", xc.sub),
-        Triple(STATUS_DOING, "进行中", xc.green),
+        Triple(KanbanTaskEntity.STATUS_READY, "待智能体执行", xc.green),
+        Triple(KanbanTaskEntity.STATUS_RUNNING, "执行中", xc.green),
+        Triple(KanbanTaskEntity.STATUS_REVIEW, "待验收", xc.green),
+        Triple(KanbanTaskEntity.STATUS_BLOCKED, "受阻", xc.red),
+        Triple(STATUS_DOING, "我在做", xc.sub),
         Triple(STATUS_DONE, "已完成", xc.faint)
     )
 
@@ -96,6 +105,28 @@ fun KanbanScreen(
                 modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                     newTitle = ""; showAdd = true
                 })
+        }
+
+        // 队列控制条:有 ready 任务时给「开始执行」入口
+        val readyCount = tasks.count { it.status == KanbanTaskEntity.STATUS_READY }
+        if (readyCount > 0 || runner.isRunning) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(8.dp)).background(xc.activeBg).padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (runner.isRunning) "智能体正在执行任务…" else "$readyCount 个任务待执行",
+                    fontSize = 11.sp, fontFamily = Mono, color = xc.ink, modifier = Modifier.weight(1f)
+                )
+                Text(
+                    if (runner.isRunning) "停止" else "开始执行",
+                    fontSize = 11.sp, fontFamily = Mono,
+                    color = if (runner.isRunning) xc.red else xc.green,
+                    modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        if (runner.isRunning) runner.stop() else runner.start()
+                    })
+            }
         }
 
         // 把 AI 当前的计划一键固化成看板任务
@@ -167,6 +198,38 @@ fun KanbanScreen(
                                 Text(task.note, fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
                                     lineHeight = 14.sp, modifier = Modifier.padding(top = 2.dp))
                             }
+                            // 指派对象 + 执行次数
+                            val meta = buildList<String> {
+                                if (task.assignee.isNotBlank()) add("@${task.assignee}")
+                                if (task.runCount > 0) add("跑过 ${task.runCount} 次")
+                            }.joinToString("  ·  ")
+                            if (meta.isNotBlank()) {
+                                Text(meta, fontSize = 9.sp, fontFamily = Mono, color = xc.faint,
+                                    modifier = Modifier.padding(top = 2.dp))
+                            }
+                            // 执行结果:成功给摘要,失败给原因 —— 受阻时最需要看的就是这个
+                            if (task.result.isNotBlank()) {
+                                Text(
+                                    task.result, fontSize = 9.sp, fontFamily = Mono,
+                                    color = if (status == KanbanTaskEntity.STATUS_BLOCKED) xc.red else xc.faint,
+                                    lineHeight = 13.sp, maxLines = 3,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 3.dp)
+                                )
+                            }
+                            // 就绪或受阻时给单独开跑的入口(受阻的常见操作就是改完再试一次)
+                            if (status == KanbanTaskEntity.STATUS_READY || status == KanbanTaskEntity.STATUS_BLOCKED) {
+                                Text(
+                                    if (runner.isRunning) "排队中" else "▷ 立即执行",
+                                    fontSize = 10.sp, fontFamily = Mono,
+                                    color = if (runner.isRunning) xc.faint else xc.green,
+                                    modifier = Modifier
+                                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                            if (!runner.isRunning) runner.runTask(task.id)
+                                        }
+                                        .padding(top = 4.dp)
+                                )
+                            }
                         }
                         Text("›", fontSize = 15.sp, fontFamily = Mono,
                             color = if (status == STATUS_DONE) xc.bgElevated else xc.sub,
@@ -213,6 +276,14 @@ fun KanbanScreen(
     editing?.let { task ->
         var title by remember(task.id) { mutableStateOf(task.title) }
         var note by remember(task.id) { mutableStateOf(task.note) }
+        var assignee by remember(task.id) { mutableStateOf(task.assignee) }
+        // SubAgentDao 只有 suspend getAll(没有 Flow),打开对话框时拉一次即可
+        var subAgents by remember(task.id) { mutableStateOf<List<com.xincode.data.SubAgentEntity>>(emptyList()) }
+        LaunchedEffect(task.id) {
+            subAgents = withContext(Dispatchers.IO) {
+                runCatching { database.subAgentDao().getAll() }.getOrDefault(emptyList())
+            }
+        }
         AlertDialog(
             onDismissRequest = { editing = null },
             title = { Text("编辑任务", fontFamily = Mono, color = xc.ink, fontSize = 14.sp) },
@@ -242,6 +313,25 @@ fun KanbanScreen(
                         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontFamily = Mono)
                     )
                     Spacer(Modifier.height(10.dp))
+                    Text("指派给(决定用谁的设定来执行)", fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
+                    Column(Modifier.fillMaxWidth().heightIn(max = 130.dp).verticalScroll(rememberScrollState())) {
+                        Row(Modifier.fillMaxWidth()
+                            .background(if (assignee.isBlank()) xc.activeBg else xc.bg)
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { assignee = "" }
+                            .padding(6.dp)) {
+                            Text("主智能体", fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
+                        }
+                        subAgents.forEach { sa ->
+                            Row(Modifier.fillMaxWidth()
+                                .background(if (assignee == sa.name) xc.activeBg else xc.bg)
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { assignee = sa.name }
+                                .padding(6.dp)) {
+                                Text(sa.name, fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
                     Text("删除这个任务", fontSize = 12.sp, fontFamily = Mono, color = xc.red,
                         modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                             scope.launch { withContext(Dispatchers.IO) { database.kanbanTaskDao().delete(task) } }
@@ -255,6 +345,7 @@ fun KanbanScreen(
                         withContext(Dispatchers.IO) {
                             database.kanbanTaskDao().update(
                                 task.copy(title = title.trim(), note = note.trim(),
+                                    assignee = assignee,
                                     updatedAt = System.currentTimeMillis())
                             )
                         }
