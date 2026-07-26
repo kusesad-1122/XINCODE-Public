@@ -3,6 +3,8 @@ package com.xincode.app
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -27,7 +29,9 @@ import com.xincode.data.AppDatabase
 import com.xincode.data.GroupMemberEntity
 import com.xincode.data.GroupMessageEntity
 import com.xincode.data.GroupRoomEntity
+import com.xincode.provider.OpenAiClient
 import com.xincode.security.KeystoreProvider
+import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -459,7 +463,7 @@ private fun GroupRoomChatScreen(
     // 给某个成员单独选模型
     var modelPickerFor by remember { mutableStateOf<GroupMemberEntity?>(null) }
     modelPickerFor?.let { mem ->
-        MemberModelPicker(database, mem, xc) { modelPickerFor = null }
+        MemberModelPicker(database, keystore, app.openAiClient, mem, xc) { modelPickerFor = null }
     }
 
     if (showMembers) {
@@ -546,6 +550,8 @@ private fun GroupRoomChatScreen(
 @Composable
 private fun MemberModelPicker(
     database: AppDatabase,
+    keystore: KeystoreProvider,
+    openAiClient: OpenAiClient,
     member: GroupMemberEntity,
     xc: XinColors,
     onClose: () -> Unit
@@ -555,41 +561,87 @@ private fun MemberModelPicker(
     var pickedConfig by remember { mutableStateOf(member.providerConfigId) }
     var pickedModel by remember { mutableStateOf(member.model) }
 
-    // 选中配置后,可选模型来自它自己的 enabledModelIds
-    val models = remember(pickedConfig, configs) {
-        val cfg = configs.firstOrNull { it.id == pickedConfig }
+    // 刷新拉回来的模型。切换供应商时清空 —— 留着上一个供应商的列表会让人选错。
+    var fetched by remember { mutableStateOf<List<String>>(emptyList()) }
+    var loading by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("") }
+    var manualId by remember { mutableStateOf("") }
+
+    val cfg = configs.firstOrNull { it.id == pickedConfig }
+
+    // 配置里【已启用】的模型。这是之前唯一的来源,也是「只显示一个模型」的原因:
+    // 用户没在供应商页勾选多个时,这里就只有一个,而这个列表并不代表供应商真正提供了什么。
+    val enabled = remember(cfg) {
         runCatching {
             val arr = org.json.JSONArray(cfg?.enabledModelIds ?: "[]")
             (0 until arr.length()).map { arr.getString(it) }
-        }.getOrDefault(emptyList()).ifEmpty { listOfNotNull(cfg?.model?.takeIf { it.isNotBlank() }) }
+        }.getOrDefault(emptyList())
+    }
+
+    // 已启用 + 刚拉到的 + 配置自己的默认模型,去重后一起给用户选
+    val models = remember(enabled, fetched, cfg) {
+        (enabled + fetched + listOfNotNull(cfg?.model?.takeIf { it.isNotBlank() })).distinct()
+    }
+
+    fun refresh() {
+        val c = cfg ?: return
+        val key = runCatching {
+            keystore.decrypt(Base64.decode(c.apiKeyEnc, Base64.NO_WRAP))
+        }.getOrNull()
+        if (key.isNullOrBlank()) { status = "✗ 这个配置没有可用的 API Key"; return }
+        loading = true; status = ""
+        scope.launch {
+            val r = openAiClient.listModels(c.baseUrl, key)
+            fetched = r.getOrDefault(emptyList())
+            loading = false
+            status = if (fetched.isEmpty())
+                "✗ 拉不到列表,可在下面手填模型 ID"
+            else "✓ 拉到 ${fetched.size} 个"
+        }
     }
 
     AlertDialog(
         onDismissRequest = onClose,
         title = { Text("@${member.displayName} 用哪个模型", fontFamily = Mono, color = xc.ink, fontSize = 14.sp) },
         text = {
-            Column(Modifier.heightIn(max = 380.dp)) {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
                 Text("供应商", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
                 Row(Modifier.fillMaxWidth()
                     .background(if (pickedConfig == 0L) xc.activeBg else xc.bg)
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        pickedConfig = 0L; pickedModel = ""
+                        pickedConfig = 0L; pickedModel = ""; fetched = emptyList(); status = ""
                     }.padding(6.dp)) {
                     Text("跟随当前活跃配置", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
                 }
-                configs.forEach { cfg ->
+                configs.forEach { c ->
                     Row(Modifier.fillMaxWidth()
-                        .background(if (pickedConfig == cfg.id) xc.activeBg else xc.bg)
+                        .background(if (pickedConfig == c.id) xc.activeBg else xc.bg)
                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                            pickedConfig = cfg.id; pickedModel = ""
+                            pickedConfig = c.id; pickedModel = ""; fetched = emptyList(); status = ""
                         }.padding(6.dp)) {
-                        Text(cfg.name, fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
+                        Text(c.name, fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
                     }
                 }
 
                 if (pickedConfig != 0L) {
                     Spacer(Modifier.height(10.dp))
-                    Text("模型", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("模型", fontSize = 11.sp, fontFamily = Mono, color = xc.sub,
+                            modifier = Modifier.weight(1f))
+                        Text(
+                            if (loading) "拉取中…" else "刷新列表",
+                            fontSize = 10.sp, fontFamily = Mono,
+                            color = if (loading) xc.faint else xc.green,
+                            modifier = Modifier.clickable(
+                                indication = null, interactionSource = remember { MutableInteractionSource() }
+                            ) { if (!loading) refresh() }
+                        )
+                    }
+                    if (status.isNotBlank()) {
+                        Text(status, fontSize = 9.sp, fontFamily = Mono,
+                            color = if (status.startsWith("✓")) xc.green else xc.red)
+                    }
+
                     Row(Modifier.fillMaxWidth()
                         .background(if (pickedModel.isBlank()) xc.activeBg else xc.bg)
                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
@@ -605,6 +657,28 @@ private fun MemberModelPicker(
                             }.padding(6.dp)) {
                             Text(m, fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
                         }
+                    }
+
+                    // 手填:不少中转站不提供 /models,拉取永远是空的,
+                    // 没有这个入口那些供应商就只能用默认模型 —— 和供应商配置页同一个理由。
+                    Spacer(Modifier.height(8.dp))
+                    Text("拉不到就手填模型 ID", fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            SimpleField(manualId, { manualId = it }, "例如 deepseek-chat", xc)
+                        }
+                        Text("加入", fontSize = 11.sp, fontFamily = Mono, color = xc.green,
+                            modifier = Modifier
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    val id = manualId.trim()
+                                    if (id.isNotBlank()) {
+                                        // 直接选中,省得再点一次
+                                        if (id !in models) fetched = fetched + id
+                                        pickedModel = id
+                                        manualId = ""
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 8.dp))
                     }
                 }
             }
