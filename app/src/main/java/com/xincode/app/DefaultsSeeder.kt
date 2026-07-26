@@ -14,6 +14,12 @@ object DefaultsSeeder {
     private const val FLAG = "defaults_seeded_v2"
 
     suspend fun seedIfNeeded(db: AppDatabase) {
+        // 【放在总开关之前】通用工作技能是后加的,而老用户的 FLAG 早就是 1 了 ——
+        // 放进开关里面的话,所有老用户永远装不上这批,只有全新安装的人才有。
+        // 它自己按名字查重,重复调用无副作用,每次启动跑一遍是安全的。
+        runCatching { WorkSkills.install(db) }
+            .onFailure { Log.w(TAG, "work skills seed failed: ${it.message}") }
+
         try {
             if (db.settingDao().get(FLAG) == "1") return
             // v1→v2 清理:删掉会与原生 agent_plan/可视化任务卡冲突的内置 "plan" 技能

@@ -96,6 +96,13 @@ interface UsageRecordDao {
     @Query("SELECT COUNT(*) FROM usage_records WHERE ts >= :since")
     suspend fun callCountSince(since: Long): Long
 
+    /**
+     * 不限时间的总条数。用来在页面空着的时候分清两件事:
+     * 是压根没记上,还是记上了但不在当前时间范围里。
+     */
+    @Query("SELECT COUNT(*) FROM usage_records")
+    suspend fun countAll(): Long
+
     @Query("SELECT SUM(inputTokens) FROM usage_records WHERE ts >= :since")
     suspend fun totalInputSince(since: Long): Long?
 

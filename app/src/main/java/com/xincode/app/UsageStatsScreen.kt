@@ -47,6 +47,7 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
     var daily by remember { mutableStateOf<List<DailyUsage>>(emptyList()) }
     var byModel by remember { mutableStateOf<List<ModelUsage>>(emptyList()) }
     var calls by remember { mutableStateOf(0L) }
+    var totalRecords by remember { mutableStateOf(0L) }
     var loading by remember { mutableStateOf(true) }
 
     fun load() {
@@ -58,6 +59,7 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
                 daily = runCatching { dao.dailySince(since) }.getOrDefault(emptyList())
                 byModel = runCatching { dao.byModelSince(since) }.getOrDefault(emptyList())
                 calls = runCatching { dao.callCountSince(since) }.getOrDefault(0L)
+                totalRecords = runCatching { dao.countAll() }.getOrDefault(0L)
             }
             loading = false
         }
@@ -102,11 +104,28 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
                 Text("统计中…", fontSize = 12.sp, fontFamily = Mono, color = xc.faint,
                     modifier = Modifier.padding(vertical = 24.dp))
             } else if (daily.isEmpty()) {
-                Text(
-                    "这段时间还没有用量记录。\n用量统计从本次更新后才开始记录,之前的对话没有数据。",
-                    fontSize = 12.sp, fontFamily = Mono, color = xc.sub, lineHeight = 18.sp,
-                    modifier = Modifier.padding(vertical = 24.dp)
-                )
+                // 分两种情况说清楚。光说「没有记录」的话,用户没法判断是「压根没记上」
+                // 还是「记上了但不在这个时间范围内」—— 这两件事该做的动作完全不同。
+                Column(Modifier.padding(vertical = 24.dp)) {
+                    if (totalRecords > 0L) {
+                        Text(
+                            "这段时间没有记录,但库里一共有 $totalRecords 条。\n换个时间范围看看。",
+                            fontSize = 12.sp, fontFamily = Mono, color = xc.sub, lineHeight = 18.sp
+                        )
+                    } else {
+                        Text(
+                            "还没有任何用量记录。",
+                            fontSize = 12.sp, fontFamily = Mono, color = xc.sub, lineHeight = 18.sp
+                        )
+                        Text(
+                            "用量从 1.05 起才开始记,之前的对话没有数据。\n" +
+                                "如果更新后已经聊过、这里仍然是空的,去「日志查看」搜 XincodeUsage —— " +
+                                "那里会写明是没解析到 usage 还是写库失败了。",
+                            fontSize = 10.sp, fontFamily = Mono, color = xc.faint, lineHeight = 15.sp,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+                    }
+                }
             } else {
                 // 总览
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
