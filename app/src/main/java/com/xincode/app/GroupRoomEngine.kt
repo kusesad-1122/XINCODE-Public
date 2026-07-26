@@ -5,6 +5,7 @@ import android.util.Log
 import com.xincode.data.AppDatabase
 import com.xincode.data.GroupMemberEntity
 import com.xincode.data.GroupMessageEntity
+import com.xincode.data.GroupRoomEntity
 import com.xincode.core.AgentState
 import com.xincode.security.KeystoreProvider
 import kotlinx.coroutines.CoroutineScope
@@ -44,11 +45,22 @@ object GroupRoomEngine {
      *
      * 跳数上限([GroupRoomEntity.maxHops])管的是「链有多深」,这个管的是「树有多大」——
      * 光限深度不够:3 跳但每跳 @all,6 个成员就是 6+36+216 条。两个闸都要有。
+     *
+     * 房间设成无上限时这两个闸都不生效,唯一的终止条件是「没人再被 @」或者用户点停止。
      */
     private const val MAX_REPLIES_PER_CHAIN = 12
 
     /** 同一个成员在一条链里最多被叫醒几次。防两人来回对喷占满整条链。 */
     private const val MAX_TURNS_PER_MEMBER = 3
+
+    /**
+     * 无上限模式下仍然保留的硬顶。
+     *
+     * 「无上限」是指不再按跳数/条数提前刹车,由用户自己决定什么时候停 —— 但完全不设顶
+     * 是不负责任的:两个成员互相 @ 是个真实存在的闭环,用户睡着了或者切后台没看着,
+     * 它能一路烧到额度见底。这个数字大到正常讨论碰不到,只在真跑飞了的时候兜底。
+     */
+    private const val RUNAWAY_CEILING = 500
 
     /** 超过多少字符触发一次压缩。字符不是 token,但作为阈值够用且不用引分词器。 */
     private const val DEFAULT_COMPACT_CHARS = 24_000
@@ -88,7 +100,10 @@ object GroupRoomEngine {
         val room = dao.getRoom(roomId)
 
         val allowChain = room?.allowMemberMentions ?: true
-        val maxHops = (room?.maxHops ?: 3).coerceIn(1, 8)
+        // 0 是「无上限」的哨兵值,不能被 coerceIn 夹成 1 —— 那样开关就失效了
+        val rawHops = room?.maxHops ?: 3
+        val maxHops = if (rawHops == GroupRoomEntity.UNLIMITED_HOPS) rawHops
+        else rawHops.coerceIn(1, 20)
         val fullAccess = (room?.fullAccess ?: false) && agentFactory != null
 
         driveChain(
@@ -146,9 +161,12 @@ object GroupRoomEngine {
         seedContent: String,
         seedSender: String,
         allowChain: Boolean,
+        /** 跳数上限;[GroupRoomEntity.UNLIMITED_HOPS] 表示无上限。 */
         maxHops: Int,
         speak: suspend (name: String) -> String?
     ): Int {
+        val unlimited = maxHops == GroupRoomEntity.UNLIMITED_HOPS
+
         // 队列元素:(这句话的内容, 谁说的, 这句话处在第几跳)
         val queue = ArrayDeque<Triple<String, String, Int>>()
         queue += Triple(seedContent, seedSender, 0)
@@ -159,7 +177,7 @@ object GroupRoomEngine {
         while (queue.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
             val (text, from, hop) = queue.removeFirst()
-            if (hop >= maxHops) continue
+            if (!unlimited && hop >= maxHops) continue
 
             val targets = MentionRouting
                 .resolveTargets(memberNames, text, from)
@@ -168,12 +186,15 @@ object GroupRoomEngine {
 
             for (name in targets) {
                 currentCoroutineContext().ensureActive()
-                if (repliesMade >= MAX_REPLIES_PER_CHAIN) {
+                // 无上限模式只受跑飞兜底约束;正常模式受总量闸约束
+                val budget = if (unlimited) RUNAWAY_CEILING else MAX_REPLIES_PER_CHAIN
+                if (repliesMade >= budget) {
+                    Log.w(TAG, "chain stopped at $repliesMade replies (unlimited=$unlimited)")
                     queue.clear()
                     break
                 }
                 val used = turnsByMember.getOrDefault(name, 0)
-                if (used >= MAX_TURNS_PER_MEMBER) continue
+                if (!unlimited && used >= MAX_TURNS_PER_MEMBER) continue
                 turnsByMember[name] = used + 1
 
                 val reply = speak(name) ?: continue
@@ -298,7 +319,23 @@ object GroupRoomEngine {
             if (!resp.isSuccessful) {
                 throw IllegalStateException("HTTP ${resp.code}: ${text.take(150)}")
             }
-            return JSONObject(text).optJSONArray("choices")
+            val json = JSONObject(text)
+
+            // 群聊这条路径【不走 OpenAiClient】,所以记账也得自己来 ——
+            // 漏了这一步的后果就是:一屋子成员聊了半天烧掉一大笔,
+            // 用量分析页却显示「还没有用量记录」,账对不上。
+            json.optJSONObject("usage")?.let { usage ->
+                UsageRecorder.record(
+                    database = database,
+                    usage = usage,
+                    sessionId = -roomId,   // 负数避开主对话的 sessionId,便于区分来源
+                    model = model,
+                    provider = cfg.name,
+                    source = "group"
+                )
+            }
+
+            return json.optJSONArray("choices")
                 ?.optJSONObject(0)?.optJSONObject("message")
                 ?.optString("content").orEmpty().trim()
         }

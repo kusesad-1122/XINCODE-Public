@@ -388,11 +388,20 @@ private fun GroupRoomChatScreen(
                             } }
                         }
                         Spacer(Modifier.height(12.dp))
-                        Text("连锁最多几跳:${r.maxHops}", fontSize = 12.sp, fontFamily = Mono, color = xc.ink)
-                        Text("你说一句后,成员之间最多再传几轮。到数就停,防止它们无限对聊。",
-                            fontSize = 10.sp, fontFamily = Mono, color = xc.faint, lineHeight = 14.sp)
+                        val unlimited = r.maxHops == GroupRoomEntity.UNLIMITED_HOPS
+                        Text(
+                            if (unlimited) "连锁跳数:不限" else "连锁最多几跳:${r.maxHops}",
+                            fontSize = 12.sp, fontFamily = Mono, color = xc.ink
+                        )
+                        Text(
+                            if (unlimited)
+                                "讨论会一直往下走,直到没人再被 @,或者你点停止。适合让它们自己把事聊透。"
+                            else
+                                "你说一句后,成员之间最多再传几轮。到数就停,防止它们无限对聊。",
+                            fontSize = 10.sp, fontFamily = Mono, color = xc.faint, lineHeight = 14.sp
+                        )
                         Row(Modifier.padding(top = 6.dp)) {
-                            listOf(1, 2, 3, 5, 8).forEach { n ->
+                            listOf(1, 2, 3, 5, 8, 15).forEach { n ->
                                 Text(
                                     "$n", fontSize = 12.sp, fontFamily = Mono,
                                     color = if (r.maxHops == n) xc.green else xc.sub,
@@ -402,9 +411,30 @@ private fun GroupRoomChatScreen(
                                                 database.groupRoomDao().updateRoom(r.copy(maxHops = n, updatedAt = System.currentTimeMillis()))
                                             } }
                                         }
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
+                            Text(
+                                "不限", fontSize = 12.sp, fontFamily = Mono,
+                                color = if (unlimited) xc.red else xc.sub,
+                                modifier = Modifier
+                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                        scope.launch { withContext(Dispatchers.IO) {
+                                            database.groupRoomDao().updateRoom(
+                                                r.copy(maxHops = GroupRoomEntity.UNLIMITED_HOPS, updatedAt = System.currentTimeMillis())
+                                            )
+                                        } }
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                        if (unlimited) {
+                            Text(
+                                "⚠ 无上限时请留意额度:成员互相 @ 是个闭环,你不看着它能一直聊下去。" +
+                                    "仍保留一个跑飞兜底(单轮 500 条),但那是防事故的,不是给你当刹车用的。",
+                                fontSize = 9.sp, fontFamily = Mono, color = xc.red, lineHeight = 13.sp,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
                         }
                         Spacer(Modifier.height(12.dp))
                         ToggleRow(

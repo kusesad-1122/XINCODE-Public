@@ -38,8 +38,11 @@ data class GroupRoomEntity(
     /**
      * 一条消息最多能引发几跳连锁。用户发言是第 0 跳。
      *
-     * 防「两个成员无限对聊烧光额度」的硬闸,不是建议值 —— 到数就停,
-     * 不管它们聊得多起劲。
+     * 防「两个成员无限对聊烧光额度」的硬闸 —— 到数就停,不管它们聊得多起劲。
+     *
+     * 设成 [UNLIMITED_HOPS] 则不按跳数刹车,讨论一直往下走到没人再被 @ 为止,
+     * 什么时候收由你点停止决定。引擎里仍有一个大到正常碰不到的跑飞兜底,
+     * 因为「互相 @」是个真实闭环,人不看着的时候它能一路烧到额度见底。
      */
     val maxHops: Int = 3,
 
@@ -54,7 +57,12 @@ data class GroupRoomEntity(
 
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
-)
+) {
+    companion object {
+        /** [maxHops] 取这个值表示不按跳数刹车,由用户手动停。 */
+        const val UNLIMITED_HOPS = 0
+    }
+}
 
 /**
  * 房间成员。一个成员 = 一个身份卡 + 一个在房间里的显示名。

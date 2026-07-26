@@ -71,6 +71,13 @@ android {
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
+
+    testOptions {
+        // android.util.Log 等 framework 类在单测里是【抛异常】的 stub,
+        // 于是被测代码里随手一句 Log.w 就能让纯逻辑测试挂掉。
+        // 让 stub 返回默认值而不是抛。(org.json 不靠这个 —— 它挂了真实实现)
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
@@ -101,4 +108,8 @@ dependencies {
     // 群聊连锁的防失控闸门要能脱离网络测(见 GroupChainTest)
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
+    // Android 打包的 org.json 在单测里是抛异常的 stub,挂上真实实现。
+    // 注意这条要配合 isReturnDefaultValues:那个开关会让 stub 静默返回 null,
+    // 只开开关不换实现的话,碰 JSON 的测试会得到一堆诡异空值而不是明确报错。
+    testImplementation("org.json:json:20231013")
 }

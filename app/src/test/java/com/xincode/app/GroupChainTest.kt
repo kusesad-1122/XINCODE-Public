@@ -163,6 +163,46 @@ class GroupChainTest {
     }
 
     @Test
+    fun unlimitedIgnoresHopAndTurnLimits() = runTest {
+        val spoke = mutableListOf<String>()
+        val n = GroupRoomEngine.driveChain(
+            memberNames = listOf("甲", "乙"),
+            seedContent = "@甲 开始",
+            seedSender = "",
+            allowChain = true,
+            maxHops = 0            // 0 = 无上限
+        ) { name ->
+            spoke += name
+            // 让它自然收尾:跑够 40 轮后不再点人
+            if (spoke.size >= 40) "聊完了"
+            else if (name == "甲") "@乙 该你" else "@甲 该你"
+        }
+
+        // 有上限时单人最多 3 次、总共最多 12 条;无上限必须能远远越过这条线
+        assertEquals(40, n)
+        assertTrue("单人次数闸在无上限下不该生效", spoke.count { it == "甲" } > 3)
+    }
+
+    @Test
+    fun unlimitedStillHasRunawayCeiling() = runTest {
+        var count = 0
+        val n = GroupRoomEngine.driveChain(
+            memberNames = listOf("甲", "乙"),
+            seedContent = "@甲 开始",
+            seedSender = "",
+            allowChain = true,
+            maxHops = 0
+        ) { name ->
+            count++
+            // 永不收尾的死循环剧本 —— 兜底不生效的话这个测试会跑不完
+            if (name == "甲") "@乙 该你" else "@甲 该你"
+        }
+
+        assertEquals("跑飞兜底必须封顶,否则真实场景会一直烧额度", 500, n)
+        assertEquals(n, count)
+    }
+
+    @Test
     fun cancellationBreaksChainBetweenTurns() = runTest {
         val spoke = mutableListOf<String>()
         var thrown: Throwable? = null
