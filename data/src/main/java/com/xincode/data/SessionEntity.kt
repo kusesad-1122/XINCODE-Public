@@ -1,12 +1,20 @@
 package com.xincode.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
  * A conversation session. Multiple sessions allow parallel conversations.
  */
-@Entity(tableName = "sessions")
+// 索引名必须显式写成 idx_ 开头,不能用 Room 默认的 index_sessions_identityId。
+// 原因在 TableInfo.Index.equals:名字以 `index_` 开头时它只要求对方也以 `index_` 开头,
+// 否则要求【名字完全相等】。MIGRATION_18_19 当年建的就是 idx_ 前缀,已经写进老用户的
+// 数据库了,改用默认名反而对不上 —— 只能迁就既成事实。
+@Entity(
+    tableName = "sessions",
+    indices = [Index(value = ["identityId"], name = "idx_sessions_identityId")]
+)
 data class SessionEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

@@ -33,9 +33,6 @@ class SchemaConsistencyTest {
 
     private val dataSrc = File("src/main/java/com/xincode/data")
 
-    /** Room 只认这个前缀的索引,别的名字它读都不读。 */
-    private val ROOM_INDEX_PREFIX = "index_"
-
     /** 迁移建的索引与实体声明的索引必须一致。 */
     @Test
     fun migrationIndicesMatchEntityIndices() {
@@ -130,7 +127,10 @@ class SchemaConsistencyTest {
             for ((_, ev) in events) {
                 val (kind, m) = ev
                 val name = m.groupValues[1]
-                if (!name.startsWith(ROOM_INDEX_PREFIX)) continue  // Room 看不见的索引不参与比对
+                // 不能按名字前缀过滤!Room 读数据库索引时只看 PRAGMA index_list 的
+                // origin='c'(是不是 CREATE INDEX 建的),名字叫什么它一概照收。
+                // 早先以为 `idx_` 开头的索引 Room 会忽略,是错的 —— 那样会漏掉
+                // idx_sessions_identityId 这种,而它同样能让升级校验失败。
                 if (kind == 'C') live[name] = m.groupValues[2] else live.remove(name)
             }
         }
