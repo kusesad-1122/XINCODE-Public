@@ -211,6 +211,10 @@ override fun onCreate() {
         Log.i("XINCODE", "=== APP START ===")
         installCrashGuard()
 
+        // 自我保护要在【建库之前】就位:tools 模块拿不到 Context,这个路径只能从这里注入。
+        // 晚一步注入,这一轮里 AI 就能把 App 自己的 databases/ 改坏(真实事故,见 SelfProtect)。
+        com.xincode.tools.SelfProtect.appDataDir = applicationInfo.dataDir.orEmpty()
+
         // ⚠️ database 必须在【任何用到它的代码之前】赋值。
         // 它是 lateinit,提前一行访问就是 UninitializedPropertyAccessException,
         // 抛在 Application.onCreate 里 = 进程当场死 = 用户看到的「点开就闪退」,

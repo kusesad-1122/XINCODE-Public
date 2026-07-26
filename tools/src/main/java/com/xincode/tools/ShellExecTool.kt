@@ -42,6 +42,11 @@ class ShellExecTool : Tool {
     override suspend fun execute(params: Map<String, String>): ToolResult = withContext(Dispatchers.IO) {
         val command = params["command"] ?: return@withContext ToolResult.Error("缺少 command 参数")
 
+        // 设备 root 之后这里会【自动】走 root,一个 chmod/chown 落进 App 自己的 databases/
+        // 就能让文件变成 root 所有、App 的 uid 反而读不了 —— 下次启动直接开不了库,
+        // 用户全部数据丢失。这条路真的被踩过,所以在跑之前先拦。见 SelfProtect。
+        SelfProtect.refuseCommand(command)?.let { return@withContext ToolResult.Error(it) }
+
         // When root is available, use libsu (RootShellManager)
         if (RootShellManager.rootStatus == RootStatus.OK) {
             return@withContext executeViaRoot(command)

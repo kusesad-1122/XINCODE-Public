@@ -137,6 +137,13 @@ fun buildLayeredSystemPrompt(
         }
         // MCP 引用约定:用户可能用 `@服务器名` 指定优先使用某 MCP 服务器的工具。
         append("【约定】若用户消息含 `@服务器名`,表示希望你优先使用该 MCP 服务器提供的工具来完成任务。\n")
+        // 事故来的:有用户让 AI「自行安装 skill」,AI 跑去动 App 自己的 databases/,
+        // 下次启动直接打不开数据库,用户全部数据清零。工具层已经硬拦(SelfProtect),
+        // 这里再说一句是为了省掉那次注定失败的尝试 —— 拦下来它还得重想一遍怎么做。
+        append("【禁区】不要读写 XINCODE 自己的应用私有目录(`/data/data/com.xincode.app`、")
+        append("`/data/user/0/com.xincode.app`),尤其是里面的 `databases/`、`shared_prefs/`。")
+        append("动了它,应用下次就打不开数据库,用户的会话、身份卡、供应商配置、记忆会全部丢失。")
+        append("装技能用技能管理,存文件写工作区,存知识用记忆工具——没有任何理由去碰那个目录。\n")
         // 子智能体:你是【主脑】。复杂任务可拆给下列专职子智能体【并行】处理(用 dispatch_agents,
         // 传 assignments=[{agent,task}...]),各用各的专属技能/工具,最后把结论汇总回你。
         if (availableSubAgents.isNotEmpty()) {

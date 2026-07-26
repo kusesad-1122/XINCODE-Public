@@ -87,6 +87,17 @@ class MainActivity : ComponentActivity() {
                                 } else {
                                     append("旧数据文件已损坏且无法保留。")
                                 }
+                                // 「打不开」和「数据坏了」是两回事,用户看到的报错完全一样,
+                                // 但只有前者有救。权限类失败一律是外部改动造成的 —— 最常见的是
+                                // 让 AI 用 root 去动应用私有目录 —— 说清楚,用户下次才知道怎么避开。
+                                if (dbRecovery?.contains("Permission denied") == true ||
+                                    dbRecovery?.contains("not readable") == true
+                                ) {
+                                    append("\n\n这是权限被改动造成的,数据本身没坏。")
+                                    append("通常是让 AI 用 root 动了应用私有目录 ")
+                                    append("(/data/data/com.xincode.app)。")
+                                    append("本版本已禁止 AI 改这个目录,升级后不会再出现。")
+                                }
                                 append("\n\n原因:$dbRecovery")
                             }
                         )

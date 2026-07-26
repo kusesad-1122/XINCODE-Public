@@ -43,6 +43,10 @@ class SuExecTool : Tool {
     override suspend fun execute(params: Map<String, String>): ToolResult = withContext(Dispatchers.IO) {
         val command = params["command"] ?: return@withContext ToolResult.Error("缺少 command 参数")
 
+        // root 下改 App 自己的 databases/ 会让文件归 root 所有,App 的 uid 反而读不了,
+        // 下次启动就开不了库、用户数据全丢。见 SelfProtect。
+        SelfProtect.refuseCommand(command)?.let { return@withContext ToolResult.Error(it) }
+
         // Check root status first
         if (RootShellManager.rootStatus != RootStatus.OK) {
             return@withContext ToolResult.Error(

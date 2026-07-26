@@ -699,6 +699,24 @@ abstract class AppDatabase : RoomDatabase() {
             } catch (t: Throwable) {
                 runCatching { db.close() }
                 val reason = "${t::class.java.simpleName}: ${t.message?.take(400) ?: ""}"
+
+                // 先试着【修好权限再开一次】,不要一上来就把库废掉。
+                //
+                // 真实事故:有用户让 AI 自行安装技能,AI 动到了 App 自己的 databases/,
+                // 结果是 "Permission denied ... xincode.db is not readable"。注意这时
+                // 数据一个字节都没坏 —— 坏的只是文件的权限位。直接走下面的改名重建,
+                // 等于为一个改一下权限就能修好的问题,把用户的会话、身份卡、供应商配置、
+                // 记忆全部清空。这个代价和病因完全不成比例。
+                if (tryRepairPermissions(context)) {
+                    val retried = runCatching {
+                        builder(context).build().also { it.openHelper.writableDatabase }
+                    }.getOrNull()
+                    if (retried != null) {
+                        android.util.Log.w("XincodeDb", "数据库权限已修复,原样打开(未重建): $reason")
+                        return retried
+                    }
+                }
+
                 android.util.Log.e("XincodeDb", "打开数据库失败,改名备份后重建: $reason", t)
                 lastBackupName = backupBrokenDatabase(context)
                 lastRecoveredFailure = reason
@@ -709,6 +727,42 @@ abstract class AppDatabase : RoomDatabase() {
                     fresh.openHelper.writableDatabase
                 }
             }
+        }
+
+        /**
+         * 把 `databases/` 目录和三个库文件的权限位改回自己可读写。
+         *
+         * @return 是否真的改动了什么(没改动就别白retry一次)
+         *
+         * 【能修什么、修不了什么】只改 mode 位,所以修得了「读写位被抹掉」,
+         * 修不了「文件被 chown 给了 root」—— 后者 App 自己的 uid 无权改,
+         * 只能回落到改名重建。这里不去调 root 来抢回来:启动路径上拉起 root shell
+         * 会弹授权框、会卡住冷启动,而且真到了那一步,弹一个说明清楚的对话框
+         * 让用户知道发生了什么,比偷偷用 root 改回去更该做。
+         *
+         * 目录本身也要修:`databases/` 少了执行位,里面的文件一个都打不开,
+         * 而报错长得和文件本身没权限一模一样。
+         */
+        private fun tryRepairPermissions(context: Context): Boolean {
+            val main = context.getDatabasePath(DB_NAME)
+            val dir = main.parentFile ?: return false
+            var changed = false
+            runCatching {
+                // 目录要可读可写【可执行】—— 目录的执行位就是「能进去查里面的文件」。
+                if (!dir.canRead() && dir.setReadable(true, true)) changed = true
+                if (!dir.canWrite() && dir.setWritable(true, true)) changed = true
+                if (!dir.canExecute() && dir.setExecutable(true, true)) changed = true
+            }
+            for (suffix in listOf("", "-wal", "-shm")) {
+                val f = java.io.File(dir, "$DB_NAME$suffix")
+                if (!f.exists()) continue
+                runCatching {
+                    if (!f.canRead() && f.setReadable(true, true)) changed = true
+                    if (!f.canWrite() && f.setWritable(true, true)) changed = true
+                }
+            }
+            if (changed) android.util.Log.w("XincodeDb", "尝试修复数据库文件权限")
+            return changed
         }
 
         /**

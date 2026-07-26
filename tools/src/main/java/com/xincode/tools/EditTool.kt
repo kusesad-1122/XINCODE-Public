@@ -50,6 +50,9 @@ class EditTool : Tool {
 
         val safePath = PathResolver.resolve(path)
             ?: return@withContext ToolResult.Error("路径不在工作区内: $path")
+        // 不让 AI 改 App 自己的运行时数据 —— 动了 databases/ 下次启动就打不开库,
+        // 用户的会话、身份卡、供应商配置、记忆全没。见 SelfProtect。
+        SelfProtect.refuse(safePath)?.let { return@withContext ToolResult.Error(it) }
         val file = File(safePath)
 
         // old_string 空 → 新建文件
