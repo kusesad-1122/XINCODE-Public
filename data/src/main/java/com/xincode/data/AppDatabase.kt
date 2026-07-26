@@ -39,6 +39,8 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        const val DB_NAME = "xincode.db"
+
         private val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Add enabledModelIds column; populate with JSON array wrapping old model
@@ -531,23 +533,93 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** 上一次打开数据库时发生的致命错误。非空表示旧库已被改名备份,UI 应当提示用户。 */
+        @Volatile
+        var lastRecoveredFailure: String? = null
+            private set
+
+        /** 被改名备份的旧库文件名(仅在 lastRecoveredFailure 非空时有意义)。 */
+        @Volatile
+        var lastBackupName: String? = null
+            private set
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                INSTANCE ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "xincode.db"
-                )
-                    .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35)
-                    .addCallback(object : RoomDatabase.Callback() {
-                        override fun onCreate(db: SupportSQLiteDatabase) {
-                            super.onCreate(db)
-                            createFts5Tables(db)
-                        }
-                    })
-                    .fallbackToDestructiveMigration()
-                    .build().also { INSTANCE = it }
+                INSTANCE ?: openOrRecover(context.applicationContext).also { INSTANCE = it }
             }
+        }
+
+        private fun builder(context: Context) = Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            DB_NAME
+        )
+            .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35)
+            .addCallback(object : RoomDatabase.Callback() {
+                override fun onCreate(db: SupportSQLiteDatabase) {
+                    super.onCreate(db)
+                    createFts5Tables(db)
+                }
+            })
+            .fallbackToDestructiveMigration()
+
+        /**
+         * 打开数据库;打不开就把旧库改名备份后重建一个空的。
+         *
+         * 为什么必须有这一层:
+         * - `fallbackToDestructiveMigration()` 只管【找不到迁移路径】这一种情况。迁移【跑完之后】
+         *   Room 还会拿实体声明和数据库实况逐项比对(列、类型、主键、索引……),这一步不匹配会直接
+         *   抛 IllegalStateException,fallback 完全不介入 —— 它认为这是开发者写错了迁移,必须让人看见。
+         * - 结果就是:开发者一个疏忽 = 所有老用户【永远打不开 App】,而且没有任何自救手段,
+         *   只能卸载重装(数据同样全没,还得等下一个版本)。这个代价太大了。
+         *
+         * 折中做法:改名备份而不是删除。用户至少进得去,数据也还躺在私有目录里,
+         * 修好之后有机会捞回来。同时把失败原因记下来,让界面能明确告诉用户发生了什么 ——
+         * 数据「凭空消失」而不给说法,比崩溃更糟。
+         */
+        private fun openOrRecover(context: Context): AppDatabase {
+            val db = builder(context).build()
+            try {
+                // Room 是懒打开的:不主动碰一下,迁移要等到第一次查询才执行,
+                // 那时异常已经抛在某个协程深处,这里根本接不住。必须在这里逼它现在就打开。
+                db.openHelper.writableDatabase
+                return db
+            } catch (t: Throwable) {
+                runCatching { db.close() }
+                val reason = "${t::class.java.simpleName}: ${t.message?.take(400) ?: ""}"
+                android.util.Log.e("XincodeDb", "打开数据库失败,改名备份后重建: $reason", t)
+                lastBackupName = backupBrokenDatabase(context)
+                lastRecoveredFailure = reason
+                // 备份之后原路径已经没有文件了,这次 build 会走全新建库。
+                return builder(context).build().also { fresh ->
+                    // 同样主动打开一次:如果连空库都建不起来,那就是真的没救了,
+                    // 此时让它照常抛出去 —— 掩盖一个连空库都开不了的环境毫无意义。
+                    fresh.openHelper.writableDatabase
+                }
+            }
+        }
+
+        /**
+         * 把损坏的库连同 WAL/SHM 一起改名。
+         *
+         * 必须三个文件一起动:只改主库而留下 -wal,SQLite 下次打开时会把那份 WAL 当成
+         * 新库的日志重放,等于把坏数据又搬了回来。
+         */
+        private fun backupBrokenDatabase(context: Context): String? {
+            val main = context.getDatabasePath(DB_NAME)
+            if (!main.exists()) return null
+            val stamp = System.currentTimeMillis()
+            val backupName = "$DB_NAME.broken-$stamp"
+            var ok = false
+            for (suffix in listOf("", "-wal", "-shm")) {
+                val src = java.io.File(main.parentFile, "$DB_NAME$suffix")
+                if (!src.exists()) continue
+                val dst = java.io.File(main.parentFile, "$backupName$suffix")
+                // 改名失败(极少见,比如文件被别的进程占住)就只能删,
+                // 留着损坏文件的话下次启动会重复走这条路径,永远开不起来。
+                if (!src.renameTo(dst)) src.delete() else ok = true
+            }
+            return if (ok) backupName else null
         }
 
         /** Create FTS4 virtual table + sync triggers. Idempotent (IF NOT EXISTS). */

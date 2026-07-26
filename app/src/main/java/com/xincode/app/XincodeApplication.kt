@@ -206,6 +206,15 @@ override fun onCreate() {
         super.onCreate()
         Log.i("XINCODE", "=== APP START ===")
         installCrashGuard()
+
+        // ⚠️ database 必须在【任何用到它的代码之前】赋值。
+        // 它是 lateinit,提前一行访问就是 UninitializedPropertyAccessException,
+        // 抛在 Application.onCreate 里 = 进程当场死 = 用户看到的「点开就闪退」,
+        // 而且全新安装一样崩,没有任何幸存路径。下面新增初始化时务必守住这个顺序。
+        database = AppDatabase.getInstance(this)
+        // Initialize shared HTTP disk cache
+        HttpCacheProvider.init(cacheDir)
+
         pruneOldAttachments()
         UsageRecorder.prune(database)
         kanbanRunner = KanbanRunner(database) { buildIsolatedAgentCore() }
@@ -220,9 +229,6 @@ override fun onCreate() {
                 }
             }
         }
-        // Initialize shared HTTP disk cache
-        HttpCacheProvider.init(cacheDir)
-        database = AppDatabase.getInstance(this)
         keystore = KeystoreProvider()
         openAiClient = OpenAiClient(database, keystore)
         // 按功能绑定的 client:各自去读【功能模型配置】,没配就自动回落到活跃配置。

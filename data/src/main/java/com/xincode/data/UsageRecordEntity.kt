@@ -2,6 +2,7 @@ package com.xincode.data
 
 import androidx.room.Dao
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -15,7 +16,12 @@ import androidx.room.Query
  * 缓存读写单独记,是因为算成本时它们的单价跟普通输入差一个数量级
  * (缓存命中通常只要十分之一),混在 inputTokens 里成本就没法估准。
  */
-@Entity(tableName = "usage_records")
+// indices 必须在这里声明,不能只在迁移 SQL 里 CREATE INDEX。
+// Room 升级后会拿【实体声明】和【数据库实况】逐项比对,索引集合也在比对范围内:
+// 迁移建了索引而实体没声明,两边就对不上,Room 直接抛 IllegalStateException 崩在启动。
+// 而且 fallbackToDestructiveMigration 救不了 —— 它只在【找不到迁移路径】时兜底,
+// 迁移跑完后的校验失败属于「你的迁移写错了」,Room 认为必须让开发者看见。
+@Entity(tableName = "usage_records", indices = [Index("ts")])
 data class UsageRecordEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

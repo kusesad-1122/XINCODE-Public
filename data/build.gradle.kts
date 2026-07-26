@@ -27,4 +27,7 @@ dependencies {
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
     api("androidx.room:room-runtime:$roomVersion")
+    testImplementation("junit:junit:4.13.2")
 }
+
+android { testOptions { unitTests.isReturnDefaultValues = true } }

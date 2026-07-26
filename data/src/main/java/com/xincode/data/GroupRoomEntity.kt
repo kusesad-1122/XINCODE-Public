@@ -3,6 +3,7 @@ package com.xincode.data
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -33,7 +34,8 @@ data class GroupRoomEntity(
  * 显示名要独立于身份卡名字:同一张「代码评审」卡可以在房间里放两份,
  * 分别叫「评审甲」「评审乙」让它们对着吵;共用一个名字 @ 就分不清了。
  */
-@Entity(tableName = "group_members")
+// 索引必须在实体上声明,只在迁移 SQL 里 CREATE INDEX 会让 Room 升级校验失败(见 UsageRecordEntity 的说明)。
+@Entity(tableName = "group_members", indices = [Index("roomId")])
 data class GroupMemberEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
@@ -49,7 +51,7 @@ data class GroupMemberEntity(
 )
 
 /** 房间里的一条消息。sender 为空串表示是用户发的。 */
-@Entity(tableName = "group_messages")
+@Entity(tableName = "group_messages", indices = [Index("roomId")])
 data class GroupMessageEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

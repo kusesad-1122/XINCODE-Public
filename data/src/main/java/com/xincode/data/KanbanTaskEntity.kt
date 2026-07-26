@@ -3,6 +3,7 @@ package com.xincode.data
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.PrimaryKey
 import androidx.room.Query
@@ -69,7 +70,8 @@ data class KanbanTaskEntity(
  * 一次执行的记录。任务本身只留最近一次结果,历次过程记在这里。
  * 反复失败时能看出「是一直失败还是偶发」,这是只存最新结果看不出来的。
  */
-@Entity(tableName = "kanban_runs")
+// 索引必须在实体上声明,只在迁移 SQL 里 CREATE INDEX 会让 Room 升级校验失败(见 UsageRecordEntity 的说明)。
+@Entity(tableName = "kanban_runs", indices = [Index("taskId")])
 data class KanbanRunEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

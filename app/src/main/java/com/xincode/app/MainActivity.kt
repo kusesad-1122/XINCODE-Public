@@ -12,7 +12,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.rememberDrawerState
@@ -63,6 +65,34 @@ class MainActivity : ComponentActivity() {
             var editingIdentityId by remember { mutableStateOf<Long?>(null) }
             val drawerState = rememberDrawerState(DrawerValue.Closed)
             val drawerScope = rememberCoroutineScope()
+
+            // 数据库开不起来被自动重建过:必须告诉用户,不能让数据「无声消失」。
+            // 只在本次进程内提示一次,消掉后不再打扰。
+            var dbRecovery by remember {
+                mutableStateOf(com.xincode.data.AppDatabase.lastRecoveredFailure)
+            }
+            if (dbRecovery != null) {
+                val backup = com.xincode.data.AppDatabase.lastBackupName
+                AlertDialog(
+                    onDismissRequest = { dbRecovery = null },
+                    title = { Text("数据库已重建") },
+                    text = {
+                        Text(
+                            buildString {
+                                append("上次的数据文件打不开,应用已新建了一个空数据库,否则会一直闪退。\n\n")
+                                if (backup != null) {
+                                    append("旧数据没有删除,已改名保留在应用私有目录:\n$backup\n\n")
+                                    append("如果里面有重要内容,先别卸载应用 —— 卸载会连备份一起清掉。")
+                                } else {
+                                    append("旧数据文件已损坏且无法保留。")
+                                }
+                                append("\n\n原因:$dbRecovery")
+                            }
+                        )
+                    },
+                    confirmButton = { TextButton(onClick = { dbRecovery = null }) { Text("知道了") } }
+                )
+            }
 
             // 启动时静默检查更新:失败/限流/已最新一律安静跳过,只有真有新版才弹窗。
             var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
