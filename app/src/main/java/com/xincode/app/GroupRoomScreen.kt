@@ -267,9 +267,15 @@ private fun GroupRoomChatScreen(
                         fontSize = 10.sp, fontFamily = Mono,
                         color = if (m.sender.isBlank()) xc.sub else xc.green
                     )
-                    Text(m.content, fontSize = 12.sp, fontFamily = Mono,
-                        color = if (m.isDigest) xc.faint else xc.ink, lineHeight = 18.sp,
-                        modifier = Modifier.padding(top = 2.dp))
+                    // 群成员的输出和主对话一样几乎必然带 Markdown,
+                    // 用裸 Text 会把 **重点** 的星号原样显示出来。
+                    if (m.isDigest) {
+                        Text(m.content, fontSize = 12.sp, fontFamily = Mono,
+                            color = xc.faint, lineHeight = 18.sp,
+                            modifier = Modifier.padding(top = 2.dp))
+                    } else {
+                        MarkdownContent(m.content, modifier = Modifier.padding(top = 2.dp))
+                    }
                 }
             }
             if (busy) {
