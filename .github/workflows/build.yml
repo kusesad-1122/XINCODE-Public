@@ -25,7 +25,29 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platforms;android-34 build-tools;34.0.0'
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;27.2.12479018'
+
+      # codegraph 内核是 Rust + tree-sitter,要交叉编译成 arm64 的 .so 才能打进 APK。
+      # 产物不进 git(34MB,每次重编都是新 blob),所以每次构建都在这里现编。
+      - name: Setup Rust for Android
+        run: |
+          rustup target add aarch64-linux-android
+      - name: Build codegraph kernel (arm64)
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+        run: |
+          chmod +x codegraph-kernel/build-android.sh
+          ./codegraph-kernel/build-android.sh
+
+      - name: Cache Rust
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            codegraph-kernel/target
+          key: rust-${{ hashFiles('codegraph-kernel/Cargo.lock') }}
+          restore-keys: rust-
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -86,7 +108,19 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platforms;android-34 build-tools;34.0.0'
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;27.2.12479018'
+
+      # codegraph 内核是 Rust + tree-sitter,要交叉编译成 arm64 的 .so 才能打进 APK。
+      # 产物不进 git(34MB,每次重编都是新 blob),所以每次构建都在这里现编。
+      - name: Setup Rust for Android
+        run: |
+          rustup target add aarch64-linux-android
+      - name: Build codegraph kernel (arm64)
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
+        run: |
+          chmod +x codegraph-kernel/build-android.sh
+          ./codegraph-kernel/build-android.sh
 
       - name: Decode keystore
         run: |

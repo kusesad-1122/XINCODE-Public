@@ -19,3 +19,8 @@ captures/
 # Keystore and signing (DO NOT COMMIT)
 *.jks
 keystore.properties
+
+# 交叉编译产物:34MB 的 .so 不进 git,由 CI 每次从 codegraph-kernel/ 源码编出来。
+# 提交进去的话每次重编都是一个新的 34MB blob,仓库体积会失控。
+app/src/main/jniLibs/
+codegraph-kernel/target/

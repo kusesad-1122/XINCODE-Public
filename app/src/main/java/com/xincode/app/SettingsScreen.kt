@@ -63,6 +63,7 @@ fun SettingsScreen(
     onNavigateToFunctionModels: () -> Unit = {},  // 功能模型配置(每个内部调用点各指一套已存配置)
     onNavigateToLanDevices: () -> Unit = {},      // 局域网设备发现
     onNavigateToLogs: () -> Unit = {},            // 日志查看
+    onNavigateToCodeIndex: () -> Unit = {},       // 代码索引
     onNavigateToUsageStats: () -> Unit = {},      // 用量分析
     onNavigateToKanban: () -> Unit = {},          // 看板
     onNavigateToGroupRooms: () -> Unit = {},      // 群聊房间
@@ -215,6 +216,7 @@ fun SettingsScreen(
         SettingRow("看板", "跨会话的长期待办,可把 AI 的计划一键导入") { onNavigateToKanban() }
         SettingRow("用量分析", "30 天趋势、模型分布、缓存命中率与成本估算") { onNavigateToUsageStats() }
         SettingRow("日志", "崩溃与运行日志,按级别/关键词过滤,可复制反馈") { onNavigateToLogs() }
+        SettingRow("代码索引", "把工作区代码结构抽进本地索引,AI 查符号定义与调用关系不再靠读文件") { onNavigateToCodeIndex() }
         SettingRow("Skills 技能", "管理可复用提示词模板") { onNavigateToSkills() }
         SettingRow("MCP 服务器", "外部工具协议服务器管理") { onNavigateToMcp() }
         SettingRow("Git 接入", "OAuth 登录 GitHub + 远程/本地 MCP(免 root 也能用)") { onNavigateToGit() }

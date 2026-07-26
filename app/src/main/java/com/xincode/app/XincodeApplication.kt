@@ -327,6 +327,9 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         // recall_memory 给的是截断后的候选摘要;认出是哪条之后要用这个取全文,
         // 拿半截的决策记录去干活,少的那半段可能正是关键约束。
         toolRegistry.register(GetMemoryByTitleTool(database))
+        // 代码结构查询:比 grep 准(基于语法树),而且不用把文件读进上下文。
+        // 内核加载不了时它自己会报错让 agent 退回 grep,不影响启动。
+        toolRegistry.register(CodeGraphTool(database))
         // Hermes-① 自进化学习闭环:记忆写入 + 技能管理(主对话也可用,后台复盘分身主要用)。
         toolRegistry.register(SaveMemoryTool(database))
         toolRegistry.register(SkillManageTool(database))

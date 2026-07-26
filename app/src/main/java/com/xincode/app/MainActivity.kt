@@ -310,6 +310,7 @@ class MainActivity : ComponentActivity() {
                         onNavigateToFunctionModels = { currentPage = "function_models" },
                         onNavigateToLanDevices = { currentPage = "lan_devices" },
                         onNavigateToLogs = { currentPage = "logs" },
+                        onNavigateToCodeIndex = { currentPage = "code_index" },
                         onNavigateToUsageStats = { currentPage = "usage_stats" },
                         onNavigateToKanban = { currentPage = "kanban" },
                         onNavigateToGroupRooms = { currentPage = "group_rooms" },
@@ -415,6 +416,7 @@ class MainActivity : ComponentActivity() {
                     )
                     "lan_devices" -> LanDiscoveryScreen(onBack = { currentPage = "settings" })
                     "logs" -> LogViewerScreen(onBack = { currentPage = "settings" })
+                    "code_index" -> CodeIndexScreen(database = app.database, onBack = { currentPage = "settings" })
                     "usage_stats" -> UsageStatsScreen(database = app.database, onBack = { currentPage = "settings" })
                     "kanban" -> KanbanScreen(database = app.database, planState = app.planState, runner = app.kanbanRunner, onBack = { currentPage = "settings" })
                     "group_rooms" -> GroupRoomsScreen(database = app.database, keystore = app.keystore,
@@ -514,7 +516,7 @@ private fun parentPageOf(page: String): String = when (page) {
     "settings" -> "chat"
     "supplier", "model_market", "git_config", "audit", "memory_storage", "skills", "mcp", "curated_memory",
     "cron_jobs", "aux_models", "function_models", "sub_agents", "env_config", "context_compress", "about",
-    "lan_devices", "logs", "usage_stats", "kanban", "group_rooms", "profiles" -> "settings"
+    "lan_devices", "logs", "usage_stats", "kanban", "group_rooms", "profiles", "code_index" -> "settings"
     "replay" -> "workflow"
     "identity_edit" -> "identity_list"
     "identity_list" -> "settings"
