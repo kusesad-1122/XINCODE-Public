@@ -49,14 +49,17 @@ object PresetTeam {
         val temperature: Float
     )
 
-    // 只读一档:看得见、查得到,但动不了任何东西
-    private const val T_READONLY = "file_read,list_dir,glob,grep,web_search,web_fetch,recall_memory,current_time"
+    // 只读一档:看得见、查得到,但动不了任何东西。
+    // invoke_skill 必须在最低档就给 —— 每个角色都有自己的专属技能,
+    // 调不动技能的话那些技能等于没装。
+    private const val T_READONLY =
+        "file_read,list_dir,glob,grep,web_search,web_fetch,recall_memory,get_memory_by_title,current_time,invoke_skill"
 
-    // 会写文档一档:在只读基础上加落笔的能力
-    private const val T_WRITER = "$T_READONLY,file_write,file_edit,save_memory"
+    // 会写文档一档:在只读基础上加落笔和建目录的能力(技能都要求把产出落盘)
+    private const val T_WRITER = "$T_READONLY,file_write,file_edit,make_directory,save_memory"
 
-    // 能动手一档:加上执行
-    private const val T_BUILDER = "$T_WRITER,multi_edit,shell_exec,execute_code,invoke_skill"
+    // 能动手一档:加上执行与批量编辑
+    private const val T_BUILDER = "$T_WRITER,multi_edit,shell_exec,execute_code,download_file"
 
     val ROLES: List<Role> = listOf(
         Role(
@@ -88,7 +91,10 @@ object PresetTeam {
                 【行动项】…(附:谁、何时)
 
                 什么时候不说话:讨论正常推进、没有新结论产生时,不要为了刷存在感附和。
-            """.trimIndent()
+            
+
+                你的专属技能:**会议纪要**。要整理纪要时先调用它 —— 里面写死了格式,散文式的纪要没法拿去干活。
+                """.trimIndent()
         ),
         Role(
             name = "产品经理",
@@ -117,7 +123,10 @@ object PresetTeam {
                 交互细节找 @前端设计师;验收标准找 @测试工程师;要落纪要找 @秘书助理。
 
                 什么时候不说话:讨论纯技术实现细节时,除非它影响了范围或工期。
-            """.trimIndent()
+            
+
+                你的专属技能:**写PRD**。要写需求文档时先调用它 —— 它会逼你写清楚「这一版不做什么」。
+                """.trimIndent()
         ),
         Role(
             name = "架构师",
@@ -145,7 +154,10 @@ object PresetTeam {
                 前端架构相关找 @前端设计师;可测性找 @测试工程师。
 
                 什么时候不说话:讨论没有触及结构性决策时。不要把每个话题都上升到架构。
-            """.trimIndent()
+            
+
+                你的专属技能:**技术方案**。要出方案时先调用它 —— 它要求你必须给取舍,不能只给一个最佳实践。
+                """.trimIndent()
         ),
         Role(
             name = "工程师",
@@ -174,7 +186,10 @@ object PresetTeam {
                 接口和交互对不上找 @前端设计师;边界情况找 @测试工程师。
 
                 什么时候不说话:纯需求讨论、还没到落地阶段时,别急着说实现。
-            """.trimIndent()
+            
+
+                你的专属技能:**工时评估**。要估工期时先调用它 —— 它要求给区间并说清楚区间为什么这么宽。
+                """.trimIndent()
         ),
         Role(
             name = "前端设计师",
@@ -201,7 +216,10 @@ object PresetTeam {
                 涉及数据结构和状态找 @架构师。
 
                 什么时候不说话:讨论后端实现、部署、数据库时。
-            """.trimIndent()
+            
+
+                你的专属技能:**交互方案**。要出交互稿时先调用它 —— 它会提醒你补上加载/空数据/出错三种状态。
+                """.trimIndent()
         ),
         Role(
             name = "测试工程师",
@@ -232,7 +250,10 @@ object PresetTeam {
                 具体怎么修找 @工程师;异常状态的界面找 @前端设计师。
 
                 什么时候不说话:方案还在草图阶段、细节都没定时,先让他们说完。
-            """.trimIndent()
+            
+
+                你的专属技能:**测试用例**。要列用例时先调用它 —— 它列了一整套最容易被漏掉的边界。
+                """.trimIndent()
         )
     )
 
@@ -245,6 +266,9 @@ object PresetTeam {
     suspend fun install(database: AppDatabase): Long {
         val roomDao = database.groupRoomDao()
         val identityDao = database.identityDao()
+
+        // 技能先装:身份卡的工具白名单里要带上 invoke_skill,没技能可调等于白给
+        TeamSkills.install(database)
 
         val existing = roomDao.getRoomByName(ROOM_NAME)
         if (existing != null) return existing.id

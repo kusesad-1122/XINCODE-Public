@@ -777,6 +777,57 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         refreshForegroundService()
     }
 
+    /**
+     * 让群聊成员在【它自己的工作会话】里跑一轮,返回它最后说的那段话。
+     *
+     * 为什么要有独立会话:群聊里只该出现结论。成员真干活时的工具调用、试错、
+     * 中间稿子如果全刷在群里,人根本读不下去(工程师贴一张工时表就把讨论淹了)。
+     * 放进自己的会话后,群里是干净的汇报,想看过程点进去看 —— 而且因为走的是
+     * 正常会话通道,消息会流式落库,你切过去看到的是实时进度而不是事后日志。
+     *
+     * 驱动方式抄的 Goal 模式那套(见 GoalLoopController.runOneTurn),已经在
+     * 后台长跑场景验证过:等空闲 → 塞输入 → send → 等流式起来 → 等流式结束。
+     *
+     * @return 这一轮的最终发言;跑不出东西时返回空串。
+     */
+    suspend fun runGroupWorkTurn(
+        sessionId: Long,
+        prompt: String,
+        timeoutMs: Long = 10 * 60 * 1000L
+    ): String {
+        val agents = withContext(Dispatchers.Main) {
+            sessionPool[sessionId] ?: buildSessionAgents(sessionId).also { sessionPool[sessionId] = it }
+        }
+        val chat = agents.chat
+
+        // 跑的过程中钉住,别让 onCoreState 里的「空闲即回收」把它从池里摘走 ——
+        // 摘走之后用户点进去看到的会是另一份实例,历史对不上。
+        activeGoalSessions.add(sessionId)
+        try {
+            suspend fun waitUntil(limitMs: Long, cond: () -> Boolean) {
+                val deadline = System.currentTimeMillis() + limitMs
+                while (System.currentTimeMillis() < deadline && !cond()) {
+                    kotlinx.coroutines.delay(200)
+                }
+            }
+            waitUntil(15_000) { !chat.isStreaming.value }
+            withContext(Dispatchers.Main) {
+                chat.input.value = prompt
+                chat.send()
+            }
+            // 先等它【开始】说话:没这一步的话,send 还没起来就直接判成「已结束」
+            waitUntil(20_000) { chat.isStreaming.value }
+            waitUntil(timeoutMs) { !chat.isStreaming.value }
+
+            return chat.messages.lastOrNull {
+                it.role == "assistant" && it.content.isNotBlank()
+            }?.content.orEmpty().trim()
+        } finally {
+            activeGoalSessions.remove(sessionId)
+            refreshForegroundService()
+        }
+    }
+
     /** 停止某个 Goal 任务。 */
     fun stopGoal(sessionId: Long) {
         goalControllers[sessionId]?.stop()

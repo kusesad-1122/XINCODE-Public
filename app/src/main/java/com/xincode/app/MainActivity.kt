@@ -402,7 +402,10 @@ class MainActivity : ComponentActivity() {
                     "logs" -> LogViewerScreen(onBack = { currentPage = "settings" })
                     "usage_stats" -> UsageStatsScreen(database = app.database, onBack = { currentPage = "settings" })
                     "kanban" -> KanbanScreen(database = app.database, planState = app.planState, runner = app.kanbanRunner, onBack = { currentPage = "settings" })
-                    "group_rooms" -> GroupRoomsScreen(database = app.database, keystore = app.keystore, onBack = { currentPage = "settings" })
+                    "group_rooms" -> GroupRoomsScreen(database = app.database, keystore = app.keystore,
+                        onBack = { currentPage = "settings" },
+                        // 点「工作台」后要真的跳到那条会话去看,停在群聊页是看不到的
+                        onOpenWorkbench = { currentPage = "chat" })
                     "profiles" -> ProfilesScreen(database = app.database, onBack = { currentPage = "settings" })
                     "function_models" -> FunctionModelsScreen(
                         database = app.database,

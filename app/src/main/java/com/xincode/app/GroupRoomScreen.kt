@@ -29,6 +29,7 @@ import com.xincode.data.AppDatabase
 import com.xincode.data.GroupMemberEntity
 import com.xincode.data.GroupMessageEntity
 import com.xincode.data.GroupRoomEntity
+import com.xincode.data.SessionEntity
 import com.xincode.provider.OpenAiClient
 import com.xincode.security.KeystoreProvider
 import android.util.Base64
@@ -44,7 +45,9 @@ private val Mono = FontFamily.Monospace
 fun GroupRoomsScreen(
     database: AppDatabase,
     keystore: KeystoreProvider,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    /** 打开某个成员的工作台后,由外层把界面切到主对话页。 */
+    onOpenWorkbench: () -> Unit = {}
 ) {
     val xc = LocalXinColors.current
     val scope = rememberCoroutineScope()
@@ -54,7 +57,7 @@ fun GroupRoomsScreen(
     var newName by remember { mutableStateOf("") }
 
     openRoom?.let { rid ->
-        GroupRoomChatScreen(database, keystore, rid, onBack = { openRoom = null })
+        GroupRoomChatScreen(database, keystore, rid, onBack = { openRoom = null }, onOpenWorkbench = onOpenWorkbench)
         return
     }
 
@@ -173,7 +176,8 @@ private fun GroupRoomChatScreen(
     database: AppDatabase,
     keystore: KeystoreProvider,
     roomId: Long,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenWorkbench: () -> Unit
 ) {
     val xc = LocalXinColors.current
     val scope = rememberCoroutineScope()
@@ -213,7 +217,8 @@ private fun GroupRoomChatScreen(
                 }
                 GroupRoomEngine.onMessage(
                     database, keystore, roomId, text, senderName = "",
-                    agentFactory = { app.buildIsolatedAgentCore() },
+                    runWorkTurn = { sid, prompt -> app.runGroupWorkTurn(sid, prompt) },
+                    ensureWorkSession = { mem -> ensureWorkSession(database, roomId, mem) },
                     onSpeaking = { speaking = it }
                 )
             } finally {
@@ -441,6 +446,19 @@ private fun GroupRoomChatScreen(
                             )
                         }
                         Spacer(Modifier.height(12.dp))
+                        Text("工作区", fontSize = 12.sp, fontFamily = Mono, color = xc.ink)
+                        Text(
+                            GroupRoomEngine.workspaceOf(r),
+                            fontSize = 9.sp, fontFamily = Mono, color = xc.green, lineHeight = 13.sp
+                        )
+                        Text(
+                            "这屋人的产出都落在这里,成员之间共享 —— 架构师写的方案工程师要读得到。" +
+                                "开了完全访问后,每个成员还会有自己的工作会话,干活的全过程在那里,群里只出现汇报。",
+                            fontSize = 9.sp, fontFamily = Mono, color = xc.faint, lineHeight = 13.sp,
+                            modifier = Modifier.padding(top = 2.dp)
+                        )
+
+                        Spacer(Modifier.height(12.dp))
                         ToggleRow(
                             "完全访问",
                             "让成员能调用工具:联网搜索、读写文件、执行命令。它们的动作会真的落到设备上,而且更慢更费额度。",
@@ -479,7 +497,16 @@ private fun GroupRoomChatScreen(
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text("@${mem.displayName}", fontSize = 12.sp, fontFamily = Mono,
                                     color = xc.ink, modifier = Modifier.weight(1f))
-                                Text("换模型", fontSize = 10.sp, fontFamily = Mono, color = xc.green,
+                                // 工作台:点进去看他现在到底在干什么。只有跑过活的成员才有。
+                                if (mem.workSessionId > 0) {
+                                    Text("工作台", fontSize = 10.sp, fontFamily = Mono, color = xc.green,
+                                        modifier = Modifier.padding(end = 10.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                            showMembers = false
+                                            app.switchToSession(mem.workSessionId)
+                                            onOpenWorkbench()
+                                        })
+                                }
+                                Text("换模型", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
                                     modifier = Modifier.padding(end = 10.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                         showMembers = false; modelPickerFor = mem
                                     })
@@ -489,7 +516,10 @@ private fun GroupRoomChatScreen(
                                     })
                             }
                             Text(
-                                if (mem.model.isBlank()) "模型:跟随活跃配置" else "模型:${mem.model}",
+                                buildString {
+                                    append(if (mem.model.isBlank()) "模型:跟随活跃配置" else "模型:${mem.model}")
+                                    if (mem.workSessionId > 0) append("  ·  有独立工作会话")
+                                },
                                 fontSize = 9.sp, fontFamily = Mono, color = xc.faint
                             )
                         }
@@ -539,6 +569,26 @@ private fun GroupRoomChatScreen(
             containerColor = xc.bg
         )
     }
+}
+
+/**
+ * 确保成员有自己的工作会话,返回会话 id。
+ *
+ * 会话标题带上房间名和成员名,因为它会出现在主对话的会话列表里 ——
+ * 一堆没头没尾的会话比没有更糟,你得一眼看出这是谁的工作台。
+ */
+private suspend fun ensureWorkSession(
+    database: AppDatabase,
+    roomId: Long,
+    member: GroupMemberEntity
+): Long = withContext(Dispatchers.IO) {
+    if (member.workSessionId > 0) return@withContext member.workSessionId
+    val roomName = database.groupRoomDao().getRoom(roomId)?.name ?: "群聊"
+    val sid = database.sessionDao().upsert(
+        SessionEntity(title = "🔧 $roomName · ${member.displayName}")
+    )
+    database.groupRoomDao().updateMember(member.copy(workSessionId = sid))
+    sid
 }
 
 /**

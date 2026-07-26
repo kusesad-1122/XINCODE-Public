@@ -7,6 +7,7 @@ import com.xincode.data.GroupMemberEntity
 import com.xincode.data.GroupMessageEntity
 import com.xincode.data.GroupRoomEntity
 import com.xincode.core.AgentState
+import com.xincode.tools.WorkspaceContext
 import com.xincode.security.KeystoreProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -89,13 +90,18 @@ object GroupRoomEngine {
         content: String,
         senderName: String,
         onReply: (suspend () -> Unit)? = null,
-        /** 完全访问模式下用它造带工具的 agent。传 null 则强制退回轻量模式。 */
-        agentFactory: (() -> com.xincode.core.AgentCore)? = null,
+        /**
+         * 完全访问模式下,让成员在自己的工作会话里跑一轮并返回汇报。
+         * 传 null 则强制退回轻量模式(只说话,不动手)。
+         */
+        runWorkTurn: (suspend (sessionId: Long, prompt: String) -> String)? = null,
+        /** 确保这个成员有工作会话,返回会话 id。完全访问模式下必需。 */
+        ensureWorkSession: (suspend (GroupMemberEntity) -> Long)? = null,
         /** 每次状态变化告诉 UI 现在轮到谁在说话,空串表示没人在说。 */
         onSpeaking: ((String) -> Unit)? = null
     ) = withContext(Dispatchers.IO) {
         val dao = database.groupRoomDao()
-        val members = dao.getMembers(roomId)
+        var members = dao.getMembers(roomId)
         if (members.isEmpty()) return@withContext
         val room = dao.getRoom(roomId)
 
@@ -104,7 +110,18 @@ object GroupRoomEngine {
         val rawHops = room?.maxHops ?: 3
         val maxHops = if (rawHops == GroupRoomEntity.UNLIMITED_HOPS) rawHops
         else rawHops.coerceIn(1, 20)
-        val fullAccess = (room?.fullAccess ?: false) && agentFactory != null
+        val fullAccess = (room?.fullAccess ?: false) &&
+            runWorkTurn != null && ensureWorkSession != null
+
+        // 完全访问模式下先把工作会话补齐,并把房间工作目录建出来 ——
+        // 目录不存在的话成员第一次写文件就会失败,而那种失败对模型很难自查。
+        if (fullAccess) {
+            runCatching { java.io.File(workspaceOf(room)).mkdirs() }
+            members = members.map { m ->
+                if (m.workSessionId > 0) m
+                else m.copy(workSessionId = ensureWorkSession!!(m))
+            }
+        }
 
         driveChain(
             memberNames = members.map { it.displayName },
@@ -117,7 +134,7 @@ object GroupRoomEngine {
             onSpeaking?.invoke(name)
 
             val reply = runCatching {
-                if (fullAccess) respondWithTools(database, roomId, member, members, agentFactory!!)
+                if (fullAccess) respondWithTools(database, roomId, member, members, room, runWorkTurn!!)
                 else respondTo(database, keystore, roomId, member, members, allowChain)
             }.getOrElse { e ->
                 if (e is kotlinx.coroutines.CancellationException) throw e
@@ -221,7 +238,8 @@ object GroupRoomEngine {
         roomId: Long,
         member: GroupMemberEntity,
         allMembers: List<GroupMemberEntity>,
-        agentFactory: () -> com.xincode.core.AgentCore
+        room: GroupRoomEntity?,
+        runWorkTurn: suspend (sessionId: Long, prompt: String) -> String
     ): String {
         val dao = database.groupRoomDao()
         val identity = if (member.identityId > 0)
@@ -232,22 +250,45 @@ object GroupRoomEngine {
             "$who: ${m.content}"
         }
         val roster = allMembers.joinToString("、") { "@${it.displayName}" }
+        val workspace = workspaceOf(room)
+
         val prompt = buildString {
             append("你在一个多人群聊里,你的名字是「${member.displayName}」。\n")
             append("群成员:$roster,以及用户。\n")
             identity?.systemPrompt?.takeIf { it.isNotBlank() }?.let {
                 append("\n你的角色设定:\n").append(it).append("\n")
             }
-            append("\n以下是群里到目前为止的对话:\n").append(history).append("\n\n")
-            append("现在轮到你发言。你可以使用工具去查证或动手,完成后只输出你要在群里说的那句话。")
-            append("不要写自己的名字当前缀,系统会标注。需要谁接着做,就 @ 他的名字。")
+            append("\n## 工作目录\n")
+            append("这个团队的共享工作区是 `$workspace`。\n")
+            append("要产出文档、设计稿、代码,一律写到这个目录里,别人才读得到你的东西。\n")
+            append("动手之前先看看目录里已经有什么 —— 别人可能已经写过了。\n")
+            append("\n## 群里到目前为止的对话\n").append(history).append("\n\n")
+            append("## 现在轮到你\n")
+            append("你可以用工具去查证、读写文件、动手做事。这些过程都留在你自己这条工作会话里,")
+            append("群里的人看不到,所以不用怕啰嗦。\n")
+            append("做完之后,**最后一段话**是你要发到群里的汇报 —— 那一段要简短、只讲结论和下一步,")
+            append("不要把中间过程复述一遍。需要谁接着做就 @ 他的名字。不要写自己的名字当前缀。")
         }
 
-        val core = agentFactory()
-        val scope = CoroutineScope(currentCoroutineContext() + SupervisorJob())
-        core.run(prompt, scope, thinkingEnabled = false, thinkingLevel = 1).join()
-        core.state.first { it is AgentState.Idle || it is AgentState.Error }
-        return core.lastAssistantText().orEmpty().trim()
+        val sessionId = member.workSessionId
+        if (sessionId <= 0) return "(${member.displayName} 还没有工作会话)"
+        return runWorkTurn(sessionId, prompt).trim()
+    }
+
+    /**
+     * 房间的工作目录。没显式配就按房间名落在工作区根的 rooms/ 下。
+     *
+     * 房间名会进路径,所以必须洗掉路径分隔符和别的危险字符 —— 一个叫「a/../b」的
+     * 房间不该能把文件写到工作区外面去。
+     */
+    fun workspaceOf(room: GroupRoomEntity?): String {
+        room?.workspacePath?.takeIf { it.isNotBlank() }?.let { return it }
+        val safe = (room?.name ?: "room")
+            .replace(Regex("[/\\\\:*?\"<>|]"), "_")
+            .replace("..", "_")
+            .trim()
+            .ifBlank { "room" }
+        return "${WorkspaceContext.workspaceRoot.trimEnd('/')}/rooms/$safe"
     }
 
     /** 让某个成员基于房间历史说一句话。 */

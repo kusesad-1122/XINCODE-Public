@@ -55,6 +55,15 @@ data class GroupRoomEntity(
      */
     val fullAccess: Boolean = false,
 
+    /**
+     * 这屋人干活的目录。空 = 按房间名自动落在 `<工作区根>/rooms/<房间名>/`。
+     *
+     * 房间内【共享】而不是每人一个私有目录:他们本来就在协作,架构师写的方案工程师
+     * 必须读得到,给每人一个隔离目录只会让产出散落各处、谁也看不见谁的。
+     * 并发写也不是问题 —— 群聊是串行的,同一时刻只有一个成员在动手。
+     */
+    val workspacePath: String = "",
+
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 ) {
@@ -83,6 +92,16 @@ data class GroupMemberEntity(
     /** 指定的供应商配置;0 = 跟随活跃配置。 */
     val providerConfigId: Long = 0,
     val model: String = "",
+
+    /**
+     * 这个成员自己的工作会话 id;0 = 还没建过。
+     *
+     * 群聊里只该出现【结论】。成员真干活时的那些工具调用、试错、中间稿子全都放进
+     * 这条独立会话 —— 你想看他现在在干什么就点进去看,不想看时群里就是干净的汇报。
+     * 把过程和结论混在一条流里,人读群聊会非常累(工程师贴一整张工时表就把讨论淹了)。
+     */
+    val workSessionId: Long = 0,
+
     val createdAt: Long = System.currentTimeMillis()
 )
 
