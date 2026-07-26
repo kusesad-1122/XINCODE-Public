@@ -29,6 +29,16 @@ interface Tool {
     fun isAvailable(): Boolean = true
 
     /**
+     * [isAvailable] 为 false 时给模型看的原因。
+     *
+     * 光把 schema 藏起来是不够的:模型完全可能从历史记录里、或者靠猜名字调到一个被关掉的工具。
+     * 那时回一句「未知工具」是错的 —— 工具存在,只是前置条件没满足,而模型会当成拼错了名字
+     * 接着换着花样猜(实测:联网搜索关着时,它试了 search_web、又试 invoke_skill("联网搜索"),
+     * 一路猜到被防空转刹车掐掉)。说清楚是「关着」,它才会转而告诉用户去开。
+     */
+    fun unavailableReason(): String = "当前不可用(前置条件未满足)"
+
+    /**
      * Execute the tool with parsed [params] (key→value from model's JSON arguments).
      * @return [ToolResult.Success] with the output string, or [ToolResult.Error] with a message
      *         that will be fed back to the model for self-correction.

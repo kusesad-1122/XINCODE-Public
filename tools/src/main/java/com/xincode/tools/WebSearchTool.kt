@@ -45,6 +45,8 @@ class WebSearchTool : Tool {
     // 始终可用(有 DuckDuckGo 兜底),但受「联网搜索」总开关控制。
     override fun isAvailable(): Boolean = WebSearchGate.enabled
 
+    override fun unavailableReason(): String = WebSearchGate.OFF_REASON
+
     override val parametersSchema: JSONObject = JSONObject().apply {
         put("type", "object")
         put("properties", JSONObject().apply {

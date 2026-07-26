@@ -610,7 +610,12 @@ class AgentCore(
             }
 // Execute tool calls with security gate
             var callIndex = 0
-            for (call in result.toolCalls) {
+            for (rawCall in result.toolCalls) {
+                // 工具名纠偏必须发生在【权限闸门之前】:闸门是按名字分类的,
+                // 如果只在派发处纠正,判权限用的是 `search_web`、真正执行的是 `web_search`,
+                // 两边对不上比不纠正更危险。这里换完之后,下游全程只见真名。
+                val call = if (toolRegistry.get(rawCall.name) != null) rawCall
+                    else rawCall.copy(name = toolRegistry.canonicalName(rawCall.name))
                 callIndex++
                 _state.value = AgentState.CallingTool(iteration, call.name, call.arguments)
 

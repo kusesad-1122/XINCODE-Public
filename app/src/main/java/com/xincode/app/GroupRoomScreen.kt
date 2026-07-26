@@ -46,8 +46,6 @@ fun GroupRoomsScreen(
     database: AppDatabase,
     keystore: KeystoreProvider,
     onBack: () -> Unit,
-    /** 打开某个成员的工作台后,由外层把界面切到主对话页。 */
-    onOpenWorkbench: () -> Unit = {},
     /** 从侧栏直接点进某个房间时带的 id;非空则跳过列表直接进那间。 */
     initialRoomId: Long? = null,
     onConsumedInitialRoom: () -> Unit = {}
@@ -64,7 +62,7 @@ fun GroupRoomsScreen(
     var newName by remember { mutableStateOf("") }
 
     openRoom?.let { rid ->
-        GroupRoomChatScreen(database, keystore, rid, onBack = { openRoom = null }, onOpenWorkbench = onOpenWorkbench)
+        GroupRoomChatScreen(database, keystore, rid, onBack = { openRoom = null })
         return
     }
 
@@ -183,8 +181,7 @@ private fun GroupRoomChatScreen(
     database: AppDatabase,
     keystore: KeystoreProvider,
     roomId: Long,
-    onBack: () -> Unit,
-    onOpenWorkbench: () -> Unit
+    onBack: () -> Unit
 ) {
     val xc = LocalXinColors.current
     val scope = rememberCoroutineScope()
@@ -206,6 +203,8 @@ private fun GroupRoomChatScreen(
     var showMentionPicker by remember { mutableStateOf(false) }
     var speaking by remember { mutableStateOf("") }
     var expanding by remember { mutableStateOf(false) }
+    // 内嵌工作台:非空时在群聊内部展开那个成员的干活现场,返回就回到这儿
+    var workbenchFor by remember { mutableStateOf<GroupMemberEntity?>(null) }
     // 持有正在跑的那条链,停止按钮要能掐断它
     var runningJob by remember { mutableStateOf<Job?>(null) }
     val listState = rememberLazyListState()
@@ -229,7 +228,7 @@ private fun GroupRoomChatScreen(
                 }
                 GroupRoomEngine.onMessage(
                     database, keystore, roomId, text, senderName = "",
-                    runWorkTurn = { sid, prompt -> app.runGroupWorkTurn(sid, prompt) },
+                    runWorkTurn = { sid, prompt, ws -> app.runGroupWorkTurn(sid, prompt, workspaceRoot = ws) },
                     ensureWorkSession = { mem -> ensureWorkSession(database, roomId, mem) },
                     onSpeaking = { speaking = it }
                 )
@@ -247,6 +246,11 @@ private fun GroupRoomChatScreen(
         val tag = "@$name"
         if (MentionRouting.isMentioned(input, name)) return
         input = (input.trimEnd() + " " + tag).trim() + " "
+    }
+
+    workbenchFor?.let { mem ->
+        MemberWorkbench(database, mem, xc, onBack = { workbenchFor = null })
+        return
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
@@ -293,8 +297,17 @@ private fun GroupRoomChatScreen(
                         horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
                     ) {
                         if (!isMine) {
-                            Text(m.sender, fontSize = 10.sp, fontFamily = Mono, color = xc.green,
-                                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp))
+                            val speaker = members.firstOrNull { it.displayName == m.sender }
+                            val hasBench = speaker != null && speaker.workSessionId > 0
+                            Text(
+                                if (hasBench) "${m.sender}  ›工作台" else m.sender,
+                                fontSize = 10.sp, fontFamily = Mono, color = xc.green,
+                                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { if (hasBench) workbenchFor = speaker }
+                            )
                         }
                         Box(
                             Modifier
@@ -552,8 +565,7 @@ private fun GroupRoomChatScreen(
                                     Text("工作台", fontSize = 10.sp, fontFamily = Mono, color = xc.green,
                                         modifier = Modifier.padding(end = 10.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                             showMembers = false
-                                            app.switchToSession(mem.workSessionId)
-                                            onOpenWorkbench()
+                                            workbenchFor = mem
                                         })
                                 }
                                 Text("换模型", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
@@ -693,6 +705,88 @@ private fun GroupRoomChatScreen(
             dismissButton = { TextButton(onClick = { showMembers = false }) { Text("关闭", fontFamily = Mono, color = xc.sub) } },
             containerColor = xc.bg
         )
+    }
+}
+
+/**
+ * 群聊内嵌的成员工作台。
+ *
+ * 【为什么内嵌而不是跳到主对话】把它做成「切到主对话页去看」的话,用户点一下就离开了
+ * 群聊,回来还得自己找回去 —— 上下文断了,不熟悉的人根本绕不回来。工作台是「这个群聊
+ * 成员的干活现场」,属于群聊内部的东西,就应该在群聊里展开、返回就回到原来的位置。
+ *
+ * 只读:这里是看他在干什么,不是跟他单独对话。要指挥他就回群里 @ 他。
+ */
+@Composable
+private fun MemberWorkbench(
+    database: AppDatabase,
+    member: GroupMemberEntity,
+    xc: XinColors,
+    onBack: () -> Unit
+) {
+    val messages by database.messageDao()
+        .observeBySessionId(member.workSessionId)
+        .collectAsState(initial = emptyList())
+    val listState = rememberLazyListState()
+
+    // 他还在干活时消息会不断追加,自动跟到底部,否则要一直手动往下拖
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    }
+
+    Column(Modifier.fillMaxSize().background(xc.bg)) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("‹ 回到群聊", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
+                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
+            Spacer(Modifier.weight(1f))
+            Text("${member.displayName} 的工作台", fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                fontFamily = Mono, color = xc.ink)
+            Spacer(Modifier.weight(1f))
+        }
+        Text(
+            "他干活的全过程。群里只出现最后的汇报,细节都在这儿。",
+            fontSize = 9.sp, fontFamily = Mono, color = xc.faint,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+        )
+
+        if (messages.isEmpty()) {
+            Text("还没有记录 —— 他还没被叫去干过活。",
+                fontSize = 12.sp, fontFamily = Mono, color = xc.sub,
+                modifier = Modifier.padding(16.dp))
+            return@Column
+        }
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(messages.size) { i ->
+                val m = messages[i]
+                // 工具消息压得很小:它们是过程噪音,看的人多半在找「它到底做了什么」,
+                // 而不是每条工具的完整输出
+                val isTool = m.role == "tool"
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        when (m.role) {
+                            "user" -> "▸ 交办"
+                            "assistant" -> member.displayName
+                            "tool" -> "❯ 工具"
+                            else -> m.role
+                        },
+                        fontSize = 9.sp, fontFamily = Mono,
+                        color = if (isTool) xc.faint else xc.green
+                    )
+                    if (isTool) {
+                        Text(m.content.take(300), fontSize = 10.sp, fontFamily = Mono,
+                            color = xc.faint, lineHeight = 14.sp)
+                    } else {
+                        MarkdownContent(m.content, modifier = Modifier.padding(top = 2.dp))
+                    }
+                }
+            }
+        }
     }
 }
 

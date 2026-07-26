@@ -94,7 +94,7 @@ object GroupRoomEngine {
          * 完全访问模式下,让成员在自己的工作会话里跑一轮并返回汇报。
          * 传 null 则强制退回轻量模式(只说话,不动手)。
          */
-        runWorkTurn: (suspend (sessionId: Long, prompt: String) -> String)? = null,
+        runWorkTurn: (suspend (sessionId: Long, prompt: String, workspace: String) -> String)? = null,
         /** 确保这个成员有工作会话,返回会话 id。完全访问模式下必需。 */
         ensureWorkSession: (suspend (GroupMemberEntity) -> Long)? = null,
         /** 每次状态变化告诉 UI 现在轮到谁在说话,空串表示没人在说。 */
@@ -239,7 +239,7 @@ object GroupRoomEngine {
         member: GroupMemberEntity,
         allMembers: List<GroupMemberEntity>,
         room: GroupRoomEntity?,
-        runWorkTurn: suspend (sessionId: Long, prompt: String) -> String
+        runWorkTurn: suspend (sessionId: Long, prompt: String, workspace: String) -> String
     ): String {
         val dao = database.groupRoomDao()
         val identity = if (member.identityId > 0)
@@ -265,14 +265,26 @@ object GroupRoomEngine {
             append("\n## 群里到目前为止的对话\n").append(history).append("\n\n")
             append("## 现在轮到你\n")
             append("你可以用工具去查证、读写文件、动手做事。这些过程都留在你自己这条工作会话里,")
-            append("群里的人看不到,所以不用怕啰嗦。\n")
+            append("群里的人看不到,所以不用怕啰嗦。\n\n")
+
+            // 这条必须写死。实测模型会先说一大段计划、再一口气把十几个工具调完,
+            // 用户看到的是「一堵文字 + 底下一串操作」,完全不知道它中途在干什么、卡在哪。
+            append("**怎么干活**:一句话说你要做什么 → 做那一步 → 说结果 → 再做下一步。\n")
+            append("不要先写一大段计划再一口气把工具全调完 —— 那样别人只看得到一堵文字和一串操作,")
+            append("中途出问题也认不出是哪一步。工具失败了就说清楚原因和你打算怎么绕,再动手。\n\n")
+
+            // 实测踩过的坑:成员在工作会话中间 @ 了人,那段话根本不进群,于是没人被叫醒,
+            // 用户看着像「他说完就没下文了」。必须讲清楚只有最后一段会进群。
+            append("**@ 只在最后一段有效**:你在过程中间 @ 谁都不会真的叫醒他,")
+            append("因为进群的只有你最后那段汇报。要找人接手,就把 @ 写在汇报里。\n\n")
+
             append("做完之后,**最后一段话**是你要发到群里的汇报 —— 那一段要简短、只讲结论和下一步,")
             append("不要把中间过程复述一遍。需要谁接着做就 @ 他的名字。不要写自己的名字当前缀。")
         }
 
         val sessionId = member.workSessionId
         if (sessionId <= 0) return "(${member.displayName} 还没有工作会话)"
-        return runWorkTurn(sessionId, prompt).trim()
+        return runWorkTurn(sessionId, prompt, workspace).trim()
     }
 
     /**

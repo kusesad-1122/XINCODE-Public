@@ -10,9 +10,12 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import org.mozilla.javascript.BaseFunction
 import org.mozilla.javascript.Context
 import org.mozilla.javascript.ContextFactory
+import org.mozilla.javascript.Scriptable
 import org.mozilla.javascript.ScriptableObject
+import org.mozilla.javascript.Undefined
 
 /**
  * Hermes-④ `execute_code` —— 零上下文成本的工具-RPC 管线。
@@ -71,7 +74,8 @@ class CodeExecTool(private val toolRegistry: ToolRegistry) : Tool {
         put("properties", JSONObject().apply {
             put("code", JSONObject().apply {
                 put("type", "string")
-                put("description", "要执行的 JavaScript 源码。用 print(...) 输出结果。")
+                // 语言写在描述里而不是给一个 language 参数:给了参数,模型就会以为可以填 python。
+                put("description", "要执行的 JavaScript(ES5)源码——【只支持 JavaScript,不支持 Python】。用 print(...) 输出结果。")
             })
         })
         put("required", JSONArray(listOf("code")))
@@ -103,8 +107,22 @@ class CodeExecTool(private val toolRegistry: ToolRegistry) : Tool {
     }
 
     override suspend fun execute(params: Map<String, String>): ToolResult = withContext(scriptDispatcher) {
-        val code = params["code"].orEmpty()
-        if (code.isBlank()) return@withContext ToolResult.Error("execute_code: code 不能为空")
+        // 模型常把 code 写成 script/source,漏掉时先从别名里捞一把再报错。
+        val code = params["code"].takeUnless { it.isNullOrBlank() }
+            ?: params["script"].takeUnless { it.isNullOrBlank() }
+            ?: params["source"].takeUnless { it.isNullOrBlank() }
+            ?: ""
+        if (code.isBlank()) return@withContext ToolResult.Error("execute_code: code 不能为空(传 JavaScript 源码字符串)")
+
+        // 实测模型会传 {"language":"python"} 然后写一段 Python —— 这里必须【明确拒绝】。
+        // 让 Rhino 去解析 Python 只会吐一句语法错误,模型看不出是语言选错了,会原样重试到被刹车。
+        val lang = (params["language"] ?: params["lang"]).orEmpty().trim().lowercase()
+        if (lang.isNotEmpty() && lang !in setOf("javascript", "js", "ecmascript", "node")) {
+            return@withContext ToolResult.Error(
+                "execute_code 只能执行 JavaScript(ES5),不支持 $lang。" +
+                    "要跑 Python 请改用 shell_exec/env_exec(需要环境里已装 python)。"
+            )
+        }
 
         val bridge = Bridge()
         val factory = object : ContextFactory() {
@@ -124,8 +142,11 @@ class CodeExecTool(private val toolRegistry: ToolRegistry) : Tool {
         try {
             val cx = factory.enterContext()
             try {
-                val scope = cx.initStandardObjects()
-                ScriptableObject.putProperty(scope, "__bridge", Context.javaToJS(bridge, scope))
+                // initSafeStandardObjects 而不是 initStandardObjects:后者会装上 Packages/java/
+                // JavaAdapter 这套「从 JS 直接反射 Java」的入口——脚本能借它绕开下面的白名单,
+                // 拿到任意类。Safe 版只留 ES 标准内置对象(JSON/Math/Date/RegExp 都还在)。
+                val scope = cx.initSafeStandardObjects()
+                installBridge(scope, bridge)
                 cx.evaluateString(scope, buildPreamble() + "\n" + code, "userscript", 1, null)
             } finally {
                 // exit() 自身在异常路径下可能抛 IllegalStateException,吞掉以免掩盖真正的错误。
@@ -147,12 +168,42 @@ class CodeExecTool(private val toolRegistry: ToolRegistry) : Tool {
         }
     }
 
+    /**
+     * 把 [Bridge] 的两个方法作为**原生 Rhino 函数**装进作用域。
+     *
+     * 【为什么不用 Context.javaToJS(bridge, scope)】那条路会走 `JavaMembers` 去反射 Bridge 类,
+     * 而 Rhino 1.7.14 的 `JavaMembers` 静态初始化块里调了 `javax.lang.model.SourceVersion`
+     * (它拿来判断 JDK 9+ 的严格反射)。Android 运行时【根本没有 javax.lang.model 这个包】,
+     * 于是 <clinit> 直接抛 NoClassDefFoundError —— 注意这是 Error 不是 Exception,而且它发生在
+     * 脚本跑起来之前。结果就是 execute_code 在真机上【从来没成功过一次】,每次都是
+     * 「execute_code 运行出错(NoClassDefFoundError): Failed resolution of:
+     * Ljavax/lang/model/SourceVersion;」,而在 JVM 单测里反而是好的,所以一直没被发现。
+     *
+     * 换成 BaseFunction 后全程走 Rhino 自己的对象模型,一次反射都不做,也就碰不到那个类。
+     */
+    private fun installBridge(scope: Scriptable, bridge: Bridge) {
+        val printFn = object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<out Any?>): Any {
+                bridge.print(args.firstOrNull()?.let { Context.toString(it) })
+                return Undefined.instance
+            }
+        }
+        ScriptableObject.putProperty(scope, "__print", printFn)
+        ScriptableObject.putProperty(scope, "__call", object : BaseFunction() {
+            override fun call(cx: Context, scope: Scriptable, thisObj: Scriptable?, args: Array<out Any?>): Any {
+                val toolName = args.getOrNull(0)?.let { Context.toString(it) }.orEmpty()
+                val argsJson = args.getOrNull(1)?.let { Context.toString(it) } ?: "{}"
+                return bridge.call(toolName, argsJson)
+            }
+        })
+    }
+
     /** 为每个白名单工具生成 JS 包装函数 + print。 */
     private fun buildPreamble(): String = buildString {
-        append("var print = function(x){ __bridge.print(x); };\n")
+        append("var print = function(x){ __print(x); };\n")
         append("var console = { log: print };\n")
         for (t in SANDBOX_TOOLS) {
-            append("function ").append(t).append("(args){ return __bridge.call('").append(t)
+            append("function ").append(t).append("(args){ return __call('").append(t)
             append("', JSON.stringify(args || {})); }\n")
         }
     }

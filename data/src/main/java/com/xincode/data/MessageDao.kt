@@ -13,6 +13,13 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE sessionId = :sessionId ORDER BY timestamp ASC")
     suspend fun getBySessionId(sessionId: Long): List<MessageEntity>
 
+    /**
+     * 观察某条会话的消息。群聊里内嵌的「工作台」用它 ——
+     * 成员正在干活时那条会话在被实时写入,轮询或一次性查都看不到进度。
+     */
+    @Query("SELECT * FROM messages WHERE sessionId = :sessionId ORDER BY id ASC")
+    fun observeBySessionId(sessionId: Long): kotlinx.coroutines.flow.Flow<List<MessageEntity>>
+
     @Insert
     suspend fun insert(message: MessageEntity): Long
 

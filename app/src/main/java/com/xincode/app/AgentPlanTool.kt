@@ -47,7 +47,7 @@ class AgentPlanTool(private val planState: PlanState) : Tool {
             })
             put("id", JSONObject().apply {
                 put("type", "integer")
-                put("description", "op=done/fail 时目标步骤的 1-based id")
+                put("description", "op=done/fail 时目标步骤的 1-based id；不传则默认作用于当前进行中的那一步")
             })
         })
         put("required", JSONArray(listOf("op")))
@@ -86,16 +86,16 @@ class AgentPlanTool(private val planState: PlanState) : Tool {
                 else ToolResult.Success("步骤 $id 已开始 (in_progress)")
             }
             "done" -> {
-                val id = params["id"]?.toIntOrNull()
-                    ?: return ToolResult.Error("agent_plan: op=done 需要 id 参数")
+                val id = resolveStepId(params)
+                    ?: return ToolResult.Error("agent_plan: 现在没有进行中的步骤可以标记完成，请先 op=set 发布计划或 op=advance 开始一步")
                 planState.updateStep(id, PlanStepStatus.DONE)
                 val done = planState.doneCount()
                 val total = planState.totalCount()
                 ToolResult.Success("步骤 $id 完成 ($done/$total)")
             }
             "fail" -> {
-                val id = params["id"]?.toIntOrNull()
-                    ?: return ToolResult.Error("agent_plan: op=fail 需要 id 参数")
+                val id = resolveStepId(params)
+                    ?: return ToolResult.Error("agent_plan: 现在没有进行中的步骤可以标记失败，请先 op=set 发布计划或 op=advance 开始一步")
                 planState.updateStep(id, PlanStepStatus.FAILED)
                 ToolResult.Success("步骤 $id 已标记为失败")
             }
@@ -105,6 +105,22 @@ class AgentPlanTool(private val planState: PlanState) : Tool {
             }
             else -> ToolResult.Error("agent_plan: 未知操作 '$op'（可用: set/advance/done/fail/reset）")
         }
+    }
+
+    /**
+     * 解析 op=done/fail 的目标步骤号；模型没给就落到【当前进行中的那一步】。
+     *
+     * 【为什么要兜底】原来缺 id 直接报错。模型的心智模型是「我刚 advance 完这一步，现在说做完了」——
+     * 它并不觉得还要重复一遍步骤号，于是同一个调用会原样重试，连错三次就被防空转刹车掐掉，
+     * 整条计划卡就停在半路。而缺 id 时的意图其实毫无歧义：就是当前这一步。
+     * 只有在压根没有进行中步骤时才报错，那时报错才是真的有信息量。
+     */
+    private fun resolveStepId(params: Map<String, String>): Int? {
+        // 别名：模型写 step/index/step_id 的频率不比写 id 低。
+        for (k in listOf("id", "step", "index", "step_id", "stepId")) {
+            params[k]?.trim()?.toIntOrNull()?.let { return it }
+        }
+        return planState.currentStepId().takeIf { it > 0 }
     }
 
     private fun parseStringArray(raw: String): List<String> {

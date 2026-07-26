@@ -422,9 +422,8 @@ class MainActivity : ComponentActivity() {
                     "group_rooms" -> GroupRoomsScreen(database = app.database, keystore = app.keystore,
                         initialRoomId = openRoomId,
                         onConsumedInitialRoom = { openRoomId = null },
-                        onBack = { openRoomId = null; currentPage = "chat" },
-                        // 点「工作台」后要真的跳到那条会话去看,停在群聊页是看不到的
-                        onOpenWorkbench = { currentPage = "chat" })
+                        // 成员工作台现在是群聊【内嵌】的一层,不再跳出到主对话页
+                        onBack = { openRoomId = null; currentPage = "chat" })
                     "profiles" -> ProfilesScreen(database = app.database, onBack = { currentPage = "settings" })
                     "function_models" -> FunctionModelsScreen(
                         database = app.database,

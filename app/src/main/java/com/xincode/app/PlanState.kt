@@ -82,6 +82,17 @@ class PlanState {
         lastUpdatedMs = System.currentTimeMillis()
     }
 
+    /**
+     * 当前「进行中」那一步的 id；没有进行中的就退回第一个还没做完的；都做完了返回 -1。
+     *
+     * 给 `agent_plan` 的 op=done/fail 缺 id 时兜底用 —— 模型刚 advance 完就说「这步做完了」，
+     * 不带步骤号是最自然的写法，而那时目标毫无歧义。
+     */
+    fun currentStepId(): Int =
+        steps.firstOrNull { it.status == PlanStepStatus.IN_PROGRESS }?.id
+            ?: steps.firstOrNull { it.status == PlanStepStatus.PENDING }?.id
+            ?: -1
+
     /** Number of DONE steps (for the progress ratio). */
     fun doneCount(): Int = steps.count { it.status == PlanStepStatus.DONE }
 

@@ -796,12 +796,22 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
     suspend fun runGroupWorkTurn(
         sessionId: Long,
         prompt: String,
-        timeoutMs: Long = 10 * 60 * 1000L
+        timeoutMs: Long = 10 * 60 * 1000L,
+        /**
+         * 这个成员干活的目录。**必须真的切过去**,不能只写进提示词 ——
+         * 光在 prompt 里说「工作区是 rooms/xxx」而不切 [WorkspaceContext],
+         * 成员写相对路径时仍会落到全局工作区根,文件写不进去,而错误信息
+         * 只是「exit -1」,模型只能自己瞎猜(实测它会退到 shell 里 chmod + cat > 硬绕)。
+         */
+        workspaceRoot: String? = null
     ): String {
         val agents = withContext(Dispatchers.Main) {
             sessionPool[sessionId] ?: buildSessionAgents(sessionId).also { sessionPool[sessionId] = it }
         }
         val chat = agents.chat
+        // 绑到这条会话自己的作用域上(WorkspaceThreadElement 会在它的协程里生效),
+        // 不影响主对话和别的会话。
+        workspaceRoot?.let { chat.sessionWorkspaceRoot = it }
 
         // 跑的过程中钉住,别让 onCoreState 里的「空闲即回收」把它从池里摘走 ——
         // 摘走之后用户点进去看到的会是另一份实例,历史对不上。

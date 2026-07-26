@@ -74,8 +74,37 @@ class SubAgentTool(
     }
 
     override suspend fun executeJson(args: JSONObject): ToolResult {
-        val arr = args.optJSONArray("assignments") ?: return ToolResult.Error("缺少 assignments 数组")
+        val arr = coerceAssignments(args) ?: return ToolResult.Error(
+            "dispatch_agents 需要 assignments 数组，形如 " +
+                "assignments=[{\"agent\":\"子智能体类型名\",\"task\":\"要它做的事\"}]。" +
+                "你这次传的是: ${args.toString().take(200)}"
+        )
         return runAssignments(arr)
+    }
+
+    /**
+     * 把模型给的各种写法都收敛成 assignments 数组。
+     *
+     * 【为什么要这么宽容】原来只认 `optJSONArray("assignments")`，别的形状一律回一句
+     * 「缺少 assignments 数组」——这句话对模型没有信息量（它以为自己传了），于是原样重试，
+     * 连错三次被防空转刹车掐掉，整轮分派作废。而实际上这几种写法的意图都毫无歧义：
+     *  - 只派一个人时写成对象 `{agent, task}` 而不是只有一项的数组
+     *  - 键名写成 tasks / agents（描述里两种词都出现过，模型记混很正常）
+     *  - 整个数组被序列化成字符串 `"[{...}]"`（部分供应商的函数调用会这样吐）
+     */
+    private fun coerceAssignments(args: JSONObject): JSONArray? {
+        for (key in listOf("assignments", "tasks", "agents", "assignment")) {
+            args.optJSONArray(key)?.let { return it }
+            args.optJSONObject(key)?.let { return JSONArray().put(it) }
+            val s = args.optString(key, "").trim()
+            if (s.startsWith("[")) runCatching { JSONArray(s) }.getOrNull()?.let { return it }
+            if (s.startsWith("{")) runCatching { JSONObject(s) }.getOrNull()?.let { return JSONArray().put(it) }
+        }
+        // 顶层就直接是 {agent, task}(一个人的时候模型很爱这么写)
+        if (args.optString("agent").isNotBlank() && args.optString("task").isNotBlank()) {
+            return JSONArray().put(args)
+        }
+        return null
     }
 
     private suspend fun runAssignments(arr: JSONArray): ToolResult {
