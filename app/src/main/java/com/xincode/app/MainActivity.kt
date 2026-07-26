@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.*
 import androidx.compose.material3.AlertDialog
+import com.xincode.data.IdentityEntity
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalDrawerSheet
@@ -124,7 +125,15 @@ class MainActivity : ComponentActivity() {
             val ungroupedSessions by app.ungroupedSessionsFlow.collectAsState(initial = emptyList())
             val goalSessions by app.goalSessionsFlow.collectAsState(initial = emptyList())
             val projects by app.projectListFlow.collectAsState(initial = emptyList())
-            val identities by app.identityListFlow.collectAsState(initial = emptyList())
+            val groupRooms by app.database.groupRoomDao().observeRooms().collectAsState(initial = emptyList())
+            // 从侧栏直接点进某个房间时带上 id,群聊页据此跳过列表直接开那间
+            var openRoomId by remember { mutableStateOf<Long?>(null) }
+            val allIdentities by app.identityListFlow.collectAsState(initial = emptyList())
+            // 群聊专用的角色卡不进主对话列表 —— 它们写的是团队里的一个位置,
+            // 单独拿来跟你对话没有意义,混在一起只会把真正能用的卡淹掉。
+            val identities = remember(allIdentities) {
+                allIdentities.filter { it.scope != IdentityEntity.SCOPE_GROUP }
+            }
             val activeIdentityId = app.activeIdentityId
 
             // Build project→sessions map from full sessions list
@@ -198,6 +207,12 @@ class MainActivity : ComponentActivity() {
                         onSearchMessages = { q -> app.searchMessages(q) },
                         goalSessions = goalSessions,
                         goalLiveStatus = { id -> app.goalRunStatus[id] ?: "" },
+                        groupRooms = groupRooms,
+                        onOpenGroupRooms = { currentPage = "group_rooms" },
+                        onOpenGroupRoom = { rid ->
+                            openRoomId = rid
+                            currentPage = "group_rooms"
+                        },
                         onCreateGoal = {
                             val newId = app.createGoalSession()
                             app.switchToSession(newId)
@@ -403,7 +418,9 @@ class MainActivity : ComponentActivity() {
                     "usage_stats" -> UsageStatsScreen(database = app.database, onBack = { currentPage = "settings" })
                     "kanban" -> KanbanScreen(database = app.database, planState = app.planState, runner = app.kanbanRunner, onBack = { currentPage = "settings" })
                     "group_rooms" -> GroupRoomsScreen(database = app.database, keystore = app.keystore,
-                        onBack = { currentPage = "settings" },
+                        initialRoomId = openRoomId,
+                        onConsumedInitialRoom = { openRoomId = null },
+                        onBack = { openRoomId = null; currentPage = "chat" },
                         // 点「工作台」后要真的跳到那条会话去看,停在群聊页是看不到的
                         onOpenWorkbench = { currentPage = "chat" })
                     "profiles" -> ProfilesScreen(database = app.database, onBack = { currentPage = "settings" })

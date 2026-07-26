@@ -360,6 +360,7 @@ fun ChatScreen(
     var showSkillPicker by remember { mutableStateOf(false) }
     var showMcpPicker by remember { mutableStateOf(false) }
     var showStatsPopup by remember { mutableStateOf(false) }   // 点圆环弹出的统计卡片
+    var expandingPrompt by remember { mutableStateOf(false) }  // 正在扩展提示词
     var showModeCard by remember { mutableStateOf(false) }     // 计划/协作模式卡片
     var webSearchOn by remember { mutableStateOf(com.xincode.tools.WebSearchGate.enabled) }
 
@@ -892,6 +893,41 @@ fun ChatScreen(
                         modifier = Modifier.wrapContentWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                    // 扩展提示词:把「做个记账 APP」这种一句话想周全再发。
+                    // 一句话的需求换回来的一定是泛泛而谈的回答,补齐场景/约束/验收之后
+                    // 才谈得上有用 —— 但没人愿意每次手打三百字,这个按钮就是补这一段。
+                    Text(
+                        if (expandingPrompt) "…" else "✦",
+                        fontSize = 15.sp,
+                        fontFamily = JetBrainsMono,
+                        color = if (expandingPrompt || chatState.input.value.isBlank()) xc.faint else xc.green,
+                        modifier = Modifier
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                val draft = chatState.input.value
+                                if (!expandingPrompt && draft.isNotBlank()) {
+                                    expandingPrompt = true
+                                    scope.launch {
+                                        val a = context.applicationContext as XincodeApplication
+                                        val r = PromptExpander.expand(
+                                            a.database, a.keystore,
+                                            PromptExpander.Kind.TASK, draft
+                                        )
+                                        r.onSuccess { chatState.input.value = it }
+                                        r.onFailure {
+                                            Toast.makeText(
+                                                context, "扩展失败:${it.message}", Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                        expandingPrompt = false
+                                    }
+                                }
+                            }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
                     // 上下文圆环:随占用绿→蓝→黄→红渐变填充;点击弹出统计卡片。
                     ContextRing(
                         usage = contextUsage,
@@ -1828,18 +1864,37 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
             }
         }
 
+        // 气泡。工具消息不套 —— 它是折叠的技术输出,套上反而像有人在说话。
+        // 宽度限到 88% 并留出对侧空白:占满整行的话左右之分就看不出来了。
+        val bubbleModifier = if (isTool) Modifier else Modifier
+            .fillMaxWidth(0.88f)
+            .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start)
+            .clip(
+                RoundedCornerShape(
+                    topStart = 12.dp, topEnd = 12.dp,
+                    // 靠自己那一侧的下角收窄,气泡才有指向感
+                    bottomStart = if (isUser) 12.dp else 3.dp,
+                    bottomEnd = if (isUser) 3.dp else 12.dp
+                )
+            )
+            .background(if (isUser) xc.activeBg else xc.bgElevated)
+            .padding(horizontal = 10.dp, vertical = 8.dp)
+
+        Box(bubbleModifier) {
         // Content (Markdown for assistant, plain text for user/tool)
         if (msg.role == "assistant") {
             if (msg.content.isNotEmpty()) {
-                MarkdownContent(msg.content)
-                if (isStreamingMessage) {
-                    Text(
-                        "▊",
-                        fontSize = 13.sp,
-                        fontFamily = JetBrainsMono,
-                        color = Ink,
-                        modifier = Modifier.alpha(cursorAlpha)
-                    )
+                Column {
+                    MarkdownContent(msg.content)
+                    if (isStreamingMessage) {
+                        Text(
+                            "▊",
+                            fontSize = 13.sp,
+                            fontFamily = JetBrainsMono,
+                            color = Ink,
+                            modifier = Modifier.alpha(cursorAlpha)
+                        )
+                    }
                 }
             } else {
                 Text(
@@ -1858,12 +1913,10 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
                 fontSize = if (isTool) 11.sp else 13.sp,
                 fontFamily = JetBrainsMono,
                 color = contentColor,
-                lineHeight = if (isTool) 16.sp else 20.sp,
-                // 用户消息文字靠右对齐。
-                textAlign = if (isUser) androidx.compose.ui.text.style.TextAlign.End else androidx.compose.ui.text.style.TextAlign.Start,
-                modifier = if (isUser) Modifier.fillMaxWidth() else Modifier
+                lineHeight = if (isTool) 16.sp else 20.sp
             )
         }
+        }   // 气泡 Box 结束
 
         // 常驻操作行。工具消息不给(它自己有展开/折叠),流式进行中也不给。
         if (!isTool && !isStreamingMessage) {

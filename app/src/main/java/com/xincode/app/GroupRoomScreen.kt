@@ -47,12 +47,19 @@ fun GroupRoomsScreen(
     keystore: KeystoreProvider,
     onBack: () -> Unit,
     /** 打开某个成员的工作台后,由外层把界面切到主对话页。 */
-    onOpenWorkbench: () -> Unit = {}
+    onOpenWorkbench: () -> Unit = {},
+    /** 从侧栏直接点进某个房间时带的 id;非空则跳过列表直接进那间。 */
+    initialRoomId: Long? = null,
+    onConsumedInitialRoom: () -> Unit = {}
 ) {
     val xc = LocalXinColors.current
     val scope = rememberCoroutineScope()
     val rooms by database.groupRoomDao().observeRooms().collectAsState(initial = emptyList())
     var openRoom by remember { mutableStateOf<Long?>(null) }
+    // 侧栏点进来的房间只认一次:消费掉之后再返回列表就不会被弹回房间里
+    LaunchedEffect(initialRoomId) {
+        if (initialRoomId != null) { openRoom = initialRoomId; onConsumedInitialRoom() }
+    }
     var showAdd by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
 
@@ -183,7 +190,11 @@ private fun GroupRoomChatScreen(
     val scope = rememberCoroutineScope()
     val messages by database.groupRoomDao().observeMessages(roomId).collectAsState(initial = emptyList())
     val members by database.groupRoomDao().observeMembers(roomId).collectAsState(initial = emptyList())
-    val identities by database.identityDao().observeAll().collectAsState(initial = emptyList())
+    val allIdentities by database.identityDao().observeAll().collectAsState(initial = emptyList())
+    // 反过来:主对话专用的卡不进群聊成员选择器
+    val identities = remember(allIdentities) {
+        allIdentities.filter { it.scope != com.xincode.data.IdentityEntity.SCOPE_CHAT }
+    }
 
     val app = LocalContext.current.applicationContext as XincodeApplication
     val room by database.groupRoomDao().observeRoom(roomId).collectAsState(initial = null)
@@ -194,6 +205,7 @@ private fun GroupRoomChatScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showMentionPicker by remember { mutableStateOf(false) }
     var speaking by remember { mutableStateOf("") }
+    var expanding by remember { mutableStateOf(false) }
     // 持有正在跑的那条链,停止按钮要能掐断它
     var runningJob by remember { mutableStateOf<Job?>(null) }
     val listState = rememberLazyListState()
@@ -266,24 +278,43 @@ private fun GroupRoomChatScreen(
         ) {
             items(messages.size) { i ->
                 val m = messages[i]
-                Column(Modifier.fillMaxWidth()) {
-                    Text(
-                        when {
-                            m.isDigest -> "▸ 之前的对话摘要"
-                            m.sender.isBlank() -> "你"
-                            else -> m.sender
-                        },
-                        fontSize = 10.sp, fontFamily = Mono,
-                        color = if (m.sender.isBlank()) xc.sub else xc.green
-                    )
-                    // 群成员的输出和主对话一样几乎必然带 Markdown,
-                    // 用裸 Text 会把 **重点** 的星号原样显示出来。
-                    if (m.isDigest) {
-                        Text(m.content, fontSize = 12.sp, fontFamily = Mono,
-                            color = xc.faint, lineHeight = 18.sp,
-                            modifier = Modifier.padding(top = 2.dp))
-                    } else {
-                        MarkdownContent(m.content, modifier = Modifier.padding(top = 2.dp))
+                val isMine = m.sender.isBlank() && !m.isDigest
+
+                // 摘要不走气泡:它不是谁说的话,是系统对前面一段的压缩,
+                // 套上气泡反而像有人在发言。
+                if (m.isDigest) {
+                    Text("▸ 之前的对话摘要", fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
+                    Text(m.content, fontSize = 11.sp, fontFamily = Mono,
+                        color = xc.faint, lineHeight = 17.sp,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
+                } else {
+                    Column(
+                        Modifier.fillMaxWidth(),
+                        horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
+                    ) {
+                        if (!isMine) {
+                            Text(m.sender, fontSize = 10.sp, fontFamily = Mono, color = xc.green,
+                                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp))
+                        }
+                        Box(
+                            Modifier
+                                // 留出对侧空白,否则长消息占满整行就看不出左右之分了
+                                .fillMaxWidth(0.86f)
+                                .wrapContentWidth(if (isMine) Alignment.End else Alignment.Start)
+                                .clip(
+                                    RoundedCornerShape(
+                                        topStart = 12.dp, topEnd = 12.dp,
+                                        // 靠自己那侧的角收窄,气泡才有指向感
+                                        bottomStart = if (isMine) 12.dp else 3.dp,
+                                        bottomEnd = if (isMine) 3.dp else 12.dp
+                                    )
+                                )
+                                .background(if (isMine) xc.activeBg else xc.bgElevated)
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            // 群成员的输出几乎必然带 Markdown,裸 Text 会把 **重点** 的星号显示出来
+                            MarkdownContent(m.content)
+                        }
                     }
                 }
             }
@@ -346,6 +377,23 @@ private fun GroupRoomChatScreen(
                         if (members.isNotEmpty()) showMentionPicker = !showMentionPicker
                     }
                     .padding(horizontal = 8.dp, vertical = 8.dp))
+            // 扩展议题:一句话的议题讨论不出东西,先让模型把它想周全
+            Text(if (expanding) "…" else "✦", fontSize = 15.sp, fontFamily = Mono,
+                color = if (expanding || input.isBlank()) xc.faint else xc.green,
+                modifier = Modifier
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        if (!expanding && input.isNotBlank()) {
+                            expanding = true
+                            scope.launch {
+                                val r = PromptExpander.expand(
+                                    database, keystore, PromptExpander.Kind.GROUP_TOPIC, input
+                                )
+                                r.getOrNull()?.let { input = it }
+                                expanding = false
+                            }
+                        }
+                    }
+                    .padding(horizontal = 6.dp, vertical = 8.dp))
             TextField(
                 value = input, onValueChange = { input = it },
                 placeholder = {
@@ -487,6 +535,7 @@ private fun GroupRoomChatScreen(
     if (showMembers) {
         var newMemberName by remember { mutableStateOf("") }
         var pickedIdentity by remember { mutableStateOf(0L) }
+        var creatingIdentity by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { showMembers = false },
             title = { Text("房间成员", fontFamily = Mono, color = xc.ink, fontSize = 14.sp) },
@@ -528,6 +577,52 @@ private fun GroupRoomChatScreen(
                     Text("添加成员", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
                     Spacer(Modifier.height(4.dp))
                     SimpleField(newMemberName, { newMemberName = it }, "群里的名字(用于 @)", xc)
+
+                    // 现造一张身份卡。不给这个入口的话,自建群聊只能从已有卡里挑,
+                    // 而已有卡多半是给主对话写的、或者干脆没有 —— 于是自己建的房间里
+                    // 全是没有性格的成员,和预制团队的差距全在这一步。
+                    if (newMemberName.isNotBlank()) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            if (creatingIdentity) "正在生成「${newMemberName.trim()}」的身份卡…"
+                            else "✦ 按这个名字生成一张身份卡",
+                            fontSize = 11.sp, fontFamily = Mono,
+                            color = if (creatingIdentity) xc.faint else xc.green,
+                            modifier = Modifier.clickable(
+                                indication = null, interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                if (!creatingIdentity) {
+                                    creatingIdentity = true
+                                    val roleName = newMemberName.trim()
+                                    scope.launch {
+                                        val r = PromptExpander.expand(
+                                            database, keystore, PromptExpander.Kind.IDENTITY, roleName
+                                        )
+                                        r.onSuccess { body ->
+                                            val newId = withContext(Dispatchers.IO) {
+                                                database.identityDao().insert(
+                                                    com.xincode.data.IdentityEntity(
+                                                        name = roleName,
+                                                        systemPrompt = body,
+                                                        description = "群聊角色",
+                                                        allowedTools = PresetTeam.DEFAULT_MEMBER_TOOLS,
+                                                        scope = com.xincode.data.IdentityEntity.SCOPE_GROUP
+                                                    )
+                                                )
+                                            }
+                                            pickedIdentity = newId
+                                        }
+                                        creatingIdentity = false
+                                    }
+                                }
+                            }
+                        )
+                        Text(
+                            "它会补出这个角色盯什么、不管什么、什么时候该闭嘴 —— 群聊里最怕所有人说一样的话。",
+                            fontSize = 9.sp, fontFamily = Mono, color = xc.faint, lineHeight = 13.sp
+                        )
+                    }
+
                     Spacer(Modifier.height(8.dp))
                     Text("身份卡(决定它的性格与专长)", fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
                     Column(Modifier.fillMaxWidth().heightIn(max = 150.dp)) {

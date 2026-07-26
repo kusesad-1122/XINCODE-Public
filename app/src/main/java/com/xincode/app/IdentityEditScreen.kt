@@ -20,6 +20,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.app.R
 import com.xincode.data.IdentityEntity
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 
 private val Bg: Color @Composable get() = LocalXinColors.current.bg
 private val Ink: Color @Composable get() = LocalXinColors.current.ink
@@ -49,6 +52,9 @@ fun IdentityEditScreen(
     var marks by remember { mutableStateOf(identity?.marks ?: "") }
     var allowedTools by remember { mutableStateOf(identity?.allowedTools ?: "") }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var expanding by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Column(
         Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)
@@ -98,11 +104,46 @@ fun IdentityEditScreen(
         IdField(description, { description = it }, "一句话说明这张卡是干嘛的", singleLine = true)
 
         Spacer(Modifier.height(20.dp))
-        Text("角色设定", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("角色设定", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub,
+                modifier = Modifier.weight(1f))
+            // 扩展提示词。身份卡写得好不好差别巨大 —— 只写「架构师」三个字,模型给的是
+            // 泛泛而谈;写清楚「盯什么、不管什么、什么时候闭嘴」产出完全不同。
+            // 但没人愿意每次手打三百字,所以这里给一份合格初稿让你改。
+            Text(
+                if (expanding) "扩展中…" else "✦ 扩展提示词",
+                fontSize = 11.sp, fontFamily = JetBrainsMono,
+                color = if (expanding || (name.isBlank() && prompt.isBlank())) Faint else Green,
+                modifier = Modifier.clickable(
+                    indication = null, interactionSource = remember { MutableInteractionSource() }
+                ) {
+                    // 已经写了设定就在设定基础上扩,只写了名字就从名字扩
+                    val draft = prompt.ifBlank { name }
+                    if (!expanding && draft.isNotBlank()) {
+                        expanding = true
+                        scope.launch {
+                            val a = context.applicationContext as XincodeApplication
+                            val r = PromptExpander.expand(
+                                a.database, a.keystore, PromptExpander.Kind.IDENTITY, draft
+                            )
+                            r.onSuccess { prompt = it }
+                            r.onFailure {
+                                Toast.makeText(context, "扩展失败:${it.message}", Toast.LENGTH_SHORT).show()
+                            }
+                            expanding = false
+                        }
+                    }
+                }
+            )
+        }
+        Text(
+            "只写个名字(比如「架构师」)也能点扩展,它会补出角色边界、关注点和输出要求。",
+            fontSize = 9.sp, fontFamily = JetBrainsMono, color = Faint, lineHeight = 13.sp
+        )
         Spacer(Modifier.height(4.dp))
         TextField(
             value = prompt, onValueChange = { prompt = it },
-            placeholder = { Text("描述这张身份卡的角色、性格、能力倾向…", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
+            placeholder = { Text("描述角色、性格、能力倾向…或只写个名字后点上面的扩展", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
             modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp).border(0.5.dp, Border, RoundedCornerShape(4.dp)),
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,

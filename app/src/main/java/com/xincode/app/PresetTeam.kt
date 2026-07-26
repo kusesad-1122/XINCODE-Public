@@ -61,6 +61,9 @@ object PresetTeam {
     // 能动手一档:加上执行与批量编辑
     private const val T_BUILDER = "$T_WRITER,multi_edit,shell_exec,execute_code,download_file"
 
+    /** 自建群聊成员的默认工具档。给能查能写,不给执行 —— 现造的角色还没经过检验。 */
+    const val DEFAULT_MEMBER_TOOLS = T_WRITER
+
     val ROLES: List<Role> = listOf(
         Role(
             name = "秘书助理",
@@ -293,7 +296,10 @@ object PresetTeam {
                         description = role.description,
                         openingStatement = role.opening,
                         allowedTools = role.tools,
-                        temperature = role.temperature
+                        temperature = role.temperature,
+                        // 标成 group:这些卡写的是「团队里的一个位置」,满篇「该找谁」
+                        // 「什么时候不说话」,拿到主对话里单独用没有意义,只会淹掉真正想选的卡。
+                        scope = IdentityEntity.SCOPE_GROUP
                     )
                 )
             roomDao.insertMember(

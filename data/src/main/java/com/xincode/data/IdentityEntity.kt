@@ -38,5 +38,20 @@ data class IdentityEntity(
      */
     val providerConfigId: Long = 0,
     /** 绑定的模型 ID;空 = 用该配置自己的默认模型。 */
-    val modelOverride: String = ""
-)
+    val modelOverride: String = "",
+
+    /**
+     * 这张卡属于哪个场景:[SCOPE_CHAT] 主对话 / [SCOPE_GROUP] 群聊成员 / [SCOPE_BOTH] 都能用。
+     *
+     * 必须分开:群聊角色卡(「架构师」「测试工程师」)写的是**团队里的一个位置**,
+     * 满篇「该找谁」「什么时候不说话」这类只在多人场景成立的约束。混进主对话的身份列表后,
+     * 用户翻一遍全是用不上的东西,真正想选的那几张反而被淹掉。
+     */
+    val scope: String = SCOPE_BOTH
+) {
+    companion object {
+        const val SCOPE_CHAT = "chat"
+        const val SCOPE_GROUP = "group"
+        const val SCOPE_BOTH = "both"
+    }
+}

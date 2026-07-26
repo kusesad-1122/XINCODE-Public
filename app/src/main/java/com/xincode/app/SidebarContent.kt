@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.data.IdentityEntity
 import com.xincode.data.ProjectEntity
+import com.xincode.data.GroupRoomEntity
 import com.xincode.data.SessionEntity
 import androidx.compose.foundation.ExperimentalFoundationApi
 
@@ -82,7 +83,13 @@ fun SidebarContent(
     goalSessions: List<SessionEntity> = emptyList(),
     goalLiveStatus: (Long) -> String = { "" },
     onCreateGoal: () -> Unit = {},
-    onSelectGoal: (Long) -> Unit = {}
+    onSelectGoal: (Long) -> Unit = {},
+    // ---- 群聊房间 ----
+    // 放侧边栏而不是设置页:它是一种【对话】,和主对话、Goal 任务是同一层的东西,
+    // 埋进设置里等于告诉用户「这是个配置项」,那是定位错了。
+    groupRooms: List<GroupRoomEntity> = emptyList(),
+    onOpenGroupRooms: () -> Unit = {},
+    onOpenGroupRoom: (Long) -> Unit = {}
 ) {
     var renameTarget by remember { mutableStateOf<SessionEntity?>(null) }
     var deleteTarget by remember { mutableStateOf<SessionEntity?>(null) }
@@ -262,6 +269,35 @@ fun SidebarContent(
                     onSelect = { onSelectGoal(session.id); onClose() },
                     onDelete = { deleteTarget = session }
                 )
+            }
+
+            // 群聊房间:多个智能体同处一室
+            item(key = "header_group") {
+                SectionHeaderRow("群聊房间", onAddProject = { onOpenGroupRooms(); onClose() })
+            }
+            if (groupRooms.isEmpty()) {
+                item(key = "group_empty") {
+                    Text("＋ 新建群聊:多个智能体同处一室,@ 谁谁回答",
+                        fontSize = 11.sp, color = Sub, fontFamily = FontFamily.Serif,
+                        modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 2.dp, bottom = 6.dp)
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onOpenGroupRooms(); onClose() })
+                }
+            }
+            items(groupRooms, key = { "room_${it.id}" }) { room ->
+                Row(
+                    Modifier.fillMaxWidth()
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            onOpenGroupRoom(room.id); onClose()
+                        }
+                        .padding(start = 20.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(room.name, fontSize = 12.sp, color = Ink, fontFamily = FontFamily.Serif,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    if (room.fullAccess) {
+                        Text("完全访问", fontSize = 8.sp, color = xc.red, fontFamily = FontFamily.Serif)
+                    }
+                }
             }
 
             // RECENTS (ungrouped)
