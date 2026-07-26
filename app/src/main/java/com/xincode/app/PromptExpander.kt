@@ -118,7 +118,14 @@ object PromptExpander {
         database: AppDatabase,
         keystore: KeystoreProvider,
         kind: Kind,
-        draft: String
+        draft: String,
+        /**
+         * 这个角色该用哪些技能。非空时会写进产出的设定里,让它知道自己有什么可调。
+         *
+         * 光把技能装进数据库是不够的 —— 模型不知道该在什么时候想起它们。
+         * 身份卡里点名说「你有这个技能,什么时候用」才会真的被调用。
+         */
+        skills: List<String> = emptyList()
     ): Result<String> = withContext(Dispatchers.IO) {
         val text = draft.trim()
         if (text.isBlank()) return@withContext Result.failure(IllegalArgumentException("先写点东西再扩展"))
@@ -132,10 +139,24 @@ object PromptExpander {
             return@withContext Result.failure(IllegalStateException("无法解密 API Key"))
         }
 
+        val instruction = buildString {
+            append(instructionFor(kind))
+            if (skills.isNotEmpty() && kind == Kind.IDENTITY) {
+                append("\n\n这个角色可以调用下面这些技能,请在设定末尾单独写一段说明")
+                append("【什么情况下该调哪个】,写具体的触发时机,不要只罗列名字:\n")
+                skills.forEach { name ->
+                    val desc = WorkSkills.SKILLS.firstOrNull { it.name == name }?.desc
+                        ?: TeamSkills.SKILLS.firstOrNull { it.name == name }?.desc
+                        ?: ""
+                    append("- $name:$desc\n")
+                }
+            }
+        }
+
         val body = JSONObject().apply {
             put("model", cfg.model)
             put("messages", JSONArray().apply {
-                put(JSONObject().put("role", "system").put("content", instructionFor(kind)))
+                put(JSONObject().put("role", "system").put("content", instruction))
                 put(JSONObject().put("role", "user").put("content", text))
             })
             put("stream", false)

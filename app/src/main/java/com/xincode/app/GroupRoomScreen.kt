@@ -536,6 +536,7 @@ private fun GroupRoomChatScreen(
         var newMemberName by remember { mutableStateOf("") }
         var pickedIdentity by remember { mutableStateOf(0L) }
         var creatingIdentity by remember { mutableStateOf(false) }
+        var pickedSkills by remember { mutableStateOf(setOf<String>()) }
         AlertDialog(
             onDismissRequest = { showMembers = false },
             title = { Text("房间成员", fontFamily = Mono, color = xc.ink, fontSize = 14.sp) },
@@ -578,6 +579,34 @@ private fun GroupRoomChatScreen(
                     Spacer(Modifier.height(4.dp))
                     SimpleField(newMemberName, { newMemberName = it }, "群里的名字(用于 @)", xc)
 
+                    // 技能多选:选中的会写进生成的身份卡里,并说明什么时候该调。
+                    // 只把技能装进数据库是不够的 —— 模型不知道该在什么时候想起它们。
+                    if (newMemberName.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("给它配技能(可多选)", fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
+                        Column(Modifier.fillMaxWidth().heightIn(max = 140.dp).verticalScroll(rememberScrollState())) {
+                            WorkSkills.SKILLS.forEach { sk ->
+                                val on = sk.name in pickedSkills
+                                Column(
+                                    Modifier.fillMaxWidth()
+                                        .background(if (on) xc.activeBg else xc.bg)
+                                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                            pickedSkills = if (on) pickedSkills - sk.name else pickedSkills + sk.name
+                                        }
+                                        .padding(horizontal = 6.dp, vertical = 5.dp)
+                                ) {
+                                    Text(
+                                        (if (on) "✓ " else "  ") + sk.name,
+                                        fontSize = 11.sp, fontFamily = Mono,
+                                        color = if (on) xc.green else xc.ink
+                                    )
+                                    Text(sk.desc, fontSize = 8.sp, fontFamily = Mono,
+                                        color = xc.faint, lineHeight = 12.sp)
+                                }
+                            }
+                        }
+                    }
+
                     // 现造一张身份卡。不给这个入口的话,自建群聊只能从已有卡里挑,
                     // 而已有卡多半是给主对话写的、或者干脆没有 —— 于是自己建的房间里
                     // 全是没有性格的成员,和预制团队的差距全在这一步。
@@ -596,7 +625,8 @@ private fun GroupRoomChatScreen(
                                     val roleName = newMemberName.trim()
                                     scope.launch {
                                         val r = PromptExpander.expand(
-                                            database, keystore, PromptExpander.Kind.IDENTITY, roleName
+                                            database, keystore, PromptExpander.Kind.IDENTITY, roleName,
+                                            skills = pickedSkills.toList()
                                         )
                                         r.onSuccess { body ->
                                             val newId = withContext(Dispatchers.IO) {
