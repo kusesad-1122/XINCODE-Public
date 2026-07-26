@@ -19,6 +19,10 @@ import com.xincode.security.SecurityGateImpl
 import com.xincode.tools.FileReadTool
 import com.xincode.tools.FileWriteTool
 import com.xincode.tools.ListDirTool
+import com.xincode.tools.DeleteFileTool
+import com.xincode.tools.MakeDirectoryTool
+import com.xincode.tools.DownloadFileTool
+import com.xincode.tools.SleepTool
 import com.xincode.tools.EditTool
 import com.xincode.tools.MultiEditTool
 import com.xincode.tools.GrepTool
@@ -306,12 +310,23 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         toolRegistry.register(MultiEditTool())
         toolRegistry.register(GrepTool())
         toolRegistry.register(GlobTool())
+        // 文件管理补齐:删除和建目录以前只能靠 shell_exec 拼 rm/mkdir。
+        // 做成独立工具后意图是显式的,安全门也能按工具名单独识别,不必在所有 shell 里猜。
+        toolRegistry.register(DeleteFileTool())
+        toolRegistry.register(MakeDirectoryTool())
+        // 下载与抓网页分开:web_fetch 抽正文【进】上下文,download_file 存字节【不进】上下文。
+        // 二进制走 web_fetch 既没意义又顶爆上下文。
+        toolRegistry.register(DownloadFileTool())
+        toolRegistry.register(SleepTool())
         toolRegistry.register(InvokeSkillTool(database))
         toolRegistry.register(WolfpackOrchestrator(wolfpackClient))
         toolRegistry.register(AgentPlanTool(planState))
         // AI 的可视终端工具:在内置 Ubuntu 环境跑命令,输出实时镜像到终端页(未部署则不暴露)。
         toolRegistry.register(EnvExecTool(terminalState))
         toolRegistry.register(RecallMemoryTool(database, openAiClient))
+        // recall_memory 给的是截断后的候选摘要;认出是哪条之后要用这个取全文,
+        // 拿半截的决策记录去干活,少的那半段可能正是关键约束。
+        toolRegistry.register(GetMemoryByTitleTool(database))
         // Hermes-① 自进化学习闭环:记忆写入 + 技能管理(主对话也可用,后台复盘分身主要用)。
         toolRegistry.register(SaveMemoryTool(database))
         toolRegistry.register(SkillManageTool(database))

@@ -296,6 +296,20 @@ class AgentCore(
         }
     }
 
+    /**
+     * 本轮跑完后取最后一条助手文本。
+     *
+     * 派活出去的调用方(群聊成员、看板任务)要的是【那句成品回复】,光知道 state
+     * 变回 Idle 没用。工具轮次里的 assistant 消息只有 tool_calls 没有正文,
+     * 所以要跳过空内容继续往前找。
+     *
+     * 只在 run() 返回的 Job join 之后调用 —— 跑的过程中 messages 还在被写。
+     */
+    fun lastAssistantText(): String? =
+        ArrayList(messages).lastOrNull {
+            it.optString("role") == "assistant" && it.optString("content").isNotBlank()
+        }?.optString("content")?.trim()?.takeIf { it.isNotEmpty() }
+
     /** Clear conversation history (keeps system prompt). */
     fun clearHistory() {
         while (messages.size > 1) messages.removeAt(messages.size - 1)

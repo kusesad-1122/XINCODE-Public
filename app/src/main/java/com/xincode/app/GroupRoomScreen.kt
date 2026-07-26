@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,6 +29,7 @@ import com.xincode.data.GroupMessageEntity
 import com.xincode.data.GroupRoomEntity
 import com.xincode.security.KeystoreProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -65,10 +67,39 @@ fun GroupRoomsScreen(
                 })
         }
         Text(
-            "多个智能体同处一室,用 @名字 点谁谁回答,@all 叫全部。历史过长会自动压缩。",
+            "多个智能体同处一室,用 @名字 点谁谁回答,@所有人 叫全部。成员之间也能互相 @,讨论会自己往下走。",
             fontSize = 10.sp, fontFamily = Mono, color = xc.faint, lineHeight = 15.sp,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
         )
+
+        // 一键把六个角色摆好。自己一个个加成员太费事,而且加完还得挨个写身份卡。
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                .clip(RoundedCornerShape(8.dp)).background(xc.bgElevated)
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                    scope.launch {
+                        val rid = withContext(Dispatchers.IO) { PresetTeam.install(database) }
+                        openRoom = rid
+                    }
+                }
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("＋ 装一个产品团队", fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                    fontFamily = Mono, color = xc.green)
+                Text(
+                    PresetTeam.ROLES.joinToString(" / ") { it.name },
+                    fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+                Text(
+                    "每个角色都配好了专属身份卡,关注点各不相同。已装过则直接进房间。",
+                    fontSize = 9.sp, fontFamily = Mono, color = xc.faint, lineHeight = 13.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
 
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -146,9 +177,17 @@ private fun GroupRoomChatScreen(
     val members by database.groupRoomDao().observeMembers(roomId).collectAsState(initial = emptyList())
     val identities by database.identityDao().observeAll().collectAsState(initial = emptyList())
 
+    val app = LocalContext.current.applicationContext as XincodeApplication
+    val room by database.groupRoomDao().observeRoom(roomId).collectAsState(initial = null)
+
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var showMembers by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var showMentionPicker by remember { mutableStateOf(false) }
+    var speaking by remember { mutableStateOf("") }
+    // 持有正在跑的那条链,停止按钮要能掐断它
+    var runningJob by remember { mutableStateOf<Job?>(null) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(messages.size) {
@@ -161,15 +200,32 @@ private fun GroupRoomChatScreen(
         if (members.isEmpty()) return
         input = ""
         busy = true
-        scope.launch {
-            withContext(Dispatchers.IO) {
-                database.groupRoomDao().insertMessage(
-                    GroupMessageEntity(roomId = roomId, sender = "", content = text)
+        runningJob = scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    database.groupRoomDao().insertMessage(
+                        GroupMessageEntity(roomId = roomId, sender = "", content = text)
+                    )
+                }
+                GroupRoomEngine.onMessage(
+                    database, keystore, roomId, text, senderName = "",
+                    agentFactory = { app.buildIsolatedAgentCore() },
+                    onSpeaking = { speaking = it }
                 )
+            } finally {
+                // 停止时这里也要跑到,否则界面永远停在「正在输入」
+                busy = false
+                speaking = ""
+                runningJob = null
             }
-            GroupRoomEngine.onMessage(database, keystore, roomId, text, senderName = "")
-            busy = false
         }
+    }
+
+    /** 把 @名字 插到输入框末尾,自动补空格,已经 @ 过就不重复插。 */
+    fun insertMention(name: String) {
+        val tag = "@$name"
+        if (MentionRouting.isMentioned(input, name)) return
+        input = (input.trimEnd() + " " + tag).trim() + " "
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
@@ -177,6 +233,12 @@ private fun GroupRoomChatScreen(
             Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
                 modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
             Spacer(Modifier.weight(1f))
+            if (room?.fullAccess == true) {
+                Text("完全访问", fontSize = 10.sp, fontFamily = Mono, color = xc.red,
+                    modifier = Modifier.padding(end = 10.dp))
+            }
+            Text("设置", fontSize = 12.sp, fontFamily = Mono, color = xc.sub,
+                modifier = Modifier.padding(end = 12.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showSettings = true })
             Text("成员 ${members.size}", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
                 modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showMembers = true })
         }
@@ -212,8 +274,48 @@ private fun GroupRoomChatScreen(
             }
             if (busy) {
                 item {
-                    Text("…", fontSize = 14.sp, fontFamily = Mono, color = xc.faint,
-                        modifier = Modifier.padding(vertical = 8.dp))
+                    Text(
+                        if (speaking.isNotBlank()) "$speaking 正在输入…" else "…",
+                        fontSize = 11.sp, fontFamily = Mono, color = xc.faint,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+            }
+        }
+
+        // @ 选择卡片:贴着输入框往上弹,点名字就插进输入框
+        if (showMentionPicker && members.isNotEmpty()) {
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                    .background(xc.bgElevated).padding(vertical = 8.dp)
+            ) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Text("叫谁", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                    Spacer(Modifier.weight(1f))
+                    Text("收起", fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
+                        modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            showMentionPicker = false
+                        })
+                }
+                Row(
+                    Modifier.fillMaxWidth().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        insertMention(MentionRouting.ALL); showMentionPicker = false
+                    }.padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text("@所有人", fontSize = 12.sp, fontFamily = Mono, color = xc.green)
+                    Spacer(Modifier.width(8.dp))
+                    Text("(${members.size} 个成员都会回)", fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
+                }
+                members.forEach { mem ->
+                    Row(
+                        Modifier.fillMaxWidth().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            insertMention(mem.displayName); showMentionPicker = false
+                        }.padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text("@${mem.displayName}", fontSize = 12.sp, fontFamily = Mono, color = xc.ink)
+                    }
                 }
             }
         }
@@ -222,11 +324,18 @@ private fun GroupRoomChatScreen(
             Modifier.fillMaxWidth().padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            Text("@", fontSize = 16.sp, fontFamily = Mono,
+                color = if (members.isEmpty()) xc.faint else xc.green,
+                modifier = Modifier
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        if (members.isNotEmpty()) showMentionPicker = !showMentionPicker
+                    }
+                    .padding(horizontal = 8.dp, vertical = 8.dp))
             TextField(
                 value = input, onValueChange = { input = it },
                 placeholder = {
                     Text(
-                        if (members.isEmpty()) "先添加成员" else "@${members.firstOrNull()?.displayName ?: "名字"} 说点什么",
+                        if (members.isEmpty()) "先添加成员" else "点左边的 @ 选人,或直接打字",
                         fontSize = 12.sp, fontFamily = Mono, color = xc.faint
                     )
                 },
@@ -238,12 +347,83 @@ private fun GroupRoomChatScreen(
                 ),
                 textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = Mono)
             )
-            Text(if (busy) "…" else "发送", fontSize = 13.sp, fontFamily = Mono,
-                color = if (busy || members.isEmpty()) xc.faint else xc.green,
+            // 跑着的时候变成停止 —— 连锁一旦滚起来,能随时叫停比什么都重要
+            Text(if (busy) "停止" else "发送", fontSize = 13.sp, fontFamily = Mono,
+                color = when {
+                    busy -> xc.red
+                    members.isEmpty() -> xc.faint
+                    else -> xc.green
+                },
                 modifier = Modifier
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { send() }
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        if (busy) runningJob?.cancel() else send()
+                    }
                     .padding(horizontal = 12.dp, vertical = 8.dp))
         }
+    }
+
+    if (showSettings) {
+        val r = room
+        AlertDialog(
+            onDismissRequest = { showSettings = false },
+            title = { Text("房间设置", fontFamily = Mono, color = xc.ink, fontSize = 14.sp) },
+            text = {
+                if (r == null) {
+                    Text("加载中…", fontSize = 12.sp, fontFamily = Mono, color = xc.sub)
+                } else {
+                    Column {
+                        ToggleRow(
+                            "成员可以互相 @",
+                            "开:成员 @ 别人时对方会真的被叫起来接话,讨论能自己推进。\n关:只有你的 @ 有效,成员说完就停。",
+                            r.allowMemberMentions, xc
+                        ) {
+                            scope.launch { withContext(Dispatchers.IO) {
+                                database.groupRoomDao().updateRoom(r.copy(allowMemberMentions = it, updatedAt = System.currentTimeMillis()))
+                            } }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text("连锁最多几跳:${r.maxHops}", fontSize = 12.sp, fontFamily = Mono, color = xc.ink)
+                        Text("你说一句后,成员之间最多再传几轮。到数就停,防止它们无限对聊。",
+                            fontSize = 10.sp, fontFamily = Mono, color = xc.faint, lineHeight = 14.sp)
+                        Row(Modifier.padding(top = 6.dp)) {
+                            listOf(1, 2, 3, 5, 8).forEach { n ->
+                                Text(
+                                    "$n", fontSize = 12.sp, fontFamily = Mono,
+                                    color = if (r.maxHops == n) xc.green else xc.sub,
+                                    modifier = Modifier
+                                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                            scope.launch { withContext(Dispatchers.IO) {
+                                                database.groupRoomDao().updateRoom(r.copy(maxHops = n, updatedAt = System.currentTimeMillis()))
+                                            } }
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        ToggleRow(
+                            "完全访问",
+                            "让成员能调用工具:联网搜索、读写文件、执行命令。它们的动作会真的落到设备上,而且更慢更费额度。",
+                            r.fullAccess, xc
+                        ) {
+                            scope.launch { withContext(Dispatchers.IO) {
+                                database.groupRoomDao().updateRoom(r.copy(fullAccess = it, updatedAt = System.currentTimeMillis()))
+                            } }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSettings = false }) { Text("关闭", fontFamily = Mono, color = xc.green) }
+            },
+            containerColor = xc.bg
+        )
+    }
+
+    // 给某个成员单独选模型
+    var modelPickerFor by remember { mutableStateOf<GroupMemberEntity?>(null) }
+    modelPickerFor?.let { mem ->
+        MemberModelPicker(database, mem, xc) { modelPickerFor = null }
     }
 
     if (showMembers) {
@@ -255,13 +435,23 @@ private fun GroupRoomChatScreen(
             text = {
                 Column {
                     members.forEach { mem ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("@${mem.displayName}", fontSize = 12.sp, fontFamily = Mono,
-                                color = xc.ink, modifier = Modifier.weight(1f))
-                            Text("移除", fontSize = 10.sp, fontFamily = Mono, color = xc.red,
-                                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                    scope.launch { withContext(Dispatchers.IO) { database.groupRoomDao().deleteMember(mem) } }
-                                })
+                        Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("@${mem.displayName}", fontSize = 12.sp, fontFamily = Mono,
+                                    color = xc.ink, modifier = Modifier.weight(1f))
+                                Text("换模型", fontSize = 10.sp, fontFamily = Mono, color = xc.green,
+                                    modifier = Modifier.padding(end = 10.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                        showMembers = false; modelPickerFor = mem
+                                    })
+                                Text("移除", fontSize = 10.sp, fontFamily = Mono, color = xc.red,
+                                    modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                        scope.launch { withContext(Dispatchers.IO) { database.groupRoomDao().deleteMember(mem) } }
+                                    })
+                            }
+                            Text(
+                                if (mem.model.isBlank()) "模型:跟随活跃配置" else "模型:${mem.model}",
+                                fontSize = 9.sp, fontFamily = Mono, color = xc.faint
+                            )
                         }
                     }
                     Spacer(Modifier.height(10.dp))
@@ -308,6 +498,119 @@ private fun GroupRoomChatScreen(
             dismissButton = { TextButton(onClick = { showMembers = false }) { Text("关闭", fontFamily = Mono, color = xc.sub) } },
             containerColor = xc.bg
         )
+    }
+}
+
+/**
+ * 给单个成员挑供应商 + 模型。
+ *
+ * 每个角色配不同模型是有实际意义的:秘书只是记录,便宜快的模型就够;架构师和测试
+ * 要真思考,值得上贵的。全房间一个模型的话,要么整体拉胯要么整体烧钱。
+ */
+@Composable
+private fun MemberModelPicker(
+    database: AppDatabase,
+    member: GroupMemberEntity,
+    xc: XinColors,
+    onClose: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val configs by database.providerConfigDao().observeAll().collectAsState(initial = emptyList())
+    var pickedConfig by remember { mutableStateOf(member.providerConfigId) }
+    var pickedModel by remember { mutableStateOf(member.model) }
+
+    // 选中配置后,可选模型来自它自己的 enabledModelIds
+    val models = remember(pickedConfig, configs) {
+        val cfg = configs.firstOrNull { it.id == pickedConfig }
+        runCatching {
+            val arr = org.json.JSONArray(cfg?.enabledModelIds ?: "[]")
+            (0 until arr.length()).map { arr.getString(it) }
+        }.getOrDefault(emptyList()).ifEmpty { listOfNotNull(cfg?.model?.takeIf { it.isNotBlank() }) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("@${member.displayName} 用哪个模型", fontFamily = Mono, color = xc.ink, fontSize = 14.sp) },
+        text = {
+            Column(Modifier.heightIn(max = 380.dp)) {
+                Text("供应商", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                Row(Modifier.fillMaxWidth()
+                    .background(if (pickedConfig == 0L) xc.activeBg else xc.bg)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        pickedConfig = 0L; pickedModel = ""
+                    }.padding(6.dp)) {
+                    Text("跟随当前活跃配置", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                }
+                configs.forEach { cfg ->
+                    Row(Modifier.fillMaxWidth()
+                        .background(if (pickedConfig == cfg.id) xc.activeBg else xc.bg)
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            pickedConfig = cfg.id; pickedModel = ""
+                        }.padding(6.dp)) {
+                        Text(cfg.name, fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
+                    }
+                }
+
+                if (pickedConfig != 0L) {
+                    Spacer(Modifier.height(10.dp))
+                    Text("模型", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                    Row(Modifier.fillMaxWidth()
+                        .background(if (pickedModel.isBlank()) xc.activeBg else xc.bg)
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            pickedModel = ""
+                        }.padding(6.dp)) {
+                        Text("用该配置的默认模型", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                    }
+                    models.forEach { m ->
+                        Row(Modifier.fillMaxWidth()
+                            .background(if (pickedModel == m) xc.activeBg else xc.bg)
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                pickedModel = m
+                            }.padding(6.dp)) {
+                            Text(m, fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        database.groupRoomDao().updateMember(
+                            member.copy(providerConfigId = pickedConfig, model = pickedModel)
+                        )
+                    }
+                    onClose()
+                }
+            }) { Text("保存", fontFamily = Mono, color = xc.green) }
+        },
+        dismissButton = { TextButton(onClick = onClose) { Text("取消", fontFamily = Mono, color = xc.sub) } },
+        containerColor = xc.bg
+    )
+}
+
+/** 带说明文字的开关行。说明写清楚开关各自的后果,而不是只给个名字。 */
+@Composable
+private fun ToggleRow(
+    title: String,
+    desc: String,
+    checked: Boolean,
+    xc: XinColors,
+    onChange: (Boolean) -> Unit
+) {
+    Column(
+        Modifier.fillMaxWidth().clickable(
+            indication = null, interactionSource = remember { MutableInteractionSource() }
+        ) { onChange(!checked) }
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, fontSize = 12.sp, fontFamily = Mono, color = xc.ink, modifier = Modifier.weight(1f))
+            Text(if (checked) "开" else "关", fontSize = 12.sp, fontFamily = Mono,
+                color = if (checked) xc.green else xc.sub)
+        }
+        Text(desc, fontSize = 10.sp, fontFamily = Mono, color = xc.faint, lineHeight = 14.sp,
+            modifier = Modifier.padding(top = 2.dp))
     }
 }
 

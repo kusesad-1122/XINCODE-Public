@@ -24,6 +24,34 @@ data class GroupRoomEntity(
     val note: String = "",
     /** 历史超过这个 token 数就自动压缩一次。0 = 用默认值。 */
     val compactThreshold: Int = 0,
+
+    /**
+     * 成员之间是否可以互相 @ 触发。
+     *
+     * 关掉时只有用户的 @ 能叫人,成员回复里的 @ 是死的 —— 安全,但话题推不下去:
+     * 谁都不接话,群聊就断在第一轮(「秘书说了『大家聊聊』然后没人应」就是这么来的)。
+     * 打开后成员 @ 别人会真把人叫起来,讨论才能自己滚动,代价是必须有 [maxHops]
+     * 和停止按钮兜着。
+     */
+    val allowMemberMentions: Boolean = true,
+
+    /**
+     * 一条消息最多能引发几跳连锁。用户发言是第 0 跳。
+     *
+     * 防「两个成员无限对聊烧光额度」的硬闸,不是建议值 —— 到数就停,
+     * 不管它们聊得多起劲。
+     */
+    val maxHops: Int = 3,
+
+    /**
+     * 完全访问:成员能不能调用工具(联网、读写文件、执行命令)。
+     *
+     * 默认关。关着时成员只凭上下文说话,一次请求出一句,轻量可控;
+     * 打开后每个成员各走一条完整的工具回环,能真干活,但更慢更贵,
+     * 而且它们的动作会落到真实环境里。
+     */
+    val fullAccess: Boolean = false,
+
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )
@@ -73,6 +101,14 @@ interface GroupRoomDao {
     @Query("SELECT * FROM group_rooms WHERE id = :id")
     suspend fun getRoom(id: Long): GroupRoomEntity?
 
+    /** 房间设置改了要立刻反映到聊天页(开关状态、完全访问角标)。 */
+    @Query("SELECT * FROM group_rooms WHERE id = :id")
+    fun observeRoom(id: Long): Flow<GroupRoomEntity?>
+
+    /** 预制团队查重用:同名房间已存在就不重复建一屋子人。 */
+    @Query("SELECT * FROM group_rooms WHERE name = :name LIMIT 1")
+    suspend fun getRoomByName(name: String): GroupRoomEntity?
+
     @Insert
     suspend fun insertRoom(room: GroupRoomEntity): Long
 
@@ -97,6 +133,10 @@ interface GroupRoomDao {
 
     @Insert
     suspend fun insertMember(member: GroupMemberEntity): Long
+
+    /** 改成员的供应商/模型绑定 —— 每个角色该用什么档次的模型是不一样的。 */
+    @Update
+    suspend fun updateMember(member: GroupMemberEntity)
 
     @Delete
     suspend fun deleteMember(member: GroupMemberEntity)

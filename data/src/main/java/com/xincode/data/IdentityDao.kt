@@ -32,6 +32,10 @@ interface IdentityDao {
     @Query("SELECT COUNT(*) FROM identities")
     suspend fun count(): Int
 
+    /** 预制团队按名字查重复用 —— 重复安装不该攒出一堆同名卡。 */
+    @Query("SELECT * FROM identities")
+    suspend fun getAll(): List<IdentityEntity>
+
     /** 删除身份卡后,所有指向它的 session 改为 null(对话保留,只失去身份卡关联). */
     @Query("UPDATE sessions SET identityId = NULL WHERE identityId = :identityId")
     suspend fun nullifyIdentityInSessions(identityId: Long)
