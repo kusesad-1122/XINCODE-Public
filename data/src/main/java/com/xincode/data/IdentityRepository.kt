@@ -22,13 +22,38 @@ class IdentityRepository(private val database: AppDatabase) {
 
     fun observeAll(): Flow<List<IdentityEntity>> = identityDao.observeAll()
 
-    suspend fun getActiveId(): Long =
-        settingDao.get(ACTIVE_IDENTITY_KEY)?.toLongOrNull() ?: DEFAULT_IDENTITY_ID
+    /**
+     * Return an identity that is valid for a normal one-to-one chat.
+     *
+     * Older builds allowed a group-only role to be persisted as the global active identity.
+     * That made every later "new chat" unexpectedly speak as a team member. Repair the
+     * persisted value while reading it so existing installations recover on first launch.
+     */
+    suspend fun getActiveId(): Long {
+        val requested = settingDao.get(ACTIVE_IDENTITY_KEY)?.toLongOrNull()
+            ?: DEFAULT_IDENTITY_ID
+        val requestedCard = identityDao.getById(requested)
+        if (requestedCard != null && requestedCard.scope != IdentityEntity.SCOPE_GROUP) {
+            return requested
+        }
+
+        val fallback = identityDao.getById(DEFAULT_IDENTITY_ID)
+            ?.takeIf { it.scope != IdentityEntity.SCOPE_GROUP }
+            ?: identityDao.getAll().firstOrNull { it.scope != IdentityEntity.SCOPE_GROUP }
+            ?: return DEFAULT_IDENTITY_ID
+        settingDao.put(ACTIVE_IDENTITY_KEY, fallback.id.toString())
+        return fallback.id
+    }
 
     fun observeActiveId(): Flow<Long> =
         settingDao.observe(ACTIVE_IDENTITY_KEY).map { it?.toLongOrNull() ?: DEFAULT_IDENTITY_ID }
 
     suspend fun setActive(id: Long) {
+        val identity = identityDao.getById(id)
+            ?: throw IllegalArgumentException("Identity $id does not exist")
+        require(identity.scope != IdentityEntity.SCOPE_GROUP) {
+            "Group-only identities cannot be used by normal chats"
+        }
         settingDao.put(ACTIVE_IDENTITY_KEY, id.toString())
     }
 

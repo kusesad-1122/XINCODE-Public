@@ -101,6 +101,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import com.xincode.app.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -417,6 +419,7 @@ fun ChatScreen(
     var showMcpPicker by remember { mutableStateOf(false) }
     var showStatsPopup by remember { mutableStateOf(false) }   // 点圆环弹出的统计卡片
     var expandingPrompt by remember { mutableStateOf(false) }  // 正在扩展提示词
+    var promptExpansionJob by remember { mutableStateOf<Job?>(null) }
     var showInspirationMenu by remember { mutableStateOf(false) }
     var showModeCard by remember { mutableStateOf(false) }     // 计划/协作模式卡片
     var webSearchOn by remember { mutableStateOf(com.xincode.tools.WebSearchGate.enabled) }
@@ -453,11 +456,14 @@ fun ChatScreen(
             showInspirationMenu = true
             return
         }
-        if (expandingPrompt) return
+        if (expandingPrompt) {
+            promptExpansionJob?.cancel()
+            return
+        }
         showInspirationMenu = false
         expandingPrompt = true
         Toast.makeText(context, "正在优化提示词…", Toast.LENGTH_SHORT).show()
-        scope.launch {
+        promptExpansionJob = scope.launch {
             try {
                 val app = context.applicationContext as XincodeApplication
                 PromptExpander.expand(
@@ -471,8 +477,12 @@ fun ChatScreen(
                 }.onFailure {
                     Toast.makeText(context, "优化失败：${it.message}", Toast.LENGTH_LONG).show()
                 }
+            } catch (cancelled: CancellationException) {
+                Toast.makeText(context, "已停止提示词优化", Toast.LENGTH_SHORT).show()
+                throw cancelled
             } finally {
                 expandingPrompt = false
+                promptExpansionJob = null
             }
         }
     }
@@ -1040,11 +1050,17 @@ fun ChatScreen(
                     )
 
                     ChatActionIcon(
-                        icon = Icons.Outlined.Lightbulb,
-                        contentDescription = "灵感与提示词优化",
-                        tint = if (expandingPrompt || showInspirationMenu) Green else Ink,
+                        icon = if (expandingPrompt) Icons.Outlined.Close else Icons.Outlined.Lightbulb,
+                        contentDescription = if (expandingPrompt) "停止提示词优化" else "灵感与提示词优化",
+                        tint = when {
+                            expandingPrompt -> Red
+                            showInspirationMenu -> Green
+                            else -> Ink
+                        },
                         onClick = {
-                            if (chatState.input.value.isBlank()) {
+                            if (expandingPrompt) {
+                                promptExpansionJob?.cancel()
+                            } else if (chatState.input.value.isBlank()) {
                                 showInspirationMenu = !showInspirationMenu
                                 showPlusCard = false
                                 showModeCard = false
@@ -1106,8 +1122,9 @@ fun ChatScreen(
                 onDismissRequest = { showInspirationMenu = false }
             ) {
                 InspirationCard(
-                    onTemplate = { template ->
-                        chatState.input.value = template
+                    initialText = chatState.input.value,
+                    onApply = { combined ->
+                        chatState.input.value = combined
                         showInspirationMenu = false
                     },
                     onDismiss = { showInspirationMenu = false }
@@ -1402,8 +1419,14 @@ private val inspirationTemplates = listOf(
 )
 
 @Composable
-private fun InspirationCard(onTemplate: (String) -> Unit, onDismiss: () -> Unit) {
+private fun InspirationCard(
+    initialText: String,
+    onApply: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
     val colors = LocalXinColors.current
+    var selected by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var editor by remember(initialText) { mutableStateOf(initialText) }
     Column(
         Modifier
             .widthIn(min = 300.dp, max = 360.dp)
@@ -1421,36 +1444,73 @@ private fun InspirationCard(onTemplate: (String) -> Unit, onDismiss: () -> Unit)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text("从一个清晰起点开始", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
-                Text("选择模板后仍可继续修改", fontSize = 10.sp, color = colors.sub)
+                Text("可多选组合，也可直接修改完整内容", fontSize = 10.sp, color = colors.sub)
             }
             ChatActionIcon(Icons.Outlined.Close, "关闭灵感面板", onClick = onDismiss)
         }
         Spacer(Modifier.height(8.dp))
-        inspirationTemplates.forEach { item ->
+        inspirationTemplates.forEachIndexed { index, item ->
+            val checked = index in selected
             Row(
                 Modifier
                     .fillMaxWidth()
                     .padding(vertical = 3.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(colors.activeBg)
+                    .background(if (checked) colors.green.copy(alpha = 0.14f) else colors.activeBg)
                     .clickable(
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
-                    ) { onTemplate(item.prompt) }
+                    ) {
+                        selected = if (checked) selected - index else selected + index
+                        if (checked) {
+                            editor = editor.replace(item.prompt, "")
+                                .replace(Regex("\\n{3,}"), "\n\n")
+                                .trim()
+                        } else if (!editor.contains(item.prompt)) {
+                            editor = listOf(editor.trim(), item.prompt)
+                                .filter { it.isNotBlank() }
+                                .joinToString("\n\n")
+                        }
+                    }
                     .padding(horizontal = 12.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(item.title, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.ink)
+                    Text((if (checked) "✓ " else "") + item.title,
+                        fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.ink)
                     Text(item.description, fontSize = 10.sp, color = colors.sub)
                 }
                 Icon(
-                    imageVector = Icons.Outlined.KeyboardArrowRight,
+                    imageVector = if (checked) Icons.Outlined.Check else Icons.Outlined.Add,
                     contentDescription = null,
                     tint = colors.faint,
                     modifier = Modifier.size(20.dp)
                 )
             }
+        }
+        Spacer(Modifier.height(8.dp))
+        TextField(
+            value = editor,
+            onValueChange = { editor = it },
+            placeholder = { Text("组合后的提示词会出现在这里，可继续修改", fontSize = 11.sp) },
+            modifier = Modifier.fillMaxWidth().heightIn(min = 96.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = colors.bg,
+                unfocusedContainerColor = colors.bg,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                focusedTextColor = colors.ink,
+                unfocusedTextColor = colors.ink,
+                cursorColor = colors.green
+            ),
+            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, lineHeight = 17.sp)
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDismiss) { Text("取消", color = colors.sub) }
+            TextButton(
+                enabled = editor.isNotBlank(),
+                onClick = { onApply(editor.trim()) }
+            ) { Text("放入输入框", color = if (editor.isNotBlank()) colors.green else colors.faint) }
         }
     }
 }

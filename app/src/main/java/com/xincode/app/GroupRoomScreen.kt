@@ -27,18 +27,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.data.AppDatabase
 import com.xincode.data.GroupMemberEntity
-import com.xincode.data.GroupMessageEntity
 import com.xincode.data.GroupRoomEntity
-import com.xincode.data.SessionEntity
+import com.xincode.data.MessageEntity
 import com.xincode.provider.OpenAiClient
 import com.xincode.security.KeystoreProvider
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val Mono = XinUiFont
+
+/** Workbench is a product surface, never a protocol/debug log surface. */
+internal fun workbenchVisibleMessages(messages: List<MessageEntity>): List<MessageEntity> =
+    messages.filter { message ->
+        val content = message.content.trim()
+        val rawToolProtocol = content.startsWith("{") &&
+            (content.contains("\"__tool_call__\"") ||
+                (content.contains("\"tool_name\"") && content.contains("\"params_summary\"")))
+        message.role == "assistant" && content.isNotBlank() && !rawToolProtocol
+    }
 
 /** 房间列表。 */
 @Composable
@@ -52,6 +60,7 @@ fun GroupRoomsScreen(
 ) {
     val xc = LocalXinColors.current
     val scope = rememberCoroutineScope()
+    val app = LocalContext.current.applicationContext as XincodeApplication
     val rooms by database.groupRoomDao().observeRooms().collectAsState(initial = emptyList())
     var openRoom by remember { mutableStateOf<Long?>(null) }
     // 侧栏点进来的房间只认一次:消费掉之后再返回列表就不会被弹回房间里
@@ -137,6 +146,7 @@ fun GroupRoomsScreen(
                     }
                     Text("删除", fontSize = 10.sp, fontFamily = Mono, color = xc.red,
                         modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            app.stopGroupMessage(r.id)
                             scope.launch {
                                 withContext(Dispatchers.IO) {
                                     deleteRoomAndWorkSessions(database, r)
@@ -194,16 +204,14 @@ private fun GroupRoomChatScreen(
     val room by database.groupRoomDao().observeRoom(roomId).collectAsState(initial = null)
 
     var input by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
+    val busy = app.isGroupRoomBusy(roomId)
     var showMembers by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showMentionPicker by remember { mutableStateOf(false) }
-    var speaking by remember { mutableStateOf("") }
+    val speaking = app.groupRoomSpeaker(roomId)
     var expanding by remember { mutableStateOf(false) }
     // 内嵌工作台:非空时在群聊内部展开那个成员的干活现场,返回就回到这儿
     var workbenchFor by remember { mutableStateOf<GroupMemberEntity?>(null) }
-    // 持有正在跑的那条链,停止按钮要能掐断它
-    var runningJob by remember { mutableStateOf<Job?>(null) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(messages.size) {
@@ -214,28 +222,7 @@ private fun GroupRoomChatScreen(
         val text = input.trim()
         if (text.isBlank() || busy) return
         if (members.isEmpty()) return
-        input = ""
-        busy = true
-        runningJob = scope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    database.groupRoomDao().insertMessage(
-                        GroupMessageEntity(roomId = roomId, sender = "", content = text)
-                    )
-                }
-                GroupRoomEngine.onMessage(
-                    database, keystore, roomId, text, senderName = "",
-                    runWorkTurn = { sid, prompt, ws -> app.runGroupWorkTurn(sid, prompt, workspaceRoot = ws) },
-                    ensureWorkSession = { mem -> ensureWorkSession(database, roomId, mem) },
-                    onSpeaking = { speaking = it }
-                )
-            } finally {
-                // 停止时这里也要跑到,否则界面永远停在「正在输入」
-                busy = false
-                speaking = ""
-                runningJob = null
-            }
-        }
+        if (app.sendGroupMessage(roomId, text)) input = ""
     }
 
     /** 把 @名字 插到输入框末尾,自动补空格,已经 @ 过就不重复插。 */
@@ -426,7 +413,7 @@ private fun GroupRoomChatScreen(
                 },
                 modifier = Modifier
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        if (busy) runningJob?.cancel() else send()
+                        if (busy) app.stopGroupMessage(roomId) else send()
                     }
                     .padding(horizontal = 12.dp, vertical = 8.dp))
         }
@@ -725,17 +712,18 @@ private fun MemberWorkbench(
     val messages by database.messageDao()
         .observeBySessionId(member.workSessionId)
         .collectAsState(initial = emptyList())
+    val visibleMessages = remember(messages) { workbenchVisibleMessages(messages) }
     val listState = rememberLazyListState()
 
     // 他还在干活时消息会不断追加,自动跟到底部,否则要一直手动往下拖
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    LaunchedEffect(visibleMessages.size) {
+        if (visibleMessages.isNotEmpty()) listState.animateScrollToItem(visibleMessages.size - 1)
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
         XinPageHeader(
             title = "${member.displayName} 的工作台",
-            subtitle = "查看完整执行过程与中间结果",
+            subtitle = "查看成员进度与结果 · 内部指令已隐藏",
             onBack = onBack,
             modifier = Modifier.padding(horizontal = 8.dp)
         )
@@ -745,7 +733,7 @@ private fun MemberWorkbench(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
         )
 
-        if (messages.isEmpty()) {
+        if (visibleMessages.isEmpty()) {
             Text("还没有记录 —— 他还没被叫去干过活。",
                 fontSize = 12.sp, fontFamily = Mono, color = xc.sub,
                 modifier = Modifier.padding(16.dp))
@@ -758,53 +746,18 @@ private fun MemberWorkbench(
             contentPadding = PaddingValues(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(messages.size) { i ->
-                val m = messages[i]
-                // 工具消息压得很小:它们是过程噪音,看的人多半在找「它到底做了什么」,
-                // 而不是每条工具的完整输出
-                val isTool = m.role == "tool"
+            items(visibleMessages.size) { i ->
+                val m = visibleMessages[i]
                 Column(Modifier.fillMaxWidth()) {
                     Text(
-                        when (m.role) {
-                            "user" -> "▸ 交办"
-                            "assistant" -> member.displayName
-                            "tool" -> "❯ 工具"
-                            else -> m.role
-                        },
+                        member.displayName,
                         fontSize = 9.sp, fontFamily = Mono,
-                        color = if (isTool) xc.faint else xc.green
+                        color = xc.green
                     )
-                    if (isTool) {
-                        Text(m.content.take(300), fontSize = 10.sp, fontFamily = Mono,
-                            color = xc.faint, lineHeight = 14.sp)
-                    } else {
-                        MarkdownContent(m.content, modifier = Modifier.padding(top = 2.dp))
-                    }
+                    MarkdownContent(m.content, modifier = Modifier.padding(top = 2.dp))
                 }
             }
         }
-    }
-}
-
-/**
- * 确保成员有自己的工作会话,返回会话 id。
- *
- * 会话标题带上房间名和成员名,因为它会出现在主对话的会话列表里 ——
- * 一堆没头没尾的会话比没有更糟,你得一眼看出这是谁的工作台。
- */
-private suspend fun ensureWorkSession(
-    database: AppDatabase,
-    roomId: Long,
-    member: GroupMemberEntity
-): Long = withContext(Dispatchers.IO) {
-    if (member.workSessionId > 0) return@withContext member.workSessionId
-    val roomName = database.groupRoomDao().getRoom(roomId)?.name ?: "群聊"
-    database.inTransaction {
-        val sid = database.sessionDao().upsert(
-            SessionEntity(title = "🔧 $roomName · ${member.displayName}")
-        )
-        database.groupRoomDao().updateMember(member.copy(workSessionId = sid))
-        sid
     }
 }
 

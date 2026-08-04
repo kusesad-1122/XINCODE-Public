@@ -24,19 +24,33 @@ if [ -z "$NDK" ] || [ ! -d "$NDK" ]; then
 fi
 echo "NDK: $NDK"
 
-TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
-[ -d "$TC" ] || TC="$NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin"
+TC=""
+for host in linux-x86_64 darwin-x86_64 windows-x86_64; do
+  candidate="$NDK/toolchains/llvm/prebuilt/$host/bin"
+  [ -d "$candidate" ] && TC="$candidate" && break
+done
+if [ -z "$TC" ]; then
+  echo "✗ NDK LLVM toolchain not found under $NDK" >&2
+  exit 1
+fi
+
+CLANG="$TC/aarch64-linux-android28-clang"
+AR="$TC/llvm-ar"
+if [ -f "$CLANG.cmd" ]; then
+  CLANG="$CLANG.cmd"
+  AR="$AR.exe"
+fi
 
 # minSdk 是 28,工具链要对上 —— 用高于 minSdk 的 API level 编出来的库
 # 在低版本设备上会因为缺符号直接加载失败。
-export CC_aarch64_linux_android="$TC/aarch64-linux-android28-clang"
-export AR_aarch64_linux_android="$TC/llvm-ar"
-export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TC/aarch64-linux-android28-clang"
+export CC_aarch64_linux_android="$CLANG"
+export AR_aarch64_linux_android="$AR"
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CLANG"
 
 rustup target add aarch64-linux-android >/dev/null 2>&1 || true
 
 cd "$HERE"
-cargo build --release --target aarch64-linux-android
+cargo build --release --target aarch64-linux-android --no-default-features
 
 mkdir -p "$OUT"
 cp target/aarch64-linux-android/release/libcodegraph_kernel.so "$OUT/"

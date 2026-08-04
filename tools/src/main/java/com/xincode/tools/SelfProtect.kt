@@ -18,9 +18,9 @@ package com.xincode.tools
  * 但对启动流程来说打不开就是打不开,只能改名备份 + 重建空库,
  * 用户的会话、身份卡、供应商配置、记忆**全部消失**。
  *
- * 设备 root 之后这条路尤其致命:`shell_exec` 会自动走 root,AI 一个
- * `chmod` / `chown` / `mkdir` 落在这个目录里,文件就变成 root 所有,
- * App 自己的 uid 反而读不了了。
+ * root 动作尤其危险:显式 `su_exec` 里的 `chmod` / `chown` / `mkdir`
+ * 仍可能让文件变成 root 所有；普通 `shell_exec` 保持应用 uid,也同样必须
+ * 拦住这些私有运行目录。
  *
  * ## 为什么是「拒绝」而不是「确认」
  *
@@ -43,7 +43,7 @@ object SelfProtect {
      */
     @Volatile
     var appDataDir: String = ""
-        set(value) { field = value.trimEnd('/') }
+        set(value) { field = value.replace('\\', '/').trimEnd('/') }
 
     /**
      * 锁死的子目录。只挑「坏了 App 就起不来」的那几个:
@@ -61,16 +61,29 @@ object SelfProtect {
     fun isProtected(path: String): Boolean {
         val base = appDataDir
         if (base.isEmpty() || path.isBlank()) return false
-        val canonical = try {
-            java.io.File(path).canonicalPath
-        } catch (_: Exception) {
-            // canonicalPath 会碰盘(解符号链接),失败时退回字面规范化:
-            // 宁可用弱一点的判断,也不能因为一次 IO 抖动就把保护整个关掉。
-            java.io.File(path).absolutePath
-        }
+        val canonical = canonicalForPolicy(path)
         return LOCKED.any { sub ->
             canonical == "$base/$sub" || canonical.startsWith("$base/$sub/")
         }
+    }
+
+    /** Keep Android path policy deterministic in JVM tests running on Windows too. */
+    private fun canonicalForPolicy(path: String): String {
+        if (java.io.File.separatorChar == '/') {
+            return runCatching { java.io.File(path).canonicalPath }
+                .getOrElse { java.io.File(path).absolutePath }
+                .replace('\\', '/')
+        }
+        val absolute = path.replace('\\', '/').startsWith('/')
+        val parts = ArrayDeque<String>()
+        path.replace('\\', '/').split('/').forEach { part ->
+            when (part) {
+                "", "." -> Unit
+                ".." -> if (parts.isNotEmpty()) parts.removeLast()
+                else -> parts.addLast(part)
+            }
+        }
+        return (if (absolute) "/" else "") + parts.joinToString("/")
     }
 
     /** 给模型看的拒绝理由;不该拦时返回 null。 */

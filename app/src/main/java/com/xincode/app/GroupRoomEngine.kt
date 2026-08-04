@@ -294,7 +294,12 @@ object GroupRoomEngine {
      * 房间不该能把文件写到工作区外面去。
      */
     fun workspaceOf(room: GroupRoomEntity?): String {
-        room?.workspacePath?.takeIf { it.isNotBlank() }?.let { return it }
+        room?.workspacePath?.takeIf { it.isNotBlank() }?.let { configured ->
+            val legacy = WorkspaceContext.LEGACY_SHARED_ROOT
+            return if (configured == legacy || configured.startsWith("$legacy/")) {
+                WorkspaceContext.defaultRoot + configured.removePrefix(legacy)
+            } else configured
+        }
         val safe = (room?.name ?: "room")
             .replace(Regex("[/\\\\:*?\"<>|]"), "_")
             .replace("..", "_")

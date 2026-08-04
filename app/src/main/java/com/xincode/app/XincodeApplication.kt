@@ -35,7 +35,11 @@ import com.xincode.tools.WebFetchTool
 import com.xincode.tools.RootShellManager
 import com.xincode.provider.HttpCacheProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
@@ -43,10 +47,14 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.runBlocking
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 class XincodeApplication : Application() {
+
+    /** Long-lived work that must survive navigation away from its Compose screen. */
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     lateinit var database: AppDatabase
         private set
@@ -88,6 +96,8 @@ class XincodeApplication : Application() {
     val agentChatState: AgentChatState get() = active.chat
     /** sessionId -> 是否忙碌(由各 core 的状态收集器在主线程维护)。用于前台服务保活判断。 */
     private val coreBusy = HashMap<Long, Boolean>()
+    private val groupRoomJobs = mutableStateMapOf<Long, Job>()
+    private val groupRoomSpeakers = mutableStateMapOf<Long, String>()
     private lateinit var shellExecTool: ShellExecTool
     private lateinit var backgroundReviewRunner: BackgroundReviewRunner
     lateinit var securityGate: SecurityGateImpl
@@ -210,6 +220,29 @@ class XincodeApplication : Application() {
             // 非主线程:已记录,吞掉不杀进程
         }
     }
+
+    /**
+     * Pick a directory owned by the current app UID and verify it with a real write.
+     * Shared `/storage/emulated/0/XINCODE` can survive reinstall with the previous UID's
+     * ownership, which is exactly how ordinary non-root team work ended in EPERM.
+     */
+    private fun configureWritableWorkspace() {
+        val candidates = listOfNotNull(
+            getExternalFilesDir(null)?.let { java.io.File(it, "XINCODE") },
+            java.io.File(filesDir, "workspace")
+        )
+        val chosen = candidates.firstOrNull { dir ->
+            runCatching {
+                if (!dir.exists() && !dir.mkdirs()) return@runCatching false
+                val probe = java.io.File(dir, ".xincode-write-probe")
+                probe.writeText("ok")
+                probe.delete()
+                true
+            }.getOrDefault(false)
+        } ?: java.io.File(filesDir, "workspace").also { it.mkdirs() }
+        com.xincode.tools.WorkspaceContext.configureDefaultRoot(chosen.absolutePath)
+    }
+
 override fun onCreate() {
         super.onCreate()
         Log.i("XINCODE", "=== APP START ===")
@@ -218,6 +251,7 @@ override fun onCreate() {
         // 自我保护要在【建库之前】就位:tools 模块拿不到 Context,这个路径只能从这里注入。
         // 晚一步注入,这一轮里 AI 就能把 App 自己的 databases/ 改坏(真实事故,见 SelfProtect)。
         com.xincode.tools.SelfProtect.appDataDir = applicationInfo.dataDir.orEmpty()
+        configureWritableWorkspace()
 
         // ⚠️ database 必须在【任何用到它的代码之前】赋值。
         // 它是 lateinit,提前一行访问就是 UninitializedPropertyAccessException,
@@ -421,7 +455,13 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
 
         // 步骤3: 冷启动时同步加载当前 session 历史(UI 列表 + AgentCore 内存),阻塞确保在 send() 之前完成
         runBlocking {
-            workspaceRootGlobal = database.settingDao().get("workspace_root") ?: ""
+            val storedWorkspace = database.settingDao().get("workspace_root") ?: ""
+            // v1.10 的共享目录可能归旧安装 UID 所有。空掉后自动使用当前安装自己的目录。
+            workspaceRootGlobal = if (storedWorkspace.trimEnd('/') ==
+                com.xincode.tools.WorkspaceContext.LEGACY_SHARED_ROOT) {
+                database.settingDao().put("workspace_root", "")
+                ""
+            } else storedWorkspace
             auxVisionBaseUrl = database.settingDao().get("aux_vision_base_url") ?: ""
             auxVisionModel = database.settingDao().get("aux_vision_model") ?: ""
             auxVisionKeySet = !database.settingDao().get("aux_vision_api_key").isNullOrBlank()
@@ -692,7 +732,12 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
     private fun refreshForegroundService() {
         val activeText = _active?.core?.state?.value?.let { statusTextFor(it) }
         val anyBusy = coreBusy.values.any { it }
-        val text = activeText ?: if (anyBusy) "后台会话执行中…" else null
+        val anyGroupBusy = groupRoomJobs.values.any { it.isActive }
+        val text = activeText ?: when {
+            anyBusy -> "后台会话执行中…"
+            anyGroupBusy -> "团队群聊执行中…"
+            else -> null
+        }
         if (text != null) {
             com.xincode.service.AgentForegroundService.start(this, text)
         } else {
@@ -723,38 +768,17 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
     // ---- session management ----
 
     fun createNewSession(): Long {
-        val newId = runBlocking {
-            val id = database.sessionDao().upsert(SessionEntity(title = "新对话", identityId = activeIdentityId))
-            seedOpeningStatement(id)
-            id
+        return runBlocking {
+            database.sessionDao().upsert(SessionEntity(title = "新对话", identityId = activeIdentityId))
         }
-        return newId
     }
 
     fun createSessionInProject(projectId: Long): Long {
-        val newId = runBlocking {
-            val id = database.sessionDao().upsert(SessionEntity(title = "新对话", projectId = projectId, identityId = activeIdentityId))
-            seedOpeningStatement(id)
-            id
-        }
-        return newId
-    }
-
-    /**
-     * 身份卡若设了开场白,新建会话时作为第一条 AI 消息落库,让这张卡一上来就进入状态。
-     *
-     * 只落 UI 消息、不进模型历史:开场白是给用户看的,拿它当真实的助手回复会让模型
-     * 以为自己已经说过这句话。留空则什么也不做。
-     */
-    private suspend fun seedOpeningStatement(sessionId: Long) {
-        try {
-            val identity = activeIdentityId?.let { database.identityDao().getById(it) } ?: return
-            val opening = identity.openingStatement.trim()
-            if (opening.isBlank()) return
-            database.messageDao().insert(
-                com.xincode.data.MessageEntity(role = "assistant", content = opening, sessionId = sessionId)
+        return runBlocking {
+            database.sessionDao().upsert(
+                SessionEntity(title = "新对话", projectId = projectId, identityId = activeIdentityId)
             )
-        } catch (_: Exception) { /* 开场白失败不该挡住建会话 */ }
+        }
     }
 
     // ---- Goal/Work 模式 ----
@@ -797,6 +821,77 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         goalControllers[sessionId] = controller
         controller.start(g)
         refreshForegroundService()
+    }
+
+    /** Whether a room currently owns a background reply chain. Compose reads this state map. */
+    fun isGroupRoomBusy(roomId: Long): Boolean = groupRoomJobs[roomId]?.isActive == true
+
+    /** Name of the member currently producing a reply, or an empty string between replies. */
+    fun groupRoomSpeaker(roomId: Long): String = groupRoomSpeakers[roomId].orEmpty()
+
+    /**
+     * Start a room turn in the Application scope so leaving the room does not cancel it.
+     * Returns false when the input is empty or the same room already has a running chain.
+     */
+    fun sendGroupMessage(roomId: Long, rawText: String): Boolean {
+        val text = rawText.trim()
+        if (text.isBlank() || isGroupRoomBusy(roomId)) return false
+
+        val job = applicationScope.launch(start = CoroutineStart.LAZY) {
+            withContext(Dispatchers.IO) {
+                database.groupRoomDao().insertMessage(
+                    com.xincode.data.GroupMessageEntity(roomId = roomId, sender = "", content = text)
+                )
+            }
+            GroupRoomEngine.onMessage(
+                database = database,
+                keystore = keystore,
+                roomId = roomId,
+                content = text,
+                senderName = "",
+                runWorkTurn = { sid, prompt, workspace ->
+                    runGroupWorkTurn(sid, prompt, workspaceRoot = workspace)
+                },
+                ensureWorkSession = { member -> ensureGroupWorkSession(roomId, member) },
+                onSpeaking = { name ->
+                    applicationScope.launch { groupRoomSpeakers[roomId] = name }
+                }
+            )
+        }
+        groupRoomJobs[roomId] = job
+        job.invokeOnCompletion {
+            applicationScope.launch {
+                if (groupRoomJobs[roomId] === job) groupRoomJobs.remove(roomId)
+                groupRoomSpeakers.remove(roomId)
+                refreshForegroundService()
+            }
+        }
+        job.start()
+        refreshForegroundService()
+        return true
+    }
+
+    /** Stop only this room's chain; other rooms and normal chats continue. */
+    fun stopGroupMessage(roomId: Long) {
+        groupRoomJobs[roomId]?.cancel()
+    }
+
+    private suspend fun ensureGroupWorkSession(
+        roomId: Long,
+        member: com.xincode.data.GroupMemberEntity
+    ): Long = withContext(Dispatchers.IO) {
+        if (member.workSessionId > 0) return@withContext member.workSessionId
+        val roomName = database.groupRoomDao().getRoom(roomId)?.name ?: "群聊"
+        database.inTransaction {
+            val sid = database.sessionDao().upsert(
+                SessionEntity(
+                    title = "🔧 $roomName · ${member.displayName}",
+                    identityId = member.identityId.takeIf { it > 0 }
+                )
+            )
+            database.groupRoomDao().updateMember(member.copy(workSessionId = sid))
+            sid
+        }
     }
 
     /**
@@ -991,7 +1086,11 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             val pid = session?.projectId ?: 0L
             val projectRoot = if (pid > 0L) database.projectDao().getById(pid)?.workspaceRoot?.takeIf { it.isNotBlank() } else null
             val globalRoot = database.settingDao().get("workspace_root")?.takeIf { it.isNotBlank() }
-            val root = projectRoot ?: globalRoot ?: com.xincode.tools.WorkspaceContext.DEFAULT_ROOT
+            val configuredRoot = projectRoot ?: globalRoot
+            val root = if (configuredRoot?.trimEnd('/') ==
+                com.xincode.tools.WorkspaceContext.LEGACY_SHARED_ROOT) {
+                com.xincode.tools.WorkspaceContext.defaultRoot
+            } else configuredRoot ?: com.xincode.tools.WorkspaceContext.defaultRoot
             // 全局兜底(设置显示/无 per-session 上下文的后台核用)。
             com.xincode.tools.WorkspaceContext.projectId = pid
             com.xincode.tools.WorkspaceContext.workspaceRoot = root
@@ -1116,9 +1215,11 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
 
     /** Switch the active identity. Only affects sessions created after this call. */
     fun setActiveIdentity(id: Long) {
-        activeIdentityId = id
-        GlobalScope.launch(Dispatchers.IO) {
-            identityRepository.setActive(id)
+        applicationScope.launch {
+            val accepted = withContext(Dispatchers.IO) {
+                runCatching { identityRepository.setActive(id) }.isSuccess
+            }
+            if (accepted) activeIdentityId = id
         }
     }
 

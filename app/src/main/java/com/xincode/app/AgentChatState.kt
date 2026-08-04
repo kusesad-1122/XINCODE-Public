@@ -73,7 +73,7 @@ class AgentChatState(
     // B2:本会话绑定的工作区根 + 项目 id(由 app 的 applyWorkspaceForSession 设置)。
     // scope 携带 WorkspaceThreadElement,使本会话在自己作用域里跑工具时,工作区/记忆隔离到自己的值,
     // 不被别的会话切换污染(无覆盖时回退全局)。
-    @Volatile var sessionWorkspaceRoot: String = com.xincode.tools.WorkspaceContext.DEFAULT_ROOT
+    @Volatile var sessionWorkspaceRoot: String = com.xincode.tools.WorkspaceContext.defaultRoot
     @Volatile var sessionProjectId: Long = 0L
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.Main +

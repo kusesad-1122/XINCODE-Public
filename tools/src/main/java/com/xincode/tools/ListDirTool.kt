@@ -10,7 +10,7 @@ import java.io.File
 /**
  * Lists files and directories at the given path.
  *
- * Path must resolve within /storage/emulated/0/XINCODE.
+ * Relative paths resolve inside the current app-writable workspace.
  * Output format: one entry per line: type + size + name.
  * Sorted alphabetically, directories first.
  */
@@ -25,7 +25,7 @@ class ListDirTool : Tool {
         put("properties", JSONObject().apply {
             put("path", JSONObject().apply {
                 put("type", "string")
-                put("description", "Directory path to list")
+                put("description", "Directory path (relative to the current workspace, or an absolute Android path)")
             })
         })
         put("required", JSONArray().apply { put("path") })
@@ -38,7 +38,7 @@ class ListDirTool : Tool {
     override suspend fun execute(params: Map<String, String>): ToolResult = withContext(Dispatchers.IO) {
         val path = params["path"] ?: return@withContext ToolResult.Error("缺少 path 参数")
         val safePath = PathResolver.resolve(path)
-            ?: return@withContext ToolResult.Error("路径不在工作区内: $path")
+            ?: return@withContext ToolResult.Error("无法解析路径: $path")
 
         val dir = File(safePath)
         if (!dir.exists()) return@withContext ToolResult.Error("目录不存在: $path")

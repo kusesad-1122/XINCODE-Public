@@ -1,5 +1,7 @@
 fn main() {
-    napi_build::setup();
+    if std::env::var_os("CARGO_FEATURE_NODE").is_some() {
+        napi_build::setup();
+    }
 
     // Kotlin grammar — vendored C, compiled here instead of a crate dep: the
     // crates.io tree-sitter-kotlin 0.3.8 pins `tree-sitter >= 0.21, < 0.23`

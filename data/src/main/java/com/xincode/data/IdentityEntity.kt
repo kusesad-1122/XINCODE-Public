@@ -23,7 +23,7 @@ data class IdentityEntity(
     // ---- 身份设定扩展(参照 Operit 角色卡,取对编程 agent 真正有用的部分)----
     /** 一句话描述,只在身份列表里显示,不进提示词。 */
     val description: String = "",
-    /** 开场白。新建会话时作为第一条 AI 消息落库,让身份一上来就进入状态。 */
+    /** 开场白。仅供身份卡预览/显式欢迎动作使用,新建会话不得自动伪造 AI 消息。 */
     val openingStatement: String = "",
     /** 备注。给自己看的,绝不拼进提示词——Operit 那边同名字段也是这个约定。 */
     val marks: String = "",

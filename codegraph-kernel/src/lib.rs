@@ -40,6 +40,11 @@ mod textutil;
 mod python;
 mod tsjs;
 
+// Android has no Node runtime to provide N-API symbols. Keep the upstream Node API in the
+// default `node` feature, while Android's JNI build uses `--no-default-features`.
+#[cfg(feature = "node")]
+mod node_api {
+use super::*;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
@@ -227,6 +232,8 @@ pub fn extract_file(file_path: String, content: String, language: String) -> Res
         arena: out.arena.into(),
     })
 }
+
+} // mod node_api
 
 /// XINCODE 加的:不经过 napi 的原始入口,JNI 层直接用它。
 /// 分发逻辑与上游 `extract_file` 完全一致,只是不包 napi 的类型。

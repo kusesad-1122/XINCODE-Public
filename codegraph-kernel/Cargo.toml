@@ -9,11 +9,17 @@ description = "Native extraction kernel for CodeGraph — tree-sitter parse+extr
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+# The upstream Node binding remains the default for desktop codegraph builds. Android disables
+# it and exports JNI only; otherwise unresolved N-API symbols make the arm64 .so fail at load time.
+default = ["node"]
+node = ["dep:napi", "dep:napi-derive"]
+
 [dependencies]
 # XINCODE:Android JNI 绑定
 jni = "0.21"
-napi = { version = "3", default-features = false, features = ["napi8"] }
-napi-derive = "3"
+napi = { version = "3", default-features = false, features = ["napi8"], optional = true }
+napi-derive = { version = "3", optional = true }
 tree-sitter = "0.25"
 sha2 = "0.10"
 regex = "1"

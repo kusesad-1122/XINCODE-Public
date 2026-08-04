@@ -24,18 +24,26 @@ object CodeGraphNative {
 
     private const val TAG = "XincodeCodeGraph"
 
-    /** 库是否可用。false 时所有调用都会返回 null,调用方应退回 grep。 */
-    val available: Boolean by lazy {
+    private data class LoadResult(val available: Boolean, val failure: String = "")
+
+    private val loadResult: LoadResult by lazy {
         try {
             System.loadLibrary("codegraph_kernel")
             Log.i(TAG, "kernel loaded")
-            true
+            LoadResult(true)
         } catch (t: Throwable) {
             // UnsatisfiedLinkError 属于 Error 不是 Exception,catch(Exception) 接不住
-            Log.w(TAG, "kernel unavailable: ${t::class.java.simpleName}: ${t.message}")
-            false
+            val reason = "${t::class.java.simpleName}: ${t.message.orEmpty()}"
+            Log.w(TAG, "kernel unavailable: $reason")
+            LoadResult(false, reason)
         }
     }
+
+    /** 库是否可用。false 时所有调用都会返回 null,调用方应退回 grep。 */
+    val available: Boolean get() = loadResult.available
+
+    /** Exact dynamic-linker reason for diagnostics instead of guessing that the ABI is wrong. */
+    val failureReason: String get() = loadResult.failure
 
     /**
      * 抽取单个文件的符号与关系,返回 JSON。

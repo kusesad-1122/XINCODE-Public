@@ -9,8 +9,7 @@ import org.json.JSONObject
 /**
  * Executes a shell command.
  *
- * 当设备已 root（RootShellManager.rootStatus == OK）时，自动走 libsu（root 权限）。
- * 否则走普通 `sh -c`（app 自身 uid）。
+ * 永远走普通 `sh -c`（app 自身 uid）。需要 root 的动作必须显式调用 `su_exec`。
  *
  * Safety: 30s hard timeout.
  * Output truncated to 4000 chars (stdout) / 2000 chars (stderr).
@@ -18,7 +17,7 @@ import org.json.JSONObject
 class ShellExecTool : Tool {
 
     override val name = "shell_exec"
-    override val description = "Execute a shell command (auto root: uses root privileges if device is rooted). " +
+    override val description = "Execute a shell command as the app user; root is not required or used. " +
             "Returns stdout on success (exitCode=0). On failure returns exitCode + stderr. " +
             "Use for commands like ls, cat, pwd, grep, id."
 
@@ -42,38 +41,10 @@ class ShellExecTool : Tool {
     override suspend fun execute(params: Map<String, String>): ToolResult = withContext(Dispatchers.IO) {
         val command = params["command"] ?: return@withContext ToolResult.Error("缺少 command 参数")
 
-        // 设备 root 之后这里会【自动】走 root,一个 chmod/chown 落进 App 自己的 databases/
-        // 就能让文件变成 root 所有、App 的 uid 反而读不了 —— 下次启动直接开不了库,
-        // 用户全部数据丢失。这条路真的被踩过,所以在跑之前先拦。见 SelfProtect。
+        // 普通 shell 永不提权。这样产出文件始终归当前 App UID 所有,重装/切换 root
+        // 状态也不会把普通工作流悄悄变成 root 工作流。
         SelfProtect.refuseCommand(command)?.let { return@withContext ToolResult.Error(it) }
-
-        // When root is available, use libsu (RootShellManager)
-        if (RootShellManager.rootStatus == RootStatus.OK) {
-            return@withContext executeViaRoot(command)
-        }
-
-        // Fallback: regular sh -c (non-root, untrusted_app sandbox)
         return@withContext executeViaSh(command)
-    }
-
-    /** Execute via libsu (root). */
-    private suspend fun executeViaRoot(command: String): ToolResult {
-        val result = RootShellManager.execute(command)
-        val truncatedStdout = result.stdout.let {
-            if (it.length > MAX_STDOUT) it.take(MAX_STDOUT / 2) +
-                "\n[...已截断 ${it.length - MAX_STDOUT} 字符...]\n" +
-                it.takeLast(MAX_STDOUT / 2)
-            else it
-        }
-        return if (result.exitCode != 0) {
-            ToolResult.Error(
-                message = "命令退出码 ${result.exitCode}",
-                exitCode = result.exitCode,
-                stderr = result.stderr
-            )
-        } else {
-            ToolResult.Success(truncatedStdout.ifBlank { "(no output)" })
-        }
     }
 
     /** Execute via sh -c (non-root fallback). */

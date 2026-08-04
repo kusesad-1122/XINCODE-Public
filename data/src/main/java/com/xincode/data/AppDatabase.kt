@@ -10,7 +10,7 @@ import androidx.room.migration.Migration
 import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [SettingEntity::class, MessageEntity::class, ProviderConfigEntity::class, SessionEntity::class, StateCursorEntity::class, AuditLogEntity::class, MemoryEntity::class, TrajectoryEntity::class, SkillEntity::class, McpServerEntity::class, GlobalSettingsEntity::class, ProjectEntity::class, IdentityEntity::class, PermissionRuleEntity::class, HookEntity::class, CronJobEntity::class, SubAgentEntity::class, UsageRecordEntity::class, KanbanTaskEntity::class, GroupRoomEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, KanbanRunEntity::class, CodeSymbolEntity::class, CodeEdgeEntity::class, CodeFileEntity::class], version = 40, exportSchema = false)
+@Database(entities = [SettingEntity::class, MessageEntity::class, ProviderConfigEntity::class, SessionEntity::class, StateCursorEntity::class, AuditLogEntity::class, MemoryEntity::class, TrajectoryEntity::class, SkillEntity::class, McpServerEntity::class, GlobalSettingsEntity::class, ProjectEntity::class, IdentityEntity::class, PermissionRuleEntity::class, HookEntity::class, CronJobEntity::class, SubAgentEntity::class, UsageRecordEntity::class, KanbanTaskEntity::class, GroupRoomEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, KanbanRunEntity::class, CodeSymbolEntity::class, CodeEdgeEntity::class, CodeFileEntity::class], version = 41, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
@@ -659,6 +659,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** Stop the default assistant from implying that ordinary work requires a rooted device. */
+        private val MIGRATION_40_41 = object : Migration(40, 41) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    UPDATE identities
+                    SET systemPrompt = '你是 XINCODE，一个运行在 Android 上的 AI Agent。普通聊天、文件、代码搜索和 Shell 工作默认使用应用自身权限；只有明确需要系统级权限时才使用 su_exec。回答简洁、技术化，并区分已验证事实与推断。'
+                    WHERE id = 1 AND systemPrompt LIKE '%Android root%'
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: openOrRecover(context.applicationContext).also { INSTANCE = it }
@@ -670,11 +683,28 @@ abstract class AppDatabase : RoomDatabase() {
             AppDatabase::class.java,
             DB_NAME
         )
-            .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40)
+            .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
                     createFts5Tables(db)
+                    // Fresh databases do not replay historical migrations, so seed the default
+                    // card here as well as in MIGRATION_18_19.
+                    val now = System.currentTimeMillis()
+                    db.execSQL(
+                        """
+                        INSERT OR IGNORE INTO identities (
+                            id, name, systemPrompt, temperature, isStarred, createdAt,
+                            description, openingStatement, marks, allowedTools,
+                            providerConfigId, modelOverride, scope
+                        ) VALUES (
+                            1,
+                            '默认助手',
+                            '你是 XINCODE，一个运行在 Android 上的 AI Agent。普通聊天、文件、代码搜索和 Shell 工作默认使用应用自身权限；只有明确需要系统级权限时才使用 su_exec。回答简洁、技术化，并区分已验证事实与推断。',
+                            1.0, 0, $now, '', '', '', '', 0, '', 'both'
+                        )
+                        """.trimIndent()
+                    )
                 }
             })
             .fallbackToDestructiveMigration()

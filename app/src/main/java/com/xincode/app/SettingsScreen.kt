@@ -60,7 +60,7 @@ fun SettingsScreen(
     onNavigateToCuratedMemory: () -> Unit = {},   // Hermes-⑤
     onNavigateToCron: () -> Unit = {},            // Hermes-⑦
     onNavigateToContextCompress: () -> Unit = {}, // 上下文压缩(长度/阈值/总结规则)
-    workspaceRoot: String = "",                   // 全局工作区根(空=默认 /storage/emulated/0/XINCODE)
+    workspaceRoot: String = "",                   // 全局工作区根(空=当前安装的应用专属目录)
     onUpdateWorkspaceRoot: (String) -> Unit = {},
     onNavigateToAuxModels: () -> Unit = {},       // 模型委托(视觉/推理/翻译/转写副模型)
     onNavigateToFunctionModels: () -> Unit = {},  // 功能模型配置(每个内部调用点各指一套已存配置)
@@ -219,7 +219,10 @@ fun SettingsScreen(
         var showSearchKeyDialog by remember { mutableStateOf(false) }
         var showWorkspaceDialog by remember { mutableStateOf(false) }
         SectionHeader("Agent 工具")
-        SettingRow("全局工作区目录", workspaceRoot.ifBlank { "/storage/emulated/0/XINCODE (默认)" }) { showWorkspaceDialog = true }
+        SettingRow(
+            "全局工作区目录",
+            workspaceRoot.ifBlank { com.xincode.tools.WorkspaceContext.defaultRoot + " (默认·免 Root)" }
+        ) { showWorkspaceDialog = true }
         if (showWorkspaceDialog) {
             // 文件夹选择器:AI 产出/写入的默认目录(仍可读目录之外)。每个项目还可单独覆盖(见侧栏项目菜单)。
             DirectoryPickerDialog(

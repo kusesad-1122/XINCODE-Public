@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.sp
 import com.xincode.data.AppDatabase
 import com.xincode.tools.CodeGraphNative
 import com.xincode.tools.WorkspaceContext
+import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -91,8 +92,9 @@ fun CodeIndexScreen(database: AppDatabase, onBack: () -> Unit) {
                     .background(xc.bgElevated).padding(12.dp)) {
                     Text(
                         "✗ 索引内核在这台设备上加载失败。\n" +
-                            "内核只编译了 arm64 版本,如果你的设备是 32 位或 x86 架构就用不了。" +
-                            "AI 会自动退回 grep 方式,功能不受影响,只是慢一些、费上下文一些。",
+                            "设备 ABI：${Build.SUPPORTED_ABIS.joinToString()}\n" +
+                            "加载原因：${CodeGraphNative.failureReason.take(180)}\n" +
+                            "AI 会自动退回 grep；这不是 Root 权限问题。",
                         fontSize = 11.sp, fontFamily = Mono, color = xc.red, lineHeight = 16.sp
                     )
                 }

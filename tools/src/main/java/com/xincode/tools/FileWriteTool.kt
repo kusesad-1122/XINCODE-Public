@@ -10,21 +10,21 @@ import java.io.File
 /**
  * Creates or overwrites a file within the workspace.
  *
- * Path must resolve within /storage/emulated/0/XINCODE.
+ * Relative paths resolve inside the current app-writable workspace.
  * Parent directories are created automatically.
  */
 class FileWriteTool : Tool {
 
     override val name = "file_write"
-    override val description = "Create or overwrite a file. Path must be within workspace " +
-            "(/storage/emulated/0/XINCODE). Parent directories are created automatically."
+    override val description = "Create or overwrite a file in the current workspace. " +
+            "Parent directories are created automatically; this does not require root."
 
     override val parametersSchema: JSONObject = JSONObject().apply {
         put("type", "object")
         put("properties", JSONObject().apply {
             put("path", JSONObject().apply {
                 put("type", "string")
-                put("description", "File path to write (relative to workspace or absolute within workspace)")
+                put("description", "File path to write (relative to the current workspace, or an absolute Android path)")
             })
             put("content", JSONObject().apply {
                 put("type", "string")
@@ -38,7 +38,7 @@ class FileWriteTool : Tool {
         val path = params["path"] ?: return@withContext ToolResult.Error("缺少 path 参数")
         val content = params["content"] ?: return@withContext ToolResult.Error("缺少 content 参数")
         val safePath = PathResolver.resolve(path)
-            ?: return@withContext ToolResult.Error("路径不在工作区内: $path")
+            ?: return@withContext ToolResult.Error("无法解析路径: $path")
         // 不让 AI 改 App 自己的运行时数据 —— 动了 databases/ 下次启动就打不开库,
         // 用户的会话、身份卡、供应商配置、记忆全没。见 SelfProtect。
         SelfProtect.refuse(safePath)?.let { return@withContext ToolResult.Error(it) }
