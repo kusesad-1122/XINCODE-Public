@@ -467,6 +467,13 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             }
         }
 
+        // 内置技能包:assets/skills/**/SKILL.md 随 APK 分发,启动导入(按名查重,幂等)。
+        GlobalScope.launch(Dispatchers.IO) {
+            try { AssetsSkillImporter.install(this@XincodeApplication, database) } catch (e: Exception) {
+                Log.w("XincodeApp", "assets skills import failed: ${e.message}")
+            }
+        }
+
         // gap-26:启动时自动发现工作区 skills/**/SKILL.md,导入 Room(进入系统提示技能清单)。
         GlobalScope.launch(Dispatchers.IO) {
             try { SkillImporter.autoDiscover(database) } catch (e: Exception) {

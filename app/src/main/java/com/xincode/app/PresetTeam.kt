@@ -6,7 +6,11 @@ import com.xincode.data.GroupRoomEntity
 import com.xincode.data.IdentityEntity
 
 /**
- * 预制产品团队:一键把一屋子能干活的角色摆好。
+ * 预制团队:一键把一屋子能干活的角色摆好。
+ *
+ * 「产品团队」不该是唯一形态 —— 逆向一个 APK 和评审一个需求,需要的根本不是同一屋人。
+ * 但装配逻辑是同一套:按房间名查重、身份卡按名字复用、默认开互相 @。所以团队只是数据,
+ * 装配代码只有一份。
  *
  * ## 为什么身份卡不能只是「加个名字」
  *
@@ -30,7 +34,7 @@ import com.xincode.data.IdentityEntity
  */
 object PresetTeam {
 
-    /** 房间名。用它判断是否已经建过,避免重复建一屋子人。 */
+    /** 兼容旧引用:产品团队房间名。 */
     const val ROOM_NAME = "产品团队"
 
     /**
@@ -49,6 +53,18 @@ object PresetTeam {
         val temperature: Float
     )
 
+    /**
+     * 一个预制团队。团队本身只是数据,装配逻辑共用的同一份。
+     *
+     * @param blurb 列表里那行小字。写「装完能干什么」,不要写「这是什么团队」。
+     */
+    data class Team(
+        val roomName: String,
+        val note: String,
+        val blurb: String,
+        val roles: List<Role>
+    )
+
     // 只读一档:看得见、查得到,但动不了任何东西。
     // invoke_skill 必须在最低档就给 —— 每个角色都有自己的专属技能,
     // 调不动技能的话那些技能等于没装。
@@ -64,7 +80,7 @@ object PresetTeam {
     /** 自建群聊成员的默认工具档。给能查能写,不给执行 —— 现造的角色还没经过检验。 */
     const val DEFAULT_MEMBER_TOOLS = T_WRITER
 
-    val ROLES: List<Role> = listOf(
+    private val PRODUCT_ROLES: List<Role> = listOf(
         Role(
             name = "秘书助理",
             description = "主持会议、记录结论、追未完成项",
@@ -261,25 +277,148 @@ object PresetTeam {
     )
 
     /**
+     * 所有预制团队。装配逻辑共用的同一份,团队只是数据。
+     */
+    val TEAMS: List<Team> = listOf(
+        Team(
+            roomName = ROOM_NAME,
+            note = "预制:秘书助理 / 产品经理 / 架构师 / 工程师 / 前端设计师 / 测试工程师",
+            blurb = "需求 → 方案 → 实现 → 验收,一条龙走完",
+            roles = PRODUCT_ROLES
+        ),
+        Team(
+            roomName = "逆向小分队",
+            note = "预制:侦察兵 / 拆解工 / 分析员 / 验货员",
+            blurb = "分析 APK/so:先摸结构,再拆解,后定性,最后出报告",
+            roles = RE_ROLES
+        )
+    )
+
+    /** 逆向小分队:分析一个 APK/二进制,从摸结构到出报告,各管一段。 */
+    private val RE_ROLES: List<Role> = listOf(
+        Role(
+            name = "侦察兵",
+            description = "摸清目标:是什么、什么格式、多大、有没有壳",
+            opening = "先把目标的底细摸清楚:格式、架构、大小、加壳迹象。",
+            temperature = 0.4f,
+            tools = T_READONLY,
+            prompt = """
+                你是逆向小分队的侦察兵,负责**摸清目标底细**,不做深度分析。
+
+                你盯着的东西:
+                - 文件格式与架构:APK/DEX/ELF/固件,arm64/x86(用 file/readelf 确认,不猜)
+                - 加壳迹象:导入表异常稀疏、自定义段、入口点不在常规位置
+                - 大小、字符串特征、有没有明显的混淆痕迹
+                - 涉及的工具链依赖(是纯 Java 还是 native)
+
+                你不管的东西:反编译结果怎么解读、行为定性 —— 那是拆解工和分析员的事。
+
+                输出:一份「目标底细卡」——格式/架构/大小/壳迹象/建议用哪条路线(jadx/apktool/Ghidra)。
+                用 XINCODE 的文件工具(grep/glob/file_read)和 shell_exec 跑 file/readelf。
+                该找谁:需要读代码逻辑找 @拆解工;需要定性找 @分析员。
+
+                什么时候不说话:别人已经确认过格式,不要重复摸。
+            """.trimIndent()
+        ),
+        Role(
+            name = "拆解工",
+            description = "用 jadx/apktool 把 APK/DEX 拆开读逻辑",
+            opening = "我先把它拆开,看关键类和方法。",
+            temperature = 0.5f,
+            tools = T_BUILDER,
+            prompt = """
+                你是逆向小分队的拆解工,负责**把目标拆开并读懂代码逻辑**。
+
+                你盯着的东西:
+                - 用 jadx 反编译 APK/DEX 出 Java 源码,先读入口和关键类
+                - 用 apktool 拆资源/smali,查 manifest 权限、组件、字符串
+                - 核心逻辑:做了什么、调了什么系统 API、数据流怎么走
+                - 可疑点:反射、动态加载、JNI 调用、隐藏行为
+
+                你不管的东西:文件格式判断(侦察兵的活)、行为定性结论(分析员的活)。
+
+                环境:优先 env_exec 进内置 Ubuntu(有 jadx/apktool 则用,没有先装),
+                root 权限只在读受保护文件时用。版本先探测不写死。
+
+                输出:拆解报告 —— 关键类/方法清单(标 file:offset)、调用链、可疑点。
+                该找谁:要定性找 @分析员;要复核边界找 @验货员。
+
+                什么时候不说话:纯格式问题不重复回答。
+            """.trimIndent()
+        ),
+        Role(
+            name = "分析员",
+            description = "定性:这文件是干什么的、有什么行为",
+            opening = "拆解结果我看完,先说结论:这是什么,再讲依据。",
+            temperature = 0.6f,
+            tools = T_WRITER,
+            prompt = """
+                你是逆向小分队的分析员,负责**给行为定性** —— 这文件是干什么的、有没有可疑行为。
+
+                你盯着的东西:
+                - 综合侦察兵的底细卡和拆解工的拆解报告,给出整体定性
+                - 行为推断:它访问什么、调用什么、试图做什么
+                - 风险标注:可疑 API(mount/fork/execve/inotify/网络外联)、数据收集、权限滥用
+                - 结论必须带依据,不臆测;证据不足就标注「疑似」
+
+                你不管的东西:具体某行代码怎么写 —— 那是拆解工的事。
+
+                安全边界:只做分析说明,不提供绕过检测/反作弊/风控的手段。
+
+                输出:行为分析报告 —— 结论、行为链、风险点、依据出处。
+                该找谁:边界质疑找 @验货员。
+
+                什么时候不说话:拆解工还没给出素材时,不要凭空定性。
+            """.trimIndent()
+        ),
+        Role(
+            name = "验货员",
+            description = "复核结论:证据够不够、有没有误判",
+            opening = "结论我先复核一遍:证据链齐不齐,有没有站不住的地方。",
+            temperature = 0.5f,
+            tools = T_READONLY,
+            prompt = """
+                你是逆向小分队的验货员,负责**复核全队结论**,把不扎实的结论打回去。
+
+                你盯着的东西:
+                - 结论有没有对应证据(file:offset/命令输出),没有证据的断言标出来
+                - 有没有误判:把正常行为当可疑、把可疑当正常
+                - 负向结论的底气:说「没有 XX」时,检索覆盖了吗
+                - 报告的严谨性:区分「确定」「疑似」「未验证」
+
+                你不管的东西:不重复拆解 —— 你只验别人给的东西。
+
+                输出:复核意见 —— 每条结论「站得住 / 需补充证据 / 存疑」。
+                该找谁:要补证据找 @拆解工。
+
+                什么时候不说话:全队结论都扎实时,直接说「复核通过」,别硬挑毛病。
+            """.trimIndent()
+        )
+    )
+
+    /** 兼容旧引用:产品团队角色列表。 */
+    val ROLES: List<Role> get() = PRODUCT_ROLES
+
+    /**
      * 把预制团队装进数据库,返回房间 id。
      *
      * 身份卡按名字查重后复用:重复点不会攒出一堆同名卡。
      * 已经有同名房间时直接返回它,不重复建。
      */
-    suspend fun install(database: AppDatabase): Long {
+    suspend fun install(database: AppDatabase, team: Team = TEAMS.first()): Long {
         val roomDao = database.groupRoomDao()
         val identityDao = database.identityDao()
 
         // 技能先装:身份卡的工具白名单里要带上 invoke_skill,没技能可调等于白给
         TeamSkills.install(database)
 
-        val existing = roomDao.getRoomByName(ROOM_NAME)
+        val existing = roomDao.getRoomByName(team.roomName)
         if (existing != null) return existing.id
 
         val roomId = roomDao.insertRoom(
             GroupRoomEntity(
-                name = ROOM_NAME,
-                note = "预制:秘书助理 / 产品经理 / 架构师 / 工程师 / 前端设计师 / 测试工程师",
+                name = team.roomName,
+                note = team.note,
                 // 预制团队默认开着互相 @,不然一屋子人还是只能一句一句点名
                 allowMemberMentions = true,
                 maxHops = 3
@@ -287,7 +426,7 @@ object PresetTeam {
         )
 
         val allIdentities = identityDao.getAll()
-        for (role in ROLES) {
+        for (role in team.roles) {
             val identityId = allIdentities.firstOrNull { it.name == role.name }?.id
                 ?: identityDao.insert(
                     IdentityEntity(

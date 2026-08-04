@@ -84,32 +84,34 @@ fun GroupRoomsScreen(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
         )
 
-        // 一键把六个角色摆好。自己一个个加成员太费事,而且加完还得挨个写身份卡。
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
-                .clip(RoundedCornerShape(8.dp)).background(xc.bgElevated)
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                    scope.launch {
-                        val rid = withContext(Dispatchers.IO) { PresetTeam.install(database) }
-                        openRoom = rid
+        // 一键把预制团队摆好。自己一个个加成员太费事,而且加完还得挨个写身份卡。
+        PresetTeam.TEAMS.forEach { team ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(8.dp)).background(xc.bgElevated)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        scope.launch {
+                            val rid = withContext(Dispatchers.IO) { PresetTeam.install(database, team) }
+                            openRoom = rid
+                        }
                     }
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("＋ 装一个${team.roomName}", fontSize = 12.sp, fontWeight = FontWeight.Bold,
+                        fontFamily = Mono, color = xc.green)
+                    Text(
+                        team.roles.joinToString(" / ") { it.name },
+                        fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
+                        modifier = Modifier.padding(top = 3.dp)
+                    )
+                    Text(
+                        team.blurb,
+                        fontSize = 9.sp, fontFamily = Mono, color = xc.faint, lineHeight = 13.sp,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
                 }
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("＋ 装一个产品团队", fontSize = 12.sp, fontWeight = FontWeight.Bold,
-                    fontFamily = Mono, color = xc.green)
-                Text(
-                    PresetTeam.ROLES.joinToString(" / ") { it.name },
-                    fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
-                    modifier = Modifier.padding(top = 3.dp)
-                )
-                Text(
-                    "每个角色都配好了专属身份卡,关注点各不相同。已装过则直接进房间。",
-                    fontSize = 9.sp, fontFamily = Mono, color = xc.faint, lineHeight = 13.sp,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
             }
         }
 
