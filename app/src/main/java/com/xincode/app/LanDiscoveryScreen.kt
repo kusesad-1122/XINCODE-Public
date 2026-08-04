@@ -53,16 +53,13 @@ fun LanDiscoveryScreen(onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("局域网设备", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-            Text(if (scanning) "扫描中" else "扫描",
-                fontSize = 12.sp, fontFamily = Mono,
-                color = if (scanning) xc.faint else xc.green,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { scan() })
+        XinPageHeader(
+            title = "局域网设备",
+            subtitle = "发现同一 Wi-Fi 下的 XINCODE",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        ) {
+            XinHeaderAction(label = if (scanning) "扫描中" else "扫描", enabled = !scanning, onClick = { scan() })
         }
 
         Text(

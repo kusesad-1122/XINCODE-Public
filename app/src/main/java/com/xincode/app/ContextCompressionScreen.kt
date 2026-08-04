@@ -76,12 +76,12 @@ fun ContextCompressionScreen(database: AppDatabase, onBack: () -> Unit) {
     Column(
         Modifier.fillMaxSize().background(xc.bg).verticalScroll(rememberScrollState()).padding(16.dp)
     ) {
-        Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-        Spacer(Modifier.height(16.dp))
-        Text("上下文压缩", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = xc.ink, fontFamily = Mono)
-        Text("上下文接近填满时自动把历史总结成摘要(类似 Claude 的 /compact),既省 token 又不丢关键信息。",
-            fontSize = 11.sp, fontFamily = Mono, color = xc.sub, modifier = Modifier.padding(top = 6.dp, bottom = 8.dp))
+        XinPageHeader(
+            title = "上下文压缩",
+            subtitle = "自动总结历史，减少 Token 占用",
+            onBack = onBack
+        )
+        Spacer(Modifier.height(8.dp))
 
         if (!loaded) {
             Text("加载中…", fontSize = 12.sp, fontFamily = Mono, color = xc.faint)

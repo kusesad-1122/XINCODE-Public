@@ -60,24 +60,17 @@ fun SkillScreen(
     }
 
     Column(Modifier.fillMaxSize().background(SkBg)) {
-        // Top bar
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        XinPageHeader(
+            title = "Skills 技能",
+            subtitle = "创建和管理可复用提示词模板",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Outlined.ArrowBack, "back", tint = SkInk)
-            }
-            Text("Skills", fontSize = 15.sp, fontFamily = SkMono, color = SkInk,
-                modifier = Modifier.weight(1f))
-            IconButton(onClick = {
+            XinHeaderAction(label = "新建", onClick = {
                 editing = null
                 showCreate = true
-            }) {
-                Icon(Icons.Outlined.Add, "new skill", tint = SkInk)
-            }
+            })
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(SkBorder))
 
         when {
             editing != null || showCreate -> {
@@ -126,7 +119,7 @@ private fun SkillCard(skill: SkillEntity, onClick: () -> Unit, onDelete: () -> U
 
     Column(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(18.dp))
             .clickable { onClick() }
             .padding(horizontal = 10.dp, vertical = 8.dp)
     ) {

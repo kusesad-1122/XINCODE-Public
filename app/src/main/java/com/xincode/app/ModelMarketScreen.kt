@@ -206,13 +206,12 @@ fun ModelMarketScreen(
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("免费模型 / 供应商", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-        }
+        XinPageHeader(
+            title = "模型与供应商",
+            subtitle = "免费额度、订阅套餐和按量付费",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
         toast?.let {
             Text(it, fontSize = 11.sp, fontFamily = Mono, color = xc.green, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
         }

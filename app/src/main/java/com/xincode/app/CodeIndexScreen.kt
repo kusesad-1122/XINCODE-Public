@@ -68,13 +68,12 @@ fun CodeIndexScreen(database: AppDatabase, onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("代码索引", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-        }
+        XinPageHeader(
+            title = "代码索引",
+            subtitle = "本地符号、定义和调用关系",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
 

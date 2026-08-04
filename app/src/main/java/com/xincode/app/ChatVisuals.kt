@@ -148,3 +148,33 @@ fun formatThinkingLabel(durationMs: Long?): String {
     val seconds = (durationMs.coerceAtLeast(100L) / 1000.0)
     return "思考了 ${String.format(Locale.US, "%.1f", seconds)} 秒"
 }
+
+private val thinkingLevelLabels = listOf("低", "中", "高", "超高", "极致")
+
+fun thinkingLevelLabel(level: Int): String = thinkingLevelLabels.getOrElse(level) { "高" }
+
+data class VoiceUiFeedback(
+    val message: String?,
+    val active: Boolean,
+    val isError: Boolean = false
+)
+
+fun voiceUiFeedback(
+    state: VoiceInputHelper.State,
+    partialText: String = "",
+    errorMessage: String = ""
+): VoiceUiFeedback = when (state) {
+    VoiceInputHelper.State.IDLE,
+    VoiceInputHelper.State.RESULT -> VoiceUiFeedback(message = null, active = false)
+    VoiceInputHelper.State.STARTING -> VoiceUiFeedback("正在启动语音识别…", active = true)
+    VoiceInputHelper.State.LISTENING -> VoiceUiFeedback(
+        message = partialText.trim().takeIf { it.isNotEmpty() } ?: "正在聆听，点麦克风完成",
+        active = true
+    )
+    VoiceInputHelper.State.PROCESSING -> VoiceUiFeedback("正在整理识别结果…", active = true)
+    VoiceInputHelper.State.ERROR -> VoiceUiFeedback(
+        message = errorMessage.ifBlank { "语音输入暂时不可用" },
+        active = false,
+        isError = true
+    )
+}

@@ -59,29 +59,23 @@ fun IdentityEditScreen(
     Column(
         Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("← 返回", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Text(
-                if (identity == null) "创建" else "保存",
-                fontSize = 13.sp, fontFamily = JetBrainsMono,
-                color = if (name.isNotBlank()) Green else Faint,
-                modifier = Modifier
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, enabled = name.isNotBlank()) {
-                        onSave(IdentityEditResult(
-                            name = name.trim(), systemPrompt = prompt, temperature = temperature,
-                            description = description.trim(), openingStatement = opening.trim(),
-                            marks = marks.trim(), allowedTools = allowedTools.trim()
-                        ))
-                    }
-                    .padding(horizontal = 8.dp, vertical = 2.dp)
+        XinPageHeader(
+            title = if (identity == null) "新建身份卡" else "编辑身份卡",
+            subtitle = "名称、系统提示词与可用工具",
+            onBack = onBack
+        ) {
+            XinHeaderAction(
+                label = if (identity == null) "创建" else "保存",
+                enabled = name.isNotBlank(),
+                onClick = {
+                    onSave(IdentityEditResult(
+                        name = name.trim(), systemPrompt = prompt, temperature = temperature,
+                        description = description.trim(), openingStatement = opening.trim(),
+                        marks = marks.trim(), allowedTools = allowedTools.trim()
+                    ))
+                }
             )
         }
-        Spacer(Modifier.height(16.dp))
-        Text(if (identity == null) "新建身份卡" else "编辑身份卡", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
-        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(Border))
         Spacer(Modifier.height(12.dp))
 
         Text("名称", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)

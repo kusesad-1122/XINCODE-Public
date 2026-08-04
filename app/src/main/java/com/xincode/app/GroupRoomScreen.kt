@@ -67,16 +67,13 @@ fun GroupRoomsScreen(
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("群聊房间", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-            Text("+ 新建", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                    newName = ""; showAdd = true
-                })
+        XinPageHeader(
+            title = "群聊房间",
+            subtitle = "让多个智能体在同一任务中协作",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        ) {
+            XinHeaderAction(label = "新建", onClick = { newName = ""; showAdd = true })
         }
         Text(
             "多个智能体同处一室,用 @名字 点谁谁回答,@所有人 叫全部。成员之间也能互相 @,讨论会自己往下走。",
@@ -256,18 +253,15 @@ private fun GroupRoomChatScreen(
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            if (room?.fullAccess == true) {
-                Text("完全访问", fontSize = 10.sp, fontFamily = Mono, color = xc.red,
-                    modifier = Modifier.padding(end = 10.dp))
-            }
-            Text("设置", fontSize = 12.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.padding(end = 12.dp).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showSettings = true })
-            Text("成员 ${members.size}", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showMembers = true })
+        XinPageHeader(
+            title = "群聊",
+            subtitle = if (room?.fullAccess == true) "完全访问 · ${members.size} 位成员" else "${members.size} 位成员",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 8.dp)
+        ) {
+            XinHeaderAction(label = "设置", onClick = { showSettings = true })
+            Spacer(Modifier.width(4.dp))
+            XinHeaderAction(label = "成员", onClick = { showMembers = true })
         }
 
         if (members.isEmpty()) {
@@ -737,18 +731,11 @@ private fun MemberWorkbench(
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 回到群聊", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("${member.displayName} 的工作台", fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                fontFamily = Mono, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-        }
-        Text(
-            "他干活的全过程。群里只出现最后的汇报,细节都在这儿。",
-            fontSize = 9.sp, fontFamily = Mono, color = xc.faint,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)
+        XinPageHeader(
+            title = "${member.displayName} 的工作台",
+            subtitle = "查看完整执行过程与中间结果",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 8.dp)
         )
 
         if (messages.isEmpty()) {

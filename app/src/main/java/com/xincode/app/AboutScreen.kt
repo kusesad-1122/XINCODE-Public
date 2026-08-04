@@ -71,15 +71,12 @@ fun AboutScreen(app: XincodeApplication, onBack: () -> Unit) {
     Column(
         Modifier.fillMaxSize().background(xc.bg).verticalScroll(rememberScrollState())
     ) {
-        // 顶栏
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("← 返回", fontSize = 12.sp, fontFamily = XinFont, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("关于", fontSize = 14.sp, fontFamily = XinFont, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-            Spacer(Modifier.width(40.dp))   // 与左侧返回等宽,保证标题居中
-        }
+        XinPageHeader(
+            title = "关于 XINCODE",
+            subtitle = "版本、更新与开源信息",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
 
         // 图标 + 名称 + 版本
         Column(

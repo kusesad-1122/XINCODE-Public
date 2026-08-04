@@ -42,15 +42,10 @@ fun AuditLogScreen(onBack: () -> Unit, database: AppDatabase? = null) {
     }
 
     Column(Modifier.fillMaxSize().background(BgAL).padding(16.dp)) {
-        Text("← 返回", fontSize = 12.sp, fontFamily = JetBrainsMonoAL, color = SubAL,
-            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-        Spacer(Modifier.height(16.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("审计日志", fontSize = 14.sp, fontFamily = JetBrainsMonoAL, color = InkAL)
-            Text("清空", fontSize = 11.sp, fontFamily = JetBrainsMonoAL, color = RedAL,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                    scope.launch { database?.let { withContext(Dispatchers.IO) { it.auditLogDao().deleteAll() } }; entries = emptyList() }
-                })
+        XinPageHeader(title = "审计日志", subtitle = "最近 200 条工具调用与权限记录", onBack = onBack) {
+            XinHeaderAction(label = "清空", destructive = true, onClick = {
+                scope.launch { database?.let { withContext(Dispatchers.IO) { it.auditLogDao().deleteAll() } }; entries = emptyList() }
+            })
         }
         Spacer(Modifier.height(12.dp))
 

@@ -57,12 +57,12 @@ fun CuratedMemoryScreen(
     Column(
         Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())
     ) {
-        Text("← 返回", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-        Spacer(Modifier.height(16.dp))
-        Text("精编记忆", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
-        Text("由后台复盘分身自动维护,冻结进系统提示。可手动编辑。", fontSize = 9.sp, fontFamily = JetBrainsMono, color = Faint)
-        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(Border))
+        XinPageHeader(
+            title = "精编记忆",
+            subtitle = "自动维护的长期信息，也可以手动编辑",
+            onBack = onBack
+        )
+        Spacer(Modifier.height(8.dp))
 
         if (!loaded) {
             Text("加载中…", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub)

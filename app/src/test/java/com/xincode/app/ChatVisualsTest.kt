@@ -2,6 +2,7 @@ package com.xincode.app
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatVisualsTest {
@@ -57,5 +58,27 @@ class ChatVisualsTest {
             )
         )
         assertEquals("思考过程", formatThinkingLabel(null))
+    }
+
+    @Test
+    fun thinkingLevelLabel_usesChineseLabelsAndSafeFallback() {
+        assertEquals("低", thinkingLevelLabel(0))
+        assertEquals("极致", thinkingLevelLabel(4))
+        assertEquals("高", thinkingLevelLabel(99))
+    }
+
+    @Test
+    fun voiceFeedback_exposesStartupPartialAndErrorStates() {
+        val starting = voiceUiFeedback(VoiceInputHelper.State.STARTING)
+        assertTrue(starting.active)
+        assertEquals("正在启动语音识别…", starting.message)
+
+        val listening = voiceUiFeedback(VoiceInputHelper.State.LISTENING, partialText = "帮我写代码")
+        assertTrue(listening.active)
+        assertEquals("帮我写代码", listening.message)
+
+        val error = voiceUiFeedback(VoiceInputHelper.State.ERROR, errorMessage = "设备不支持语音识别")
+        assertTrue(error.isError)
+        assertEquals("设备不支持语音识别", error.message)
     }
 }

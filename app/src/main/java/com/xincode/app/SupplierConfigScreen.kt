@@ -281,14 +281,12 @@ fun SupplierConfigScreen(
     LaunchedEffect(Unit) { loadConfigs() }
 
     Column(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp)) {
-        // Header
-        Text("← 返回", fontSize = 12.sp, fontFamily = XinUiFont, color = Sub,
-            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-        Spacer(Modifier.height(16.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("供应商配置", fontSize = 14.sp, fontFamily = XinUiFont, color = Ink)
-            Text("+ 新建", fontSize = 12.sp, fontFamily = XinUiFont, color = Sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { startNew() })
+        XinPageHeader(
+            title = "供应商配置",
+            subtitle = "管理 API、密钥和可用模型",
+            onBack = onBack
+        ) {
+            XinHeaderAction(label = "新建", onClick = { startNew() })
         }
         Spacer(Modifier.height(12.dp))
 

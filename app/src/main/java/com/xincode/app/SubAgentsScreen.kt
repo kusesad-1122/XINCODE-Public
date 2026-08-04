@@ -54,16 +54,14 @@ fun SubAgentsScreen(
     }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("← 返回", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Text(if (creating) "取消" else "＋ 新建", fontSize = 12.sp, fontFamily = JetBrainsMono, color = if (creating) Sub else Green,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { creating = !creating })
+        XinPageHeader(
+            title = "子智能体",
+            subtitle = "为并行任务配置专职角色、技能和工具",
+            onBack = onBack
+        ) {
+            XinHeaderAction(label = if (creating) "取消" else "新建", onClick = { creating = !creating })
         }
-        Spacer(Modifier.height(16.dp))
-        Text("子智能体", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
-        Text("主脑用 dispatch_agents 把任务并行拆给这些专职子智能体,各管各的专属技能/工具。", fontSize = 9.sp, fontFamily = JetBrainsMono, color = Faint)
-        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(Border))
+        Spacer(Modifier.height(8.dp))
 
         if (creating) {
             CreateForm(onSave = { name, desc, prompt, skills, tools ->

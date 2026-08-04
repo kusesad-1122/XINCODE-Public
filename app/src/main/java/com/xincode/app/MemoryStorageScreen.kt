@@ -53,11 +53,11 @@ fun MemoryStorageScreen(
     Column(
         Modifier.fillMaxSize().background(Bg).padding(16.dp)
     ) {
-        Text("← 返回", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-        Spacer(Modifier.height(16.dp))
-        Text("记忆与存储", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
-        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(Border))
+        XinPageHeader(
+            title = "记忆与存储",
+            subtitle = "本地数据库、会话和消息数据",
+            onBack = onBack
+        )
         Spacer(Modifier.height(12.dp))
 
         // Info rows

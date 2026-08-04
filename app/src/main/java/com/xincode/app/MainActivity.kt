@@ -18,8 +18,10 @@ import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.Surface
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -238,6 +240,11 @@ class MainActivity : ComponentActivity() {
                 },
                 gesturesEnabled = drawerState.isOpen
             ) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = LocalXinColors.current.bg,
+                    contentColor = LocalXinColors.current.ink
+                ) {
                 AnimatedContent(
                     targetState = currentPage,
                     transitionSpec = {
@@ -526,6 +533,7 @@ class MainActivity : ComponentActivity() {
                             } else null
                         )
                     }
+                }
                 }
                 }
             }

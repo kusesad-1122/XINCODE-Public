@@ -67,12 +67,12 @@ fun AuxModelsScreen(
     }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp).verticalScroll(rememberScrollState())) {
-        Text("← 返回", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-        Spacer(Modifier.height(16.dp))
-        Text("模型委托", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
-        Text("主模型缺某能力时转交副模型。直接从【已配置密钥】的供应商里选一个模型即可。", fontSize = 9.sp, fontFamily = JetBrainsMono, color = Faint)
-        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(Border))
+        XinPageHeader(
+            title = "模型委托",
+            subtitle = "为视觉、推理、翻译和转写选择副模型",
+            onBack = onBack
+        )
+        Spacer(Modifier.height(8.dp))
 
         if (!loaded) { Text("加载中…", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub); return@Column }
         if (providers.isEmpty()) {

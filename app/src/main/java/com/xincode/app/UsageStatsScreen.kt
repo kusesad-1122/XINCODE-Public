@@ -76,13 +76,12 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
         totalCacheRead.toDouble() / (totalInput + totalCacheRead) * 100 else 0.0
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("用量分析", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-        }
+        XinPageHeader(
+            title = "用量分析",
+            subtitle = "模型、Token、缓存和成本趋势",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
 
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
 

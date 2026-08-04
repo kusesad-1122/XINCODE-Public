@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AddComment
 import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Extension
@@ -50,6 +51,8 @@ import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.MicNone
 import androidx.compose.material.icons.outlined.MoreVert
@@ -60,9 +63,14 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -332,11 +340,14 @@ fun ChatScreen(
 
     // Menu visibility
     var showMainMenu by remember { mutableStateOf(false) }
-    var showEffortMenu by remember { mutableStateOf(false) }
+    var effortExpanded by remember { mutableStateOf(false) }
     var showTopMenu by remember { mutableStateOf(false) }
 
     val voiceState = voiceInputHelper?.state?.collectAsState()?.value ?: VoiceInputHelper.State.IDLE
+    val voicePartialText = voiceInputHelper?.partialText?.collectAsState()?.value.orEmpty()
     val voiceFinalText = voiceInputHelper?.finalText?.collectAsState()?.value.orEmpty()
+    val voiceErrorText = voiceInputHelper?.errorMsg?.collectAsState()?.value.orEmpty()
+    val voiceFeedback = voiceUiFeedback(voiceState, voicePartialText, voiceErrorText)
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -350,6 +361,12 @@ fun ChatScreen(
                 .filter { it.isNotBlank() }
                 .joinToString(" ")
             voiceInputHelper?.reset()
+        }
+    }
+
+    LaunchedEffect(voiceState, voiceErrorText) {
+        if (voiceState == VoiceInputHelper.State.ERROR && voiceErrorText.isNotBlank()) {
+            Toast.makeText(context, voiceErrorText, Toast.LENGTH_LONG).show()
         }
     }
 
@@ -400,6 +417,7 @@ fun ChatScreen(
     var showMcpPicker by remember { mutableStateOf(false) }
     var showStatsPopup by remember { mutableStateOf(false) }   // 点圆环弹出的统计卡片
     var expandingPrompt by remember { mutableStateOf(false) }  // 正在扩展提示词
+    var showInspirationMenu by remember { mutableStateOf(false) }
     var showModeCard by remember { mutableStateOf(false) }     // 计划/协作模式卡片
     var webSearchOn by remember { mutableStateOf(com.xincode.tools.WebSearchGate.enabled) }
 
@@ -426,8 +444,38 @@ fun ChatScreen(
             }
         }
     }
-    val effortLabels = listOf("Low", "Medium", "High", "Extra", "Max")
-    val effortLabel = effortLabels.getOrElse(thinkingLevel) { "High" }
+    val effortLabels = listOf("低", "中", "高", "超高", "极致")
+    val effortLabel = thinkingLevelLabel(thinkingLevel)
+
+    fun expandCurrentPrompt() {
+        val draft = chatState.input.value.trim()
+        if (draft.isBlank()) {
+            showInspirationMenu = true
+            return
+        }
+        if (expandingPrompt) return
+        showInspirationMenu = false
+        expandingPrompt = true
+        Toast.makeText(context, "正在优化提示词…", Toast.LENGTH_SHORT).show()
+        scope.launch {
+            try {
+                val app = context.applicationContext as XincodeApplication
+                PromptExpander.expand(
+                    app.database,
+                    app.keystore,
+                    PromptExpander.Kind.TASK,
+                    draft
+                ).onSuccess {
+                    chatState.input.value = it
+                    Toast.makeText(context, "提示词已优化", Toast.LENGTH_SHORT).show()
+                }.onFailure {
+                    Toast.makeText(context, "优化失败：${it.message}", Toast.LENGTH_LONG).show()
+                }
+            } finally {
+                expandingPrompt = false
+            }
+        }
+    }
 
     // Bind scope on (re)composition — keyed on the chatState INSTANCE so切换会话换绑新实例时会重新布线
     // (statusLine / isStreaming 收集器绑到新会话那一对)。旧实例仍在其自有 scope 后台运行,不受影响。
@@ -467,7 +515,7 @@ fun ChatScreen(
                     .padding(horizontal = 8.dp)
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                         showMainMenu = true
-                        showEffortMenu = false
+                        effortExpanded = false
                     }
             ) {
                 Text(
@@ -925,6 +973,39 @@ fun ChatScreen(
                     }
                 }
 
+                AnimatedVisibility(visible = expandingPrompt || voiceFeedback.message != null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                            .background(
+                                if (voiceFeedback.isError) Red.copy(alpha = 0.10f) else Green.copy(alpha = 0.10f),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (expandingPrompt || voiceFeedback.active) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = Green,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = if (expandingPrompt) "正在把当前输入整理成更清晰的任务…"
+                            else voiceFeedback.message.orEmpty(),
+                            color = if (voiceFeedback.isError) Red else Sub,
+                            fontFamily = XinUiFont,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
                 // Row 2: toolbar
                 Row(
                     Modifier.fillMaxWidth(),
@@ -960,27 +1041,15 @@ fun ChatScreen(
 
                     ChatActionIcon(
                         icon = Icons.Outlined.Lightbulb,
-                        contentDescription = "灵感扩写",
-                        tint = if (expandingPrompt) Green else Ink,
+                        contentDescription = "灵感与提示词优化",
+                        tint = if (expandingPrompt || showInspirationMenu) Green else Ink,
                         onClick = {
-                            val draft = chatState.input.value
-                            if (!expandingPrompt && draft.isNotBlank()) {
-                                expandingPrompt = true
-                                scope.launch {
-                                    val app = context.applicationContext as XincodeApplication
-                                    val result = PromptExpander.expand(
-                                        app.database,
-                                        app.keystore,
-                                        PromptExpander.Kind.TASK,
-                                        draft
-                                    )
-                                    result.onSuccess { chatState.input.value = it }
-                                    result.onFailure {
-                                        Toast.makeText(context, "扩展失败:${it.message}", Toast.LENGTH_SHORT).show()
-                                    }
-                                    expandingPrompt = false
-                                }
-                            }
+                            if (chatState.input.value.isBlank()) {
+                                showInspirationMenu = !showInspirationMenu
+                                showPlusCard = false
+                                showModeCard = false
+                                showStatsPopup = false
+                            } else expandCurrentPrompt()
                         }
                     )
 
@@ -993,15 +1062,25 @@ fun ChatScreen(
 
                     ChatActionIcon(
                         icon = Icons.Outlined.MicNone,
-                        contentDescription = if (voiceState == VoiceInputHelper.State.LISTENING) "停止语音输入" else "语音输入",
-                        tint = if (voiceState == VoiceInputHelper.State.LISTENING) Red else Ink,
+                        contentDescription = if (voiceFeedback.active) "完成语音输入" else "语音输入",
+                        tint = if (voiceFeedback.active) Red else Ink,
                         onClick = {
-                            if (voiceState == VoiceInputHelper.State.LISTENING) {
-                                voiceInputHelper?.reset()
-                            } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                                voiceInputHelper?.startListening()
-                            } else {
-                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            when {
+                                voiceInputHelper == null -> Toast.makeText(
+                                    context,
+                                    "语音输入组件尚未初始化",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                voiceState == VoiceInputHelper.State.STARTING ||
+                                    voiceState == VoiceInputHelper.State.LISTENING -> voiceInputHelper.finishListening()
+                                voiceState == VoiceInputHelper.State.PROCESSING -> Toast.makeText(
+                                    context,
+                                    "正在整理识别结果，请稍候",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED ->
+                                    voiceInputHelper.startListening()
+                                else -> micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         }
                     )
@@ -1017,6 +1096,22 @@ fun ChatScreen(
                         }
                     )
                 }
+            }
+        }
+
+        if (showInspirationMenu) {
+            Popup(
+                alignment = Alignment.BottomCenter,
+                offset = IntOffset(0, -76),
+                onDismissRequest = { showInspirationMenu = false }
+            ) {
+                InspirationCard(
+                    onTemplate = { template ->
+                        chatState.input.value = template
+                        showInspirationMenu = false
+                    },
+                    onDismiss = { showInspirationMenu = false }
+                )
             }
         }
 
@@ -1061,177 +1156,211 @@ fun ChatScreen(
             Popup(
                 alignment = Alignment.TopCenter,
                 offset = IntOffset(0, 76),
-                onDismissRequest = { showMainMenu = false; showEffortMenu = false }
+                onDismissRequest = { showMainMenu = false; effortExpanded = false }
             ) {
                 Column(
                     Modifier
-                        .background(xc.bgElevated, RoundedCornerShape(18.dp))
-                        .border(1.dp, Border, RoundedCornerShape(18.dp))
-                        .padding(6.dp).widthIn(min = 200.dp, max = 280.dp)
+                        .background(xc.bgElevated, RoundedCornerShape(24.dp))
+                        .border(1.dp, Border, RoundedCornerShape(24.dp))
+                        .padding(12.dp)
+                        .widthIn(min = 300.dp, max = 360.dp)
                 ) {
-                    // (a) Current model — top, with ✓
-                    Text(
-                        "$currentModel  ✓",
-                        fontSize = 12.sp,
-                        fontFamily = JetBrainsMono,
-                        color = Ink,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
-                    )
-                    Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(0.5.dp).background(Border))
-
-                    // (b) Effort row with › arrow — click opens submenu
                     Row(
-                        Modifier.fillMaxWidth()
-                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                showEffortMenu = true
-                            }
-                            .padding(horizontal = 4.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "Effort: $effortLabel",
-                            fontSize = 12.sp,
-                            fontFamily = JetBrainsMono,
-                            color = Ink
+                        ProviderAvatar(
+                            supplierId = supplierId,
+                            size = 36.dp,
+                            contentDescription = providerName.ifBlank { "当前模型供应商" }
                         )
-                        Text(
-                            "›",
-                            fontSize = 14.sp,
-                            fontFamily = JetBrainsMono,
-                            color = Faint
-                        )
-                    }
-                    Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(0.5.dp).background(Border))
-
-                    // (c) More models
-                    if (availableModels.isNotEmpty()) {
-                        Text(
-                            "More models",
-                            fontSize = 9.sp,
-                            fontFamily = JetBrainsMono,
-                            color = Faint,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
-                        )
-                        val scrollState = rememberScrollState()
-                        Column(
-                            Modifier
-                                .heightIn(max = 160.dp)
-                                .verticalScroll(scrollState)
-                        ) {
-                            availableModels.forEach { name ->
-                                val isActive = name == currentModel
-                                Row(
-                                    Modifier.fillMaxWidth()
-                                        .background(if (isActive) LocalXinColors.current.activeBg else Bg)
-                                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                            showMainMenu = false
-                                            showEffortMenu = false
-                                            pendingModelIdx = name
-                                        }
-                                        .padding(horizontal = 6.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        if (isActive) "●" else "○",
-                                        fontSize = 9.sp,
-                                        color = if (isActive) Green else Faint,
-                                        modifier = Modifier.width(14.dp)
-                                    )
-                                    Text(
-                                        name,
-                                        fontSize = 11.sp,
-                                        fontFamily = JetBrainsMono,
-                                        color = if (isActive) Ink else Sub
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---- Effort Submenu Popup (overlays main menu) ----
-        if (showEffortMenu) {
-            Popup(
-                alignment = Alignment.BottomCenter,
-                offset = IntOffset(0, -80),
-                onDismissRequest = { showEffortMenu = false }
-            ) {
-                Column(
-                    Modifier
-                        .background(Bg).border(0.5.dp, Border)
-                        .padding(6.dp).widthIn(min = 200.dp, max = 280.dp)
-                ) {
-                    // (a) Hint
-                    Text(
-                        "强度越高回复越细致，但耗时更长",
-                        fontSize = 9.sp,
-                        fontFamily = JetBrainsMono,
-                        color = Faint,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                    Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(0.5.dp).background(Border))
-
-                    // (b) Five effort levels — all clickable
-                    effortLabels.forEachIndexed { i, label ->
-                        val sel = i == thinkingLevel
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                    onThinkingLevelChange(i)
-                                }
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
                             Text(
-                                if (sel) "●" else "○",
+                                currentModel.ifBlank { "未选择模型" },
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium,
+                                fontFamily = XinUiFont,
+                                color = Ink,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                providerName.ifBlank { "当前模型" },
                                 fontSize = 10.sp,
-                                color = if (sel) Green else Faint,
-                                modifier = Modifier.width(16.dp)
+                                fontFamily = XinUiFont,
+                                color = Sub,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            Text(
-                                label,
-                                fontSize = 12.sp,
-                                fontFamily = JetBrainsMono,
-                                color = if (sel) Ink else Sub
-                            )
-                            if (sel) Text("  ✓", fontSize = 10.sp, color = Green)
-                            if (label == "Max") {
-                                XinIcon(
-                                    icon = Icons.Outlined.Info,
-                                    size = 12.dp,
-                                    tint = Faint,
-                                    onClick = {
-                                        // tooltip: 耗用极大，谨慎使用
-                                    }
-                                )
-                            }
                         }
+                        Icon(
+                            imageVector = Icons.Outlined.Check,
+                            contentDescription = "当前模型",
+                            tint = Green,
+                            modifier = Modifier.size(19.dp)
+                        )
                     }
-                    Box(Modifier.fillMaxWidth().padding(vertical = 2.dp).height(0.5.dp).background(Border))
+                    Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(Border))
 
-                    // (c) Thinking toggle
                     Row(
-                        Modifier.fillMaxWidth()
-                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                onThinkingEnabledChange(!thinkingEnabled)
-                            }
-                            .padding(horizontal = 4.dp, vertical = 4.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) { effortExpanded = !effortExpanded }
+                            .padding(horizontal = 12.dp, vertical = 11.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Thinking", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Ink)
-                            Text("用于复杂任务的思考过程", fontSize = 9.sp, fontFamily = JetBrainsMono, color = Faint)
+                            Text("思考强度 · $effortLabel", fontSize = 13.sp, fontFamily = XinUiFont, color = Ink)
+                            Text(
+                                if (thinkingEnabled) "深度思考已开启" else "深度思考已关闭",
+                                fontSize = 10.sp,
+                                fontFamily = XinUiFont,
+                                color = Sub
+                            )
                         }
-                        Text(
-                            if (thinkingEnabled) "ON ●──" else "OFF ──○",
-                            fontSize = 10.sp,
-                            fontFamily = JetBrainsMono,
-                            color = if (thinkingEnabled) Green else Faint
+                        Icon(
+                            imageVector = if (effortExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                            contentDescription = if (effortExpanded) "收起思考强度" else "展开思考强度",
+                            tint = Faint,
+                            modifier = Modifier.size(22.dp)
                         )
+                    }
+
+                    AnimatedVisibility(visible = effortExpanded) {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                                .background(xc.activeBg, RoundedCornerShape(18.dp))
+                                .padding(10.dp)
+                        ) {
+                            Text(
+                                "强度越高，回答越细致，但通常耗时更长",
+                                fontSize = 10.sp,
+                                fontFamily = XinUiFont,
+                                color = Sub,
+                                modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp)
+                            )
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                effortLabels.forEachIndexed { index, label ->
+                                    val selected = index == thinkingLevel
+                                    Row(
+                                        Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 44.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (selected) Green.copy(alpha = 0.18f) else xc.bgElevated)
+                                            .border(
+                                                1.dp,
+                                                if (selected) Green.copy(alpha = 0.55f) else Border,
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                            .clickable(
+                                                indication = null,
+                                                interactionSource = remember { MutableInteractionSource() }
+                                            ) {
+                                                onThinkingLevelChange(index)
+                                                if (!thinkingEnabled) onThinkingEnabledChange(true)
+                                            },
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            label,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                            fontFamily = XinUiFont,
+                                            color = if (selected) Green else Sub
+                                        )
+                                    }
+                                }
+                            }
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 2.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("深度思考", fontSize = 13.sp, fontFamily = XinUiFont, color = Ink)
+                                    Text("适合分析、规划和复杂代码任务", fontSize = 10.sp, fontFamily = XinUiFont, color = Sub)
+                                }
+                                Switch(
+                                    checked = thinkingEnabled,
+                                    onCheckedChange = onThinkingEnabledChange,
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = xc.bgElevated,
+                                        checkedTrackColor = Green,
+                                        uncheckedThumbColor = Faint,
+                                        uncheckedTrackColor = Border,
+                                        uncheckedBorderColor = Border
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    if (availableModels.isNotEmpty()) {
+                        Text(
+                            "可用模型",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            fontFamily = XinUiFont,
+                            color = Faint,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                        )
+                        val scrollState = rememberScrollState()
+                        Column(
+                            Modifier
+                                .heightIn(max = 190.dp)
+                                .verticalScroll(scrollState)
+                        ) {
+                            availableModels.distinct().forEach { name ->
+                                val isActive = name == currentModel
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(if (isActive) LocalXinColors.current.activeBg else Color.Transparent)
+                                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                            showMainMenu = false
+                                            effortExpanded = false
+                                            if (!isActive) pendingModelIdx = name
+                                        }
+                                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    RadioButton(
+                                        selected = isActive,
+                                        onClick = null,
+                                        modifier = Modifier.size(28.dp),
+                                        colors = RadioButtonDefaults.colors(
+                                            selectedColor = Green,
+                                            unselectedColor = Faint
+                                        )
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        name,
+                                        fontSize = 12.sp,
+                                        fontFamily = XinUiFont,
+                                        color = if (isActive) Ink else Sub,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1249,6 +1378,80 @@ fun ChatScreen(
             dismissButton = { TextButton(onClick = { pendingModelIdx = null }) { Text("取消", fontFamily = JetBrainsMono, color = Sub) } },
             containerColor = Bg
         )
+    }
+}
+
+private data class InspirationTemplate(val title: String, val description: String, val prompt: String)
+
+private val inspirationTemplates = listOf(
+    InspirationTemplate(
+        "规划任务",
+        "拆成步骤、风险和验收条件",
+        "请把我的目标拆成可执行步骤，列出依赖、风险和每一步的验收条件。先确认当前环境，再开始执行。"
+    ),
+    InspirationTemplate(
+        "排查问题",
+        "先找证据，再给修复方案",
+        "请帮我排查这个问题。先收集现象、日志和复现步骤，区分已确认原因与推测，再给出最小修复并验证。"
+    ),
+    InspirationTemplate(
+        "优化代码",
+        "兼顾可读性、边界与测试",
+        "请审查并优化这段代码，保留现有行为，重点检查错误路径、空值、性能和可维护性，同时补充可失败的测试。"
+    )
+)
+
+@Composable
+private fun InspirationCard(onTemplate: (String) -> Unit, onDismiss: () -> Unit) {
+    val colors = LocalXinColors.current
+    Column(
+        Modifier
+            .widthIn(min = 300.dp, max = 360.dp)
+            .background(colors.bgElevated, RoundedCornerShape(24.dp))
+            .border(1.dp, colors.border, RoundedCornerShape(24.dp))
+            .padding(14.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = Icons.Outlined.Lightbulb,
+                contentDescription = null,
+                tint = colors.green,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                Text("从一个清晰起点开始", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = colors.ink)
+                Text("选择模板后仍可继续修改", fontSize = 10.sp, color = colors.sub)
+            }
+            ChatActionIcon(Icons.Outlined.Close, "关闭灵感面板", onClick = onDismiss)
+        }
+        Spacer(Modifier.height(8.dp))
+        inspirationTemplates.forEach { item ->
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(colors.activeBg)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onTemplate(item.prompt) }
+                    .padding(horizontal = 12.dp, vertical = 11.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(item.title, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = colors.ink)
+                    Text(item.description, fontSize = 10.sp, color = colors.sub)
+                }
+                Icon(
+                    imageVector = Icons.Outlined.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = colors.faint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
     }
 }
 

@@ -52,19 +52,10 @@ fun IdentityListScreen(
     var deleteTarget by remember { mutableStateOf<IdentityEntity?>(null) }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("← 返回", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Text("+", fontSize = 16.sp, fontFamily = JetBrainsMono, color = Green,
-                modifier = Modifier
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onCreateNew() }
-                    .padding(horizontal = 8.dp, vertical = 2.dp))
+        XinPageHeader(title = "身份卡", subtitle = "为不同场景配置独立助手", onBack = onBack) {
+            XinHeaderAction(label = "新建", onClick = onCreateNew)
         }
-        Spacer(Modifier.height(16.dp))
-        Text("身份卡", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
-        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(Border))
+        Spacer(Modifier.height(8.dp))
 
         LazyColumn(Modifier.weight(1f)) {
             items(identities, key = { it.id }) { identity ->

@@ -95,16 +95,13 @@ fun KanbanScreen(
     )
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("看板", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-            Text("+ 新建", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                    newTitle = ""; showAdd = true
-                })
+        XinPageHeader(
+            title = "看板",
+            subtitle = "跨会话跟踪长期任务",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        ) {
+            XinHeaderAction(label = "新建", onClick = { newTitle = ""; showAdd = true })
         }
 
         // 队列控制条:有 ready 任务时给「开始执行」入口

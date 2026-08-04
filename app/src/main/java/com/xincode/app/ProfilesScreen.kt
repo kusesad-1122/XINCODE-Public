@@ -67,16 +67,13 @@ fun ProfilesScreen(database: AppDatabase, onBack: () -> Unit) {
     LaunchedEffect(Unit) { reload() }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("配置环境", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-            Text("+ 新建", fontSize = 12.sp, fontFamily = Mono, color = xc.green,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                    newName = ""; showNew = true
-                })
+        XinPageHeader(
+            title = "配置环境",
+            subtitle = "在工作、个人等配置间快速切换",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        ) {
+            XinHeaderAction(label = "新建", onClick = { newName = ""; showNew = true })
         }
 
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {

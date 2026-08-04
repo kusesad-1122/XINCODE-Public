@@ -102,15 +102,13 @@ fun LogViewerScreen(onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("日志", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-            Text(if (loading) "读取中" else "刷新", fontSize = 12.sp, fontFamily = Mono,
-                color = if (loading) xc.faint else xc.green,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { reload() })
+        XinPageHeader(
+            title = "日志",
+            subtitle = "运行记录、崩溃信息与过滤",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        ) {
+            XinHeaderAction(label = if (loading) "读取中" else "刷新", enabled = !loading, onClick = { reload() })
         }
 
         // 来源

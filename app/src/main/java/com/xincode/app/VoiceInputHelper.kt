@@ -3,6 +3,8 @@ package com.xincode.app
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -12,7 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Wraps Android SpeechRecognizer for voice-to-text input.
- * State machine: Idle → Listening → Result/Error → Idle
+ * State machine: Idle → Starting → Listening → Processing → Result/Error → Idle
  */
 class VoiceInputHelper(private val context: Context) {
 
@@ -20,7 +22,7 @@ class VoiceInputHelper(private val context: Context) {
         private const val TAG = "VoiceInput"
     }
 
-    enum class State { IDLE, LISTENING, RESULT, ERROR }
+    enum class State { IDLE, STARTING, LISTENING, PROCESSING, RESULT, ERROR }
 
     private val _state = MutableStateFlow(State.IDLE)
     val state: StateFlow<State> = _state
@@ -35,6 +37,8 @@ class VoiceInputHelper(private val context: Context) {
     val errorMsg: StateFlow<String> = _errorMsg
 
     private var recognizer: SpeechRecognizer? = null
+    private var recognitionGeneration = 0L
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     fun startListening() {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
@@ -44,11 +48,17 @@ class VoiceInputHelper(private val context: Context) {
             return
         }
 
-        stopListening() // clean up previous
+        destroyRecognizer(cancel = true)
+        val generation = ++recognitionGeneration
+        _state.value = State.STARTING
+        _partialText.value = ""
+        _finalText.value = ""
+        _errorMsg.value = ""
 
         recognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
             setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) {
+                    if (generation != recognitionGeneration || _state.value != State.STARTING) return
                     Log.d(TAG, "Ready for speech")
                     _state.value = State.LISTENING
                     _partialText.value = ""
@@ -57,17 +67,25 @@ class VoiceInputHelper(private val context: Context) {
                 }
 
                 override fun onBeginningOfSpeech() {
+                    if (generation != recognitionGeneration) return
                     Log.d(TAG, "Speech begun")
                 }
 
-                override fun onRmsChanged(rmsdB: Float) {}
-                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onRmsChanged(rmsdB: Float) {
+                    if (generation != recognitionGeneration) return
+                }
+                override fun onBufferReceived(buffer: ByteArray?) {
+                    if (generation != recognitionGeneration) return
+                }
 
                 override fun onEndOfSpeech() {
+                    if (generation != recognitionGeneration) return
                     Log.d(TAG, "Speech ended")
+                    _state.value = State.PROCESSING
                 }
 
                 override fun onError(error: Int) {
+                    if (generation != recognitionGeneration) return
                     val msg = when (error) {
                         SpeechRecognizer.ERROR_AUDIO -> "音频录制错误"
                         SpeechRecognizer.ERROR_CLIENT -> "客户端错误"
@@ -81,14 +99,17 @@ class VoiceInputHelper(private val context: Context) {
                         else -> "未知错误 ($error)"
                     }
                     Log.w(TAG, "Recognition error: $msg")
+                    destroyRecognizer(cancel = false)
                     _state.value = State.ERROR
                     _errorMsg.value = msg
                 }
 
                 override fun onResults(results: Bundle?) {
+                    if (generation != recognitionGeneration) return
                     val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull() ?: ""
                     Log.i(TAG, "Final result: $text")
+                    destroyRecognizer(cancel = false)
                     _finalText.value = text
                     _partialText.value = ""
                     _state.value = if (text.isNotEmpty()) State.RESULT else State.ERROR
@@ -96,6 +117,7 @@ class VoiceInputHelper(private val context: Context) {
                 }
 
                 override fun onPartialResults(partialResults: Bundle?) {
+                    if (generation != recognitionGeneration) return
                     val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     val text = matches?.firstOrNull() ?: ""
                     if (text.isNotEmpty()) {
@@ -103,7 +125,9 @@ class VoiceInputHelper(private val context: Context) {
                     }
                 }
 
-                override fun onEvent(eventType: Int, params: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {
+                    if (generation != recognitionGeneration) return
+                }
             })
         }
 
@@ -116,24 +140,48 @@ class VoiceInputHelper(private val context: Context) {
 
         try {
             recognizer?.startListening(intent)
+            mainHandler.postDelayed({
+                if (generation == recognitionGeneration && _state.value == State.STARTING) {
+                    destroyRecognizer(cancel = true)
+                    _state.value = State.ERROR
+                    _errorMsg.value = "语音识别服务启动超时"
+                }
+            }, 8_000L)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start listening", e)
+            destroyRecognizer(cancel = true)
             _state.value = State.ERROR
             _errorMsg.value = "启动语音识别失败: ${e.message}"
         }
     }
 
-    fun stopListening() {
+    /** Finish the current utterance and let SpeechRecognizer return its best result. */
+    fun finishListening() {
+        if (_state.value != State.STARTING && _state.value != State.LISTENING) return
+        _state.value = State.PROCESSING
         try {
             recognizer?.stopListening()
-            recognizer?.cancel()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to finish listening", e)
+            destroyRecognizer(cancel = true)
+            _state.value = State.ERROR
+            _errorMsg.value = "停止录音失败: ${e.message}"
+        }
+    }
+
+    private fun destroyRecognizer(cancel: Boolean) {
+        try {
+            if (cancel) recognizer?.cancel()
             recognizer?.destroy()
-        } catch (_: Exception) {}
-        recognizer = null
+        } catch (_: Exception) {
+        } finally {
+            recognizer = null
+        }
     }
 
     fun reset() {
-        stopListening()
+        recognitionGeneration++
+        destroyRecognizer(cancel = true)
         _state.value = State.IDLE
         _partialText.value = ""
         _finalText.value = ""

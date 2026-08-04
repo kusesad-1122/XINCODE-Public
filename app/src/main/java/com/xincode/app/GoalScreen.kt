@@ -27,7 +27,7 @@ private val GSub: Color @Composable get() = LocalXinColors.current.sub
 private val GGreen: Color @Composable get() = LocalXinColors.current.green
 private val GRed: Color @Composable get() = LocalXinColors.current.red
 private val GBorder: Color @Composable get() = LocalXinColors.current.border
-private val GMono = FontFamily(Font(com.xincode.app.R.font.jetbrains_mono, FontWeight.Normal))
+private val GMono = XinUiFont
 
 /**
  * Goal-driven execution screen.
@@ -44,24 +44,13 @@ fun GoalScreen(
     val isRunning = state is GoalRunner.GoalState.Running
 
     Column(Modifier.fillMaxSize().background(GBg)) {
-        // Top bar
-        Row(
-            Modifier.fillMaxWidth().background(GInk).padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+        XinPageHeader(
+            title = "目标执行",
+            subtitle = if (isRunning) "正在自主推进任务" else "输入目标并跟踪执行过程",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.Outlined.ArrowBack, "back", tint = GBg)
-            }
-            Text(
-                "Goal",
-                color = GBg, fontSize = 14.sp, fontFamily = GMono,
-                modifier = Modifier.weight(1f)
-            )
-            if (isRunning) {
-                IconButton(onClick = { goalRunner.stop() }) {
-                    Icon(Icons.Outlined.Stop, "stop", tint = GBg)
-                }
-            }
+            if (isRunning) XinHeaderAction(label = "停止", destructive = true, onClick = { goalRunner.stop() })
         }
 
         // Input row — only visible when idle

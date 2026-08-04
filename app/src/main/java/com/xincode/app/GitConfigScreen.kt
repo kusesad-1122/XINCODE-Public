@@ -166,13 +166,12 @@ fun GitConfigScreen(database: AppDatabase, keystore: KeystoreProvider, onBack: (
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg).verticalScroll(rememberScrollState())) {
-        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            Text("Git 接入", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
-            Spacer(Modifier.weight(1f))
-        }
+        XinPageHeader(
+            title = "Git 接入",
+            subtitle = "GitHub 授权、远程 MCP 与本地 Git",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        )
         Text("点「登录 GitHub」用你的账户授权即可(无需手动建 Token)。登录后可:添加官方远程 MCP(免 root/免 node)让 AI 直接用 GitHub API 管仓库/PR/Issue/文件,或配置到 Linux 环境走终端 git。",
             fontSize = 11.sp, fontFamily = Mono, color = xc.sub, modifier = Modifier.padding(horizontal = 16.dp))
 

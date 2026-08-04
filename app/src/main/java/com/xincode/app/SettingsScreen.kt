@@ -6,12 +6,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,18 +87,21 @@ fun SettingsScreen(
     Column(
         Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)
     ) {
-        // Header
-        Text("← 返回", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-        Spacer(Modifier.height(16.dp))
-        Text("设置", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
-        Spacer(Modifier.height(20.dp))
+        XinPageHeader(
+            title = "设置",
+            subtitle = "外观、模型、权限与 Agent 工具",
+            onBack = onBack
+        )
+        Spacer(Modifier.height(8.dp))
 
         // ── Section: 外观 ──
         SectionHeader("外观")
         Row(
             Modifier.fillMaxWidth()
-                .height(48.dp)
+                .padding(vertical = 4.dp)
+                .background(xc.bgElevated, RoundedCornerShape(18.dp))
+                .border(1.dp, Border, RoundedCornerShape(18.dp))
+                .heightIn(min = 58.dp)
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onUpdateDarkMode(!darkMode) }
                 .padding(start = 20.dp, end = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -105,11 +111,16 @@ fun SettingsScreen(
                 Text("暗色模式", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
                 Text(if (darkMode) "近黑终端配色" else "羊皮纸浅色配色", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
             }
-            Text(
-                if (darkMode) "ON ●──" else "OFF ──○",
-                fontSize = 11.sp,
-                fontFamily = JetBrainsMono,
-                color = if (darkMode) Green else Faint
+            Switch(
+                checked = darkMode,
+                onCheckedChange = onUpdateDarkMode,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = xc.bgElevated,
+                    checkedTrackColor = Green,
+                    uncheckedThumbColor = Faint,
+                    uncheckedTrackColor = Border,
+                    uncheckedBorderColor = Border
+                )
             )
         }
 
@@ -117,7 +128,10 @@ fun SettingsScreen(
         val app = LocalContext.current.applicationContext as XincodeApplication
         Row(
             Modifier.fillMaxWidth()
-                .height(48.dp)
+                .padding(vertical = 4.dp)
+                .background(xc.bgElevated, RoundedCornerShape(18.dp))
+                .border(1.dp, Border, RoundedCornerShape(18.dp))
+                .heightIn(min = 58.dp)
                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { app.updateEnterToSend(!app.enterToSend) }
                 .padding(start = 20.dp, end = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -127,11 +141,16 @@ fun SettingsScreen(
                 Text("回车发送", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
                 Text(if (app.enterToSend) "回车直接发送(换行用输入法组合键)" else "回车换行(发送靠 [→] 键)", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
             }
-            Text(
-                if (app.enterToSend) "ON ●──" else "OFF ──○",
-                fontSize = 11.sp,
-                fontFamily = JetBrainsMono,
-                color = if (app.enterToSend) Green else Faint
+            Switch(
+                checked = app.enterToSend,
+                onCheckedChange = { app.updateEnterToSend(it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = xc.bgElevated,
+                    checkedTrackColor = Green,
+                    uncheckedThumbColor = Faint,
+                    uncheckedTrackColor = Border,
+                    uncheckedBorderColor = Border
+                )
             )
         }
 
@@ -159,7 +178,10 @@ fun SettingsScreen(
         val diag = rootDiagnosticResult
         if (diag != null) {
             Column(
-                Modifier.fillMaxWidth().border(0.5.dp, Border).padding(8.dp)
+                Modifier.fillMaxWidth()
+                    .background(xc.bgElevated, RoundedCornerShape(18.dp))
+                    .border(1.dp, Border, RoundedCornerShape(18.dp))
+                    .padding(12.dp)
             ) {
                 Text("── Root 诊断报告 ──", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
                 Spacer(Modifier.height(4.dp))
@@ -269,19 +291,18 @@ fun SettingsScreen(
 private fun SectionHeader(title: String) {
     Text(
         if (title.all { it in 'A'..'Z' || it in 'a'..'z' || it == ' ' }) title.uppercase() else title,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
         fontFamily = JetBrainsMono,
         color = LocalXinColors.current.sub,
         letterSpacing = 0.05.em,
-        modifier = Modifier.padding(start = 20.dp, top = 24.dp, bottom = 8.dp)
+        modifier = Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp)
     )
 }
 
 @Composable
 private fun SectionDivider() {
-    Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(1.dp).background(LocalXinColors.current.divider))
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(6.dp))
 }
 
 @Composable
@@ -289,6 +310,9 @@ private fun SettingRow(label: String, value: String, onClick: () -> Unit) {
     val xc = LocalXinColors.current
     Row(
         Modifier.fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .background(xc.bgElevated, RoundedCornerShape(18.dp))
+            .border(1.dp, xc.border, RoundedCornerShape(18.dp))
             .heightIn(min = 52.dp)
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
             .padding(start = 20.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),

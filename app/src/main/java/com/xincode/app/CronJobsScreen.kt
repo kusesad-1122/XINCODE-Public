@@ -56,12 +56,12 @@ fun CronJobsScreen(
     val fmt = remember { SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()) }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp)) {
-        Text("← 返回", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-        Spacer(Modifier.height(16.dp))
-        Text("定时任务", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
-        Text("由 agent 经 cronjob 工具创建;WorkManager 后台周期执行。", fontSize = 9.sp, fontFamily = JetBrainsMono, color = Faint)
-        Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(Border))
+        XinPageHeader(
+            title = "定时任务",
+            subtitle = "由 Agent 创建并在后台周期执行",
+            onBack = onBack
+        )
+        Spacer(Modifier.height(8.dp))
 
         if (jobs.isEmpty()) {
             Text("(暂无定时任务。对 agent 说\"每天…\"/\"2 小时后…\"即可创建)", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint)

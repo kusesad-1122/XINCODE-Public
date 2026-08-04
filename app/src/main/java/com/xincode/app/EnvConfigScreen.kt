@@ -97,21 +97,14 @@ fun EnvConfigScreen(onBack: () -> Unit, onOpenTerminal: () -> Unit = {}) {
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        // 顶部返回 + 标题
-        Row(
-            Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+        XinPageHeader(
+            title = "环境配置",
+            subtitle = "Ubuntu、语言运行时与开发工具",
+            onBack = onBack,
+            modifier = Modifier.padding(horizontal = 12.dp)
         ) {
-            Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = xc.sub,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onBack() })
-            Spacer(Modifier.weight(1f))
-            if (detecting) Text("检测中…", fontSize = 11.sp, fontFamily = Mono, color = xc.faint)
+            if (detecting) XinHeaderAction(label = "检测中", enabled = false, onClick = {})
         }
-        Text("环境配置", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = xc.ink,
-            fontFamily = Mono, modifier = Modifier.padding(start = 16.dp, top = 4.dp))
-        Text("内置一套真正的 Ubuntu(apt)环境跑在本机(root+chroot),工具都装在里面;首次部署自动下载一次基础系统(~35MB),之后离线可用。",
-            fontSize = 11.sp, fontFamily = Mono, color = xc.sub,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp))
 
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),

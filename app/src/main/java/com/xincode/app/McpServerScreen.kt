@@ -57,17 +57,8 @@ fun McpServerScreen(
     Column(
         Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)
     ) {
-        // Header
-        Text("← 返回", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-            modifier = Modifier.clickable(indication = null,
-                interactionSource = remember { MutableInteractionSource() }) { onBack() })
-        Spacer(Modifier.height(16.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically) {
-            Text("MCP 服务器", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
-            Text("+ 添加", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Green,
-                modifier = Modifier.clickable(indication = null,
-                    interactionSource = remember { MutableInteractionSource() }) { showAddDialog = true })
+        XinPageHeader(title = "MCP 服务器", subtitle = "连接和管理外部工具", onBack = onBack) {
+            XinHeaderAction(label = "添加", onClick = { showAddDialog = true })
         }
         Spacer(Modifier.height(12.dp))
 
