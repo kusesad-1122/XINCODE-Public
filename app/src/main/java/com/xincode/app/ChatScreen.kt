@@ -3,6 +3,7 @@ package com.xincode.app
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.Manifest
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,6 +38,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AddComment
+import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Description
@@ -47,9 +50,18 @@ import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.MicNone
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.DeleteSweep
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,6 +80,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -225,7 +239,7 @@ private fun humanSize(bytes: Long): String = when {
 // Palette now sourced from [LocalXinColors] — supports light/dark switching.
 // Kept as local vals inside each composable so existing code paths compile unchanged.
 
-private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val JetBrainsMono = XinUiFont
 
 // -- Unified icon button (terminal aesthetic, all monochrome) --
 
@@ -252,7 +266,11 @@ private fun XinIcon(
 @Composable
 fun ChatScreen(
     chatState: ChatStateLike,
+    conversationTitle: String = "新聊天",
+    assistantName: String = "默认助手",
     currentModel: String = "",
+    supplierId: String = "",
+    providerName: String = "",
     availableModels: List<String> = emptyList(),
     onSwitchModel: (String) -> Unit = {},
     thinkingEnabled: Boolean = false,
@@ -267,8 +285,10 @@ fun ChatScreen(
     onNavigateToTerminal: () -> Unit = {},
     subAgentActive: Boolean = false,
     ttsHelper: TtsHelper? = null,
+    voiceInputHelper: VoiceInputHelper? = null,
     powerMode: com.xincode.core.PowerMode = com.xincode.core.PowerMode.NORMAL,
     onOpenDrawer: () -> Unit = {},
+    onNewChat: () -> Unit = {},
     planState: PlanState? = null,
     tokenStats: TokenStats = TokenStats.EMPTY,
     onRegenerate: (Long) -> Unit = {},
@@ -313,6 +333,25 @@ fun ChatScreen(
     // Menu visibility
     var showMainMenu by remember { mutableStateOf(false) }
     var showEffortMenu by remember { mutableStateOf(false) }
+    var showTopMenu by remember { mutableStateOf(false) }
+
+    val voiceState = voiceInputHelper?.state?.collectAsState()?.value ?: VoiceInputHelper.State.IDLE
+    val voiceFinalText = voiceInputHelper?.finalText?.collectAsState()?.value.orEmpty()
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) voiceInputHelper?.startListening()
+        else Toast.makeText(context, "需要录音权限才能使用语音输入", Toast.LENGTH_SHORT).show()
+    }
+
+    LaunchedEffect(voiceFinalText) {
+        if (voiceFinalText.isNotBlank()) {
+            chatState.input.value = listOf(chatState.input.value.trim(), voiceFinalText.trim())
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+            voiceInputHelper?.reset()
+        }
+    }
 
     // TTS state
     val ttsEnabled by (ttsHelper?.enabled?.collectAsState() ?: remember { mutableStateOf(false) })
@@ -414,55 +453,69 @@ fun ChatScreen(
     Column(Modifier.fillMaxSize().background(Bg)) {
         // ---- top bar ----
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("☰", fontSize = 16.sp, fontFamily = JetBrainsMono, color = Ink,
-                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onOpenDrawer() })
-            Spacer(Modifier.width(8.dp))
-            Text("XINCODE", fontSize = 13.sp, fontFamily = JetBrainsMono, color = Ink)
-            Spacer(Modifier.width(8.dp))
-            // Battery / Power mode indicator
-            val batColor = when (powerMode) {
-                com.xincode.core.PowerMode.POWER_SAVE -> Red
-                com.xincode.core.PowerMode.HIGH_PERF -> Green
-                else -> Faint
-            }
-            Text(
-                powerMode.label,
-                fontSize = 10.sp,
-                fontFamily = JetBrainsMono,
-                color = batColor
+            ChatActionIcon(
+                icon = Icons.Outlined.ArrowBack,
+                contentDescription = "返回会话列表",
+                onClick = onOpenDrawer
             )
-            Spacer(Modifier.weight(1f))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(horizontal = 8.dp)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        showMainMenu = true
+                        showEffortMenu = false
+                    }
+            ) {
                 Text(
-                    "终端",
-                    fontSize = 13.sp,
-                    fontFamily = JetBrainsMono,
+                    conversationTitle,
+                    fontSize = 22.sp,
+                    lineHeight = 26.sp,
+                    fontFamily = XinUiFont,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    assistantSubtitle(assistantName, currentModel, providerName),
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    fontFamily = XinUiFont,
                     color = Sub,
-                    modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNavigateToTerminal() }
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                Spacer(Modifier.width(12.dp))
-                // 「统计」不再放右上角 —— 改为输入框上方的可展开小卡片(见 TokenStatsBar 展开态)。
-                Text(
-                    "指挥室",
-                    fontSize = 13.sp,
-                    fontFamily = JetBrainsMono,
-                    color = if (subAgentActive) Green else Sub,
-                    modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNavigateToAgentScene() }
+            }
+            Box {
+                ChatActionIcon(
+                    icon = Icons.Outlined.MoreVert,
+                    contentDescription = "更多会话操作",
+                    onClick = { showTopMenu = true }
                 )
-                    Spacer(Modifier.width(12.dp))
-                    XinIcon(
-                        icon = Icons.Outlined.Share,
-                        size = 16.dp,
-                        tint = Sub,
+                DropdownMenu(
+                    expanded = showTopMenu,
+                    onDismissRequest = { showTopMenu = false },
+                    containerColor = xc.bgElevated
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("打开终端", fontFamily = XinUiFont) },
+                        onClick = { showTopMenu = false; onNavigateToTerminal() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("进入指挥室", fontFamily = XinUiFont) },
+                        onClick = { showTopMenu = false; onNavigateToAgentScene() }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("分享聊天", fontFamily = XinUiFont) },
                         onClick = {
-                            val exportText = chatState.formatForExport()
+                            showTopMenu = false
                             val intent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, exportText)
+                                putExtra(Intent.EXTRA_TEXT, chatState.formatForExport())
                                 putExtra(Intent.EXTRA_SUBJECT, "XINCODE 对话导出")
                             }
                             context.startActivity(Intent.createChooser(intent, "分享对话"))
@@ -470,7 +523,13 @@ fun ChatScreen(
                     )
                 }
             }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
+            ChatActionIcon(
+                icon = Icons.Outlined.AddComment,
+                contentDescription = "新建聊天",
+                onClick = onNewChat
+            )
+        }
+        Box(Modifier.fillMaxWidth().height(0.5.dp).background(Border))
 
         // ---- Goal/Work 模式横幅 ----
         if (isGoalSession) {
@@ -494,24 +553,24 @@ fun ChatScreen(
             contentPadding = PaddingValues(vertical = 12.dp)
         ) {
             items(turnGroups, key = { it.key }) { group ->
+                val userMessage = group.userMessage
+                val assistantMessage = group.assistantMessage
                 when {
-                    group.isFlat && group.userMessage != null ->
+                    group.isFlat && userMessage != null ->
                         MessageBubble(
-                            group.userMessage,
-                            isStreamingMessage = chatState.isStreaming.value && group.userMessage == chatState.messages.lastOrNull(),
-                            onDelete = { onDeleteMessage(group.userMessage.id) },
+                            userMessage,
+                            isStreamingMessage = chatState.isStreaming.value && userMessage == chatState.messages.lastOrNull(),
+                            onDelete = { onDeleteMessage(userMessage.id) },
                             // 点用户消息的「重答」= 用同样的问题重新问一遍
-                            onRegenerate = { onRegenerate(group.userMessage.id) }
+                            onRegenerate = { onRegenerate(userMessage.id) }
                         )
-                    group.isFlat && group.assistantMessage != null ->
-                        MessageBubble(
-                            group.assistantMessage,
-                            isStreamingMessage = chatState.isStreaming.value && group.assistantMessage == chatState.messages.lastOrNull(),
-                            onRetry = if (group.assistantMessage.content.startsWith("✗ ")) {
-                                { onRegenerate(group.assistantMessage.id) }
-                            } else null,
-                            onDelete = { onDeleteMessage(group.assistantMessage.id) },
-                            onRegenerate = { onRegenerate(group.assistantMessage.id) }
+                    assistantMessage != null ->
+                        AgentTurnBlock(
+                            group = group,
+                            supplierId = supplierId,
+                            assistantName = currentModel.ifBlank { assistantName },
+                            isStreaming = chatState.isStreaming.value,
+                            onRegenerate = { onRegenerate(assistantMessage.id) }
                         )
                     group.isFlat && group.toolMessages.isNotEmpty() ->
                         group.toolMessages.forEach { toolMsg ->
@@ -526,9 +585,11 @@ fun ChatScreen(
                         }
                     else ->
                         AgentTurnBlock(
-                            group,
+                            group = group,
+                            supplierId = supplierId,
+                            assistantName = currentModel.ifBlank { assistantName },
                             isStreaming = chatState.isStreaming.value,
-                            onRegenerate = group.assistantMessage?.let { a -> { onRegenerate(a.id) } }
+                            onRegenerate = null
                         )
                 }
             }
@@ -719,10 +780,10 @@ fun ChatScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp)
                 .padding(bottom = 12.dp)
-                .border(1.dp, Color(0x1A1A1A17), RoundedCornerShape(16.dp))
-                .background(Bg, RoundedCornerShape(16.dp))
+                .border(1.dp, Border, RoundedCornerShape(28.dp))
+                .background(xc.bgElevated, RoundedCornerShape(28.dp))
         ) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                 // Row 1: text field
                 TextField(
                     value = chatState.input.value,
@@ -743,17 +804,55 @@ fun ChatScreen(
                         unfocusedTextColor = Ink,
                         disabledTextColor = Faint
                     ),
-                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = JetBrainsMono),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, lineHeight = 23.sp, fontFamily = XinUiFont),
                     keyboardOptions = KeyboardOptions(imeAction = if (enterToSend) ImeAction.Send else ImeAction.Default),
                     keyboardActions = KeyboardActions(onSend = { submitInput() }),
+                    trailingIcon = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ContextRing(
+                                usage = contextUsage,
+                                onClick = { showStatsPopup = !showStatsPopup }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            val streaming = chatState.isStreaming.value
+                            val hasText = chatState.input.value.isNotBlank()
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .background(
+                                        if (hasText || streaming) xc.green.copy(alpha = 0.22f) else xc.activeBg,
+                                        RoundedCornerShape(16.dp)
+                                    )
+                                    .clickable(
+                                        enabled = hasText || streaming,
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) {
+                                        if (streaming && !hasText) {
+                                            if (isGoalSession && goalRunning) onStopGoal() else chatState.stop()
+                                        } else {
+                                            submitInput()
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (streaming && !hasText) Icons.Outlined.Close else Icons.Outlined.Send,
+                                    contentDescription = if (streaming && !hasText) "停止生成" else "发送消息",
+                                    tint = if (hasText || streaming) xc.ink else xc.faint,
+                                    modifier = Modifier.size(23.dp)
+                                )
+                            }
+                        }
+                    },
                     placeholder = {
                         Text(
                             when {
                                 chatState.isStreaming.value -> "插话给正在工作的 AI(不打断)…"
                                 isGoalSession && !goalRunning -> "输入目标,让 XINCODE 自主完成…"
-                                else -> "输入消息…"
+                                else -> "输入消息与 AI 聊天"
                             },
-                            color = Faint, fontSize = 13.sp, fontFamily = JetBrainsMono
+                            color = Sub, fontSize = 16.sp, fontFamily = XinUiFont
                         )
                     }
                 )
@@ -832,135 +931,91 @@ fun ChatScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 左组:[+] 附件 + 模式芯片(点击弹卡:普通聊天 / 计划模式 / 协作模式,各选 正常·完全访问)
-                    // weight(fill=false):内容短时按需占位,内容长时【可被压缩】——
-                    // 否则「◆ 协作·完全访问」+ 长模型名会把右侧的发送键挤出屏幕(用户实测反馈)。
-                    Row(
-                        modifier = Modifier.weight(1f, fill = false),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // [+] icon → attach file
-                        XinIcon(icon = Icons.Outlined.Add, size = 18.dp, tint = if (showPlusCard) Green else Sub,
-                            onClick = { showPlusCard = !showPlusCard })
-
-                        Spacer(Modifier.width(10.dp))
-
-                        val isFull = permissionMode == com.xincode.security.PermissionMode.ALLOW_ALL
-                        val accessSuffix = if (isFull) "·完全访问" else "·正常"
-                        val (modeLabel, modeColor) = when {
-                            collabMode -> ("◆ 协作$accessSuffix") to (if (isFull) Red else Green)
-                            permissionMode == com.xincode.security.PermissionMode.PLAN -> "◑ 计划" to Green
-                            isFull -> "● 完全访问" to Red
-                            else -> "○ 聊天" to Sub
-                        }
-                        Text(
-                            modeLabel,
-                            fontSize = 12.sp,
-                            fontFamily = JetBrainsMono,
-                            color = modeColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                    showModeCard = !showModeCard
-                                }
-                                .padding(vertical = 2.dp)
-                        )
-                    }
-
-                    // Model·Effort capsule —— 同样可压缩 + 省略号,长模型名(如 agnes-2.0-flash)不再顶掉发送键。
-                    // 左右留一点间距,避免与模式标签、圆环贴死(用户截图里「完全访问」和模型名挤成一团)。
-                    Text(
-                        "$modelDisplayName · $effortLabel ▾",
-                        fontSize = 12.sp,
-                        fontFamily = JetBrainsMono,
-                        color = Sub,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    Box(
                         modifier = Modifier
-                            .weight(1f, fill = false)
-                            .padding(horizontal = 8.dp)
-                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                showMainMenu = !showMainMenu
-                                showEffortMenu = false
-                            }
-                    )
-
-                    // 右侧:上下文圆环 + 发送/停止键。
-                    // 【不加 weight】——Row 会先满足无 weight 子项的固有宽度,再把剩余空间分给带 weight 的,
-                    // 因此发送键永远优先保留位置,左侧模式/模型名再长也只会被省略,不会把它挤出屏幕。
-                    Row(
-                        modifier = Modifier.wrapContentWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                    // 扩展提示词:把「做个记账 APP」这种一句话想周全再发。
-                    // 一句话的需求换回来的一定是泛泛而谈的回答,补齐场景/约束/验收之后
-                    // 才谈得上有用 —— 但没人愿意每次手打三百字,这个按钮就是补这一段。
-                    Text(
-                        if (expandingPrompt) "…" else "✦",
-                        fontSize = 15.sp,
-                        fontFamily = JetBrainsMono,
-                        color = if (expandingPrompt || chatState.input.value.isBlank()) xc.faint else xc.green,
-                        modifier = Modifier
+                            .size(40.dp)
                             .clickable(
                                 indication = null,
                                 interactionSource = remember { MutableInteractionSource() }
-                            ) {
-                                val draft = chatState.input.value
-                                if (!expandingPrompt && draft.isNotBlank()) {
-                                    expandingPrompt = true
-                                    scope.launch {
-                                        val a = context.applicationContext as XincodeApplication
-                                        val r = PromptExpander.expand(
-                                            a.database, a.keystore,
-                                            PromptExpander.Kind.TASK, draft
-                                        )
-                                        r.onSuccess { chatState.input.value = it }
-                                        r.onFailure {
-                                            Toast.makeText(
-                                                context, "扩展失败:${it.message}", Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                        expandingPrompt = false
-                                    }
-                                }
-                            }
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    // 上下文圆环:随占用绿→蓝→黄→红渐变填充;点击弹出统计卡片。
-                    ContextRing(
-                        usage = contextUsage,
-                        onClick = { showStatsPopup = !showStatsPopup }
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    // [→] send / [■] stop — animated morph
-                    androidx.compose.animation.AnimatedContent(
-                        targetState = chatState.isStreaming.value,
-                        transitionSpec = {
-                            (scaleIn(tween(180)) + fadeIn(tween(180))) togetherWith
-                                (scaleOut(tween(140)) + fadeOut(tween(140)))
-                        },
-                        label = "sendStopMorph"
-                    ) { streaming ->
-                        val hasText = chatState.input.value.isNotBlank()
-                        // 运行中:有文字=[→] 中途插话(注入不打断);无文字=[■] 停止。空闲:[→] 发送。
-                        Text(
-                            if (streaming && !hasText) "[■]" else "[→]",
-                            fontSize = 13.sp,
-                            fontFamily = JetBrainsMono,
-                            color = if (hasText || streaming) Ink else Faint,
-                            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                if (streaming && !hasText) {
-                                    // Goal 运行中:停止=终止整个目标任务(而非只掐当前这一轮)。
-                                    if (isGoalSession && goalRunning) onStopGoal() else chatState.stop()
-                                } else {
-                                    submitInput()
-                                }
-                            }
+                            ) { showModeCard = !showModeCard },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ProviderAvatar(
+                            supplierId = supplierId,
+                            size = 36.dp,
+                            contentDescription = "切换聊天模式"
                         )
                     }
-                    }
+
+                    ChatActionIcon(
+                        icon = Icons.Outlined.Search,
+                        contentDescription = if (webSearchOn) "关闭联网搜索" else "开启联网搜索",
+                        tint = if (webSearchOn) Green else Ink,
+                        onClick = {
+                            webSearchOn = !webSearchOn
+                            com.xincode.tools.WebSearchGate.enabled = webSearchOn
+                            onSetWebSearchEnabled(webSearchOn)
+                        }
+                    )
+
+                    ChatActionIcon(
+                        icon = Icons.Outlined.Lightbulb,
+                        contentDescription = "灵感扩写",
+                        tint = if (expandingPrompt) Green else Ink,
+                        onClick = {
+                            val draft = chatState.input.value
+                            if (!expandingPrompt && draft.isNotBlank()) {
+                                expandingPrompt = true
+                                scope.launch {
+                                    val app = context.applicationContext as XincodeApplication
+                                    val result = PromptExpander.expand(
+                                        app.database,
+                                        app.keystore,
+                                        PromptExpander.Kind.TASK,
+                                        draft
+                                    )
+                                    result.onSuccess { chatState.input.value = it }
+                                    result.onFailure {
+                                        Toast.makeText(context, "扩展失败:${it.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                    expandingPrompt = false
+                                }
+                            }
+                        }
+                    )
+
+                    ChatActionIcon(
+                        icon = Icons.Outlined.Add,
+                        contentDescription = "添加图片、文件或工具",
+                        tint = if (showPlusCard) Green else Ink,
+                        onClick = { showPlusCard = !showPlusCard }
+                    )
+
+                    ChatActionIcon(
+                        icon = Icons.Outlined.MicNone,
+                        contentDescription = if (voiceState == VoiceInputHelper.State.LISTENING) "停止语音输入" else "语音输入",
+                        tint = if (voiceState == VoiceInputHelper.State.LISTENING) Red else Ink,
+                        onClick = {
+                            if (voiceState == VoiceInputHelper.State.LISTENING) {
+                                voiceInputHelper?.reset()
+                            } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                voiceInputHelper?.startListening()
+                            } else {
+                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                    )
+
+                    ChatActionIcon(
+                        icon = Icons.Outlined.DeleteSweep,
+                        contentDescription = "清空输入",
+                        tint = Ink,
+                        onClick = {
+                            chatState.input.value = ""
+                            pendingAttachments.value = emptyList()
+                            voiceInputHelper?.reset()
+                        }
+                    )
                 }
             }
         }
@@ -1004,13 +1059,14 @@ fun ChatScreen(
         // ---- Main Menu Popup ----
         if (showMainMenu) {
             Popup(
-                alignment = Alignment.BottomCenter,
-                offset = IntOffset(0, -80),
+                alignment = Alignment.TopCenter,
+                offset = IntOffset(0, 76),
                 onDismissRequest = { showMainMenu = false; showEffortMenu = false }
             ) {
                 Column(
                     Modifier
-                        .background(Bg).border(0.5.dp, Border)
+                        .background(xc.bgElevated, RoundedCornerShape(18.dp))
+                        .border(1.dp, Border, RoundedCornerShape(18.dp))
                         .padding(6.dp).widthIn(min = 200.dp, max = 280.dp)
                 ) {
                     // (a) Current model — top, with ✓
@@ -1785,6 +1841,10 @@ private fun McpPickerDialog(mcpNames: List<String>, onPick: (String) -> Unit, on
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean = false, onRetry: (() -> Unit)? = null, onDelete: (() -> Unit)? = null, onRegenerate: (() -> Unit)? = null) {
+    if (msg.role == "user") {
+        UserMessageBubble(msg = msg, onDelete = onDelete, onRegenerate = onRegenerate)
+        return
+    }
     val isUser = msg.role == "user"
     val isTool = msg.role == "tool"
     val isError = msg.content.startsWith("✗ ")
@@ -2150,5 +2210,107 @@ private fun ConfirmCard(
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
         }
+    }
+}
+
+@Composable
+private fun UserMessageBubble(
+    msg: ChatState.MessageUi,
+    onDelete: (() -> Unit)?,
+    onRegenerate: (() -> Unit)?
+) {
+    val xc = LocalXinColors.current
+    val context = LocalContext.current
+    var showMenu by remember(msg.id) { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp, bottom = 18.dp),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.Top
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(0.78f),
+            horizontalAlignment = Alignment.End
+        ) {
+            Text(
+                formatChatTime(msg.timestamp),
+                fontSize = 12.sp,
+                fontFamily = XinUiFont,
+                color = xc.sub,
+                modifier = Modifier.padding(end = 6.dp, bottom = 6.dp)
+            )
+            Box(
+                modifier = Modifier
+                    .background(xc.activeBg, RoundedCornerShape(22.dp))
+                    .padding(horizontal = 18.dp, vertical = 14.dp)
+            ) {
+                Text(
+                    msg.content,
+                    fontSize = 17.sp,
+                    lineHeight = 25.sp,
+                    fontFamily = XinUiFont,
+                    color = xc.ink
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ChatActionIcon(
+                    icon = Icons.Outlined.ContentCopy,
+                    contentDescription = "复制消息",
+                    tint = xc.ink,
+                    onClick = {
+                        val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        manager?.setPrimaryClip(ClipData.newPlainText("xincode", msg.content))
+                        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                    }
+                )
+                ChatActionIcon(
+                    icon = Icons.Outlined.Share,
+                    contentDescription = "转发消息",
+                    tint = xc.ink,
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, msg.content)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "转发消息"))
+                    }
+                )
+                ChatActionIcon(
+                    icon = Icons.Outlined.MoreVert,
+                    contentDescription = "更多消息操作",
+                    tint = xc.ink,
+                    onClick = { showMenu = true }
+                )
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            UserAvatar(size = 44.dp, contentDescription = "RE 头像")
+            Text(
+                "RE",
+                fontSize = 12.sp,
+                fontFamily = XinUiFont,
+                color = xc.green,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+    }
+
+    if (showMenu) {
+        MessageActionSheet(
+            content = msg.content,
+            reasoning = "",
+            canDelete = onDelete != null,
+            onCopy = {
+                val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                manager?.setPrimaryClip(ClipData.newPlainText("xincode", msg.content))
+                showMenu = false
+            },
+            onCopyReasoning = null,
+            onDelete = onDelete?.let { action -> { action(); showMenu = false } },
+            onDismiss = { showMenu = false }
+        )
     }
 }

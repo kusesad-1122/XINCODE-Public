@@ -29,7 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Mono = FontFamily.Monospace
+private val Mono = XinUiFont
 
 /**
  * 用量分析:30 天趋势 + 模型分布 + 成本估算 + 缓存命中率。

@@ -28,7 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Mono = FontFamily.Monospace
+private val Mono = XinUiFont
 
 /**
  * 【功能模型配置】页:给应用内部每个模型调用点单独指定「用哪套供应商配置 + 哪个模型」。

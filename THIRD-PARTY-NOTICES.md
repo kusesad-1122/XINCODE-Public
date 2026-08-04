@@ -35,6 +35,16 @@ XINCODE 主体代码采用 **GPL-3.0-or-later** 许可(见 LICENSE)。除此之�
 
 `app/src/main/res/mipmap-*/ic_launcher.png` 与 `ic_launcher_round.png` 由项目作者提供,版权与授权与项目主体一致(GPL-3.0-or-later)。
 
+## AI 供应商品牌图标 / AI Provider Brand Icons
+
+- **Lobe Icons static PNG 1.95.0** — Copyright (c) 2023 LobeHub。
+  - 许可:MIT License。
+  - 全文:[`licenses/lobe-icons-MIT.txt`](licenses/lobe-icons-MIT.txt)
+  - 来源:[`lobehub/lobe-icons`](https://github.com/lobehub/lobe-icons)
+  - 位置:`app/src/main/res/drawable-nodpi/provider_*.png`
+
+这些图标用于识别用户所配置的 AI 服务提供商。DeepSeek、OpenAI、Anthropic、Groq、智谱、通义千问、Moonshot、百度、Ollama、Nous、OpenRouter、xAI、ModelScope、SiliconFlow 与 OpenCode 等名称及标志分别属于其权利人；XINCODE 与这些提供商不存在暗示的隶属或背书关系。
+
 ## 致谢 / Acknowledgements
 
 XINCODE 在设计过程中参考了多个开源 AI 智能体的公开设计思路,以下项目对本工程的架构与能力选型有启发,谨此致敬:

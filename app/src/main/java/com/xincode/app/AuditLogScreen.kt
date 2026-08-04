@@ -28,7 +28,7 @@ private val SubAL: Color @Composable get() = LocalXinColors.current.sub
 private val FaintAL: Color @Composable get() = LocalXinColors.current.faint
 private val GreenAL: Color @Composable get() = LocalXinColors.current.green
 private val RedAL: Color @Composable get() = LocalXinColors.current.red
-private val JetBrainsMonoAL = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val JetBrainsMonoAL = XinUiFont
 
 @Composable
 fun AuditLogScreen(onBack: () -> Unit, database: AppDatabase? = null) {

@@ -23,7 +23,7 @@ import com.xincode.data.AppDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private val Mono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val Mono = XinUiFont
 
 private data class CallSlice(val label: String, val count: Int, val color: Color)
 private data class StatsData(

@@ -38,7 +38,7 @@ private val GreenC = Color(0xFF7BE0A4)
 private val Amber = Color(0xFFF2C14E)
 private val BlueC = Color(0xFF6FB3E0)
 private val Panel = Color(0xFF232739)
-private val SceneMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val SceneMono = XinUiFont
 
 /**
  * 「智能体指挥室」独立页(全屏,竖屏像素办公室)。

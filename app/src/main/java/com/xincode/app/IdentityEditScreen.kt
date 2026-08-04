@@ -31,7 +31,7 @@ private val Faint: Color @Composable get() = LocalXinColors.current.faint
 private val Green: Color @Composable get() = LocalXinColors.current.green
 private val Red: Color @Composable get() = LocalXinColors.current.red
 private val Border: Color @Composable get() = LocalXinColors.current.border
-private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val JetBrainsMono = XinUiFont
 
 /**
  * Pure form for creating/editing an identity card. Not a chat container (P1) —

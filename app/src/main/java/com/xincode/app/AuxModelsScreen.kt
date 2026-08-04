@@ -30,7 +30,7 @@ private val Sub: Color @Composable get() = LocalXinColors.current.sub
 private val Faint: Color @Composable get() = LocalXinColors.current.faint
 private val Green: Color @Composable get() = LocalXinColors.current.green
 private val Border: Color @Composable get() = LocalXinColors.current.border
-private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val JetBrainsMono = XinUiFont
 
 /**
  * 模型委托设置页——【直接从已配置的供应商里选】,不用再手输 base_url/key。

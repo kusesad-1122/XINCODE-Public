@@ -34,7 +34,7 @@ private val Faint: Color @Composable get() = LocalXinColors.current.faint
 private val Green: Color @Composable get() = LocalXinColors.current.green
 private val Red: Color @Composable get() = LocalXinColors.current.red
 private val Border: Color @Composable get() = LocalXinColors.current.border
-private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val JetBrainsMono = XinUiFont
 
 /**
  * Hermes-⑦ 定时任务管理页:列出 cron_jobs,可开关/删除。任务由模型经 cronjob 工具创建,

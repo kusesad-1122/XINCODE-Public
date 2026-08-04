@@ -33,7 +33,7 @@ private val Faint: Color @Composable get() = LocalXinColors.current.faint
 private val Green: Color @Composable get() = LocalXinColors.current.green
 private val Red: Color @Composable get() = LocalXinColors.current.red
 private val Border: Color @Composable get() = LocalXinColors.current.border
-private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val JetBrainsMono = XinUiFont
 
 /**
  * 子智能体管理:查看内置/自建的子智能体类型,可【新建】自己的类型

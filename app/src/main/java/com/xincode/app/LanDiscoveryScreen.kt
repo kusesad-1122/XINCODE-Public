@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
-private val Mono = FontFamily.Monospace
+private val Mono = XinUiFont
 
 /**
  * 局域网设备:列出同一个 Wi-Fi 下其它开着 XINCODE 的设备。

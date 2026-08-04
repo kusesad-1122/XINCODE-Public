@@ -34,7 +34,7 @@ private val SkInk: Color @Composable get() = LocalXinColors.current.ink
 private val SkSub: Color @Composable get() = LocalXinColors.current.sub
 private val SkFaint: Color @Composable get() = LocalXinColors.current.faint
 private val SkBorder: Color @Composable get() = LocalXinColors.current.border
-private val SkMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val SkMono = XinUiFont
 
 /**
  * Skills CRUD screen — create, list, edit, delete skills.

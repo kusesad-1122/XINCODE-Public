@@ -30,7 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Mono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val Mono = XinUiFont
 
 /**
  * 「上下文压缩」设置页:自定义上下文窗口长度(带 256k / 1M 快捷键)、自动压缩阈值(接近填满即总结,

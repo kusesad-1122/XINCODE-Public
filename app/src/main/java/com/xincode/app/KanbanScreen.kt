@@ -31,7 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Mono = FontFamily.Monospace
+private val Mono = XinUiFont
 
 /**
  * 看板:跨会话的长期待办。

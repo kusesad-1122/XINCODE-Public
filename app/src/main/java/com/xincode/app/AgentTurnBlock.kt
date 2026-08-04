@@ -1,151 +1,194 @@
 package com.xincode.app
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.xincode.app.R
-
-private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, androidx.compose.ui.text.font.FontWeight.Normal))
 
 @Composable
-fun AgentTurnBlock(group: TurnGroup, isStreaming: Boolean = false, onRegenerate: (() -> Unit)? = null) {
-    val toolCount = group.toolMessages.size
-    val hasReasoning = group.assistantMessage?.reasoning?.isNotEmpty() == true
+fun AgentTurnBlock(
+    group: TurnGroup,
+    supplierId: String,
+    assistantName: String,
+    isStreaming: Boolean = false,
+    onRegenerate: (() -> Unit)? = null
+) {
     val xc = LocalXinColors.current
-    val Sub = xc.sub
-    val Green = xc.green
+    val assistant = group.assistantMessage
+    val toolCount = group.toolMessages.size
+    val hasReasoning = assistant?.reasoning?.isNotBlank() == true
+    var toolsExpanded by remember(group.key) { mutableStateOf(toolCount <= 1) }
 
-    // ===== 空轮:无 reasoning 无 tool → 直接展平 =====
-    if (toolCount == 0 && !hasReasoning) {
-        group.assistantMessage?.let { asst ->
-            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                if (asst.content.isNotEmpty()) {
-                    Text("xincode", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Green)
-                    MarkdownContent(asst.content)
-                    if (!isStreaming) MessageActionsRow(asst.content, onRegenerate)
-                }
-                Box(Modifier.fillMaxWidth().height(0.5.dp).background(Sub.copy(alpha = 0.3f)))
-            }
-        }
-        return
-    }
-
-    // ===== 原正常聚合渲染逻辑 =====
-    // 用户要求:工具调用【默认收起】,想看时再点开(不再默认展开)。
-    var expanded by remember(group.turnId) { mutableStateOf(false) }  // 默认收起
-
-    // 一「步」= 先说的那段话 + 为此做的操作。按真实顺序自上而下呈现:
-    //   xincode  先确认现有素材与入口。
-    //     ▸ 读取 app/SettingsScreen.kt
-    //     ▸ 执行 gradlew compileDebugKotlin
-    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-
-        // 1. 这一步的说明文字(先说)
-        group.assistantMessage?.let { asst ->
-            ReasoningFoldable(
-                msg = asst,
-                isCurrentStreaming = isStreaming && asst.reasoning.isNotEmpty()
-            )
-            if (asst.content.isNotEmpty()) {
-                Text(
-                    "xincode",
-                    fontSize = 10.sp,
-                    fontFamily = JetBrainsMono,
-                    color = Green
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .padding(vertical = 10.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(52.dp)
+                .fillMaxHeight()
+        ) {
+            Canvas(Modifier.fillMaxHeight().width(52.dp)) {
+                val x = size.width / 2f
+                drawLine(
+                    color = xc.border,
+                    start = androidx.compose.ui.geometry.Offset(x, 42.dp.toPx()),
+                    end = androidx.compose.ui.geometry.Offset(x, size.height),
+                    strokeWidth = 1.dp.toPx(),
+                    cap = StrokeCap.Round
                 )
-                MarkdownContent(asst.content, modifier = Modifier.padding(top = 2.dp, bottom = 2.dp))
-                // 交错时间线里的每段回复也要能复制/重答 —— 这条路以前完全没有操作入口。
-                if (!isStreaming) MessageActionsRow(asst.content, onRegenerate)
             }
+            ProviderAvatar(
+                supplierId = supplierId,
+                size = 42.dp,
+                contentDescription = "$assistantName 供应商图标",
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
 
-        // 2. 这一步做的操作(后做)——每个工具一行,点行内箭头看详情。
-        //    工具多时可整体折叠,避免一步里刷屏。
-        if (toolCount > 0) {
-            if (toolCount > 3) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 8.dp, end = 4.dp)
+        ) {
+            Text(
+                assistantName,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                fontFamily = XinUiFont,
+                color = xc.green
+            )
+
+            if (hasReasoning || toolCount > 0) {
+                Spacer(Modifier.height(18.dp))
+                Text(
+                    formatThinkingLabel(derivedThinkingDurationMs(group)),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    fontFamily = XinUiFont,
+                    color = xc.green
+                )
+            }
+
+            assistant?.let { message ->
+                if (hasReasoning) {
+                    ReasoningFoldable(
+                        msg = message,
+                        isCurrentStreaming = isStreaming && message.reasoning.isNotBlank()
+                    )
+                }
+                if (message.content.isNotBlank()) {
+                    MarkdownContent(
+                        message.content,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
+                    )
+                }
+            }
+
+            if (toolCount > 0) {
                 Row(
-                    Modifier.fillMaxWidth()
-                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { expanded = !expanded }
-                        .padding(vertical = 2.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { toolsExpanded = !toolsExpanded }
+                        .padding(top = 16.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        if (expanded) "▾" else "▸",
-                        fontSize = 11.sp,
-                        color = Sub,
-                        modifier = Modifier.padding(end = 4.dp)
+                        "再显示 $toolCount 步",
+                        fontSize = 14.sp,
+                        fontFamily = XinUiFont,
+                        color = xc.green
                     )
-                    Text(
-                        if (expanded) "收起 $toolCount 步操作" else "展开 $toolCount 步操作",
-                        fontSize = 10.sp,
-                        color = Sub,
-                        fontFamily = JetBrainsMono
+                    Spacer(Modifier.width(4.dp))
+                    Icon(
+                        imageVector = if (toolsExpanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                        contentDescription = if (toolsExpanded) "收起步骤" else "展开步骤",
+                        tint = xc.green,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
-            }
-            // ≤3 个工具直接铺开(读起来就是时间线);多于 3 个才需要点开。
-            if (toolCount <= 3 || expanded) {
-                Column(Modifier.padding(start = 8.dp)) {
-                    group.toolMessages.forEach { tool ->
-                        tool.contentBlock?.let { block ->
-                            when (block) {
-                                is MessageContent.ToolCall -> ToolCallRow(block, modifier = Modifier)
-                                is MessageContent.FileRead -> CodeBlock(block, Modifier.padding(vertical = 1.dp))
-                                is MessageContent.FileEdit -> DiffBlock(block, Modifier.padding(vertical = 1.dp))
-                                else -> {}
+
+                if (toolsExpanded) {
+                    Column {
+                        group.toolMessages.forEach { tool ->
+                            tool.contentBlock?.let { block ->
+                                when (block) {
+                                    is MessageContent.ToolCall -> ToolCallRow(block)
+                                    is MessageContent.FileRead -> CodeBlock(block, Modifier.padding(vertical = 4.dp))
+                                    is MessageContent.FileEdit -> DiffBlock(block, Modifier.padding(vertical = 4.dp))
+                                    else -> Unit
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // 步与步之间的细线分隔
-        Box(Modifier.fillMaxWidth().padding(top = 4.dp).height(0.5.dp).background(Sub.copy(alpha = 0.3f)))
+            assistant?.takeIf { !isStreaming }?.let { message ->
+                MessageActionsRow(message.content, onRegenerate)
+            }
+        }
     }
 }
 
-/** Reasoning folding section extracted from MessageBubble, shared with AgentTurnBlock. */
+/** Reasoning detail stays available without letting hidden chain-of-thought dominate the conversation. */
 @Composable
 fun ReasoningFoldable(msg: ChatState.MessageUi, isCurrentStreaming: Boolean = false) {
+    if (msg.reasoning.isBlank()) return
+    val xc = LocalXinColors.current
     var expanded by remember(msg.id) { mutableStateOf(isCurrentStreaming) }
-    val Faint = LocalXinColors.current.faint
 
-    if (msg.reasoning.isEmpty()) return
-
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { expanded = !expanded }
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            if (expanded) "▾ 思考过程" else "▸ 思考过程",
-            fontSize = 11.sp,
-            fontFamily = JetBrainsMono,
-            color = Faint,
-            modifier = Modifier.padding(end = 4.dp)
-        )
-    }
+    Text(
+        text = if (expanded) "收起思考摘要" else "查看思考摘要",
+        fontSize = 12.sp,
+        lineHeight = 18.sp,
+        fontFamily = XinUiFont,
+        color = xc.sub,
+        modifier = Modifier
+            .clickable(
+                indication = null,
+                interactionSource = remember { MutableInteractionSource() }
+            ) { expanded = !expanded }
+            .padding(top = 6.dp, bottom = 2.dp)
+    )
     if (expanded) {
         Text(
             msg.reasoning,
-            fontSize = 11.sp,
-            fontFamily = JetBrainsMono,
-            color = Faint,
-            lineHeight = 16.sp,
-            modifier = Modifier.padding(start = 12.dp, top = 2.dp, bottom = 4.dp)
+            fontSize = 12.sp,
+            lineHeight = 18.sp,
+            fontFamily = XinUiFont,
+            color = xc.sub,
+            modifier = Modifier.padding(start = 10.dp, bottom = 4.dp)
         )
     }
 }

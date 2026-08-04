@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
-private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val JetBrainsMono = XinUiFont
 private val Ink: Color @Composable get() = LocalXinColors.current.ink
 
 class MainActivity : ComponentActivity() {
@@ -249,6 +249,14 @@ class MainActivity : ComponentActivity() {
                     "chat" -> {
                         val active = runBlocking { app.database.providerConfigDao().getActive() }
                         val names = active?.enabledModelIds ?: emptyList()
+                        val currentSession = sessions.firstOrNull { it.id == app.currentSessionId }
+                        val currentIdentityName = identities
+                            .firstOrNull { it.id == currentSession?.identityId }
+                            ?.name
+                            ?: "默认助手"
+                        val conversationTitle = currentSession?.title
+                            ?.takeUnless { it == "新对话" }
+                            ?: "新聊天"
                         val skillNames = remember { mutableStateOf<List<String>>(emptyList()) }
                         val mcpNames = remember { mutableStateOf<List<String>>(emptyList()) }
                         LaunchedEffect(Unit) {
@@ -263,7 +271,11 @@ class MainActivity : ComponentActivity() {
                         val curGoal = goalSessions.firstOrNull { it.id == app.currentSessionId }
                         ChatScreen(
                             chatState = app.agentChatState,
+                            conversationTitle = conversationTitle,
+                            assistantName = currentIdentityName,
                             currentModel = app.currentModelLabel,
+                            supplierId = active?.supplierId.orEmpty(),
+                            providerName = active?.name.orEmpty(),
                             availableModels = names,
                             isGoalSession = curIsGoal,
                             goalStatusCode = curGoal?.goalStatus ?: "",
@@ -285,7 +297,13 @@ class MainActivity : ComponentActivity() {
                             onNavigateToTerminal = { terminalOrigin = "chat"; currentPage = "terminal" },
                             subAgentActive = app.subAgentScene.brainBusy,
                             ttsHelper = ttsHelper,
+                            voiceInputHelper = voiceInputHelper,
                             onOpenDrawer = { drawerScope.launch { drawerState.open() } },
+                            onNewChat = {
+                                val newId = app.createNewSession()
+                                app.switchToSession(newId)
+                                currentPage = "chat"
+                            },
                             planState = app.planState,
                             skillNames = skillNames.value,
                             onRegenerate = { msgId -> app.regenerateFromMessage(msgId) },

@@ -38,7 +38,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Mono = FontFamily.Monospace
+private val Mono = XinUiFont
 
 /** 房间列表。 */
 @Composable

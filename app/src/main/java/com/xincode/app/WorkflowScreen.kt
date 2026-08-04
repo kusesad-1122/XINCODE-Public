@@ -115,12 +115,12 @@ private fun StatusBar(
         }
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(statusText, color = WfPalette.bg, fontSize = 15.sp, fontFamily = FontFamily.Monospace)
+            Text(statusText, color = WfPalette.bg, fontSize = 15.sp, fontFamily = XinUiFont)
             Text(
                 "${elapsedSec}s",
                 color = WfPalette.bg.copy(alpha = 0.7f),
                 fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace
+                fontFamily = XinUiFont
             )
         }
 
@@ -132,7 +132,7 @@ private fun StatusBar(
         if (onReplay != null && !isRunning) {
             Text(
                 "replay",
-                fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                fontSize = 12.sp, fontFamily = XinUiFont,
                 color = WfPalette.bg,
                 modifier = Modifier.clickable { onReplay() }.padding(4.dp)
             )
@@ -178,7 +178,7 @@ private fun TimelineCard(event: WorkflowState.TimelineEvent) {
             Text(
                 event.label,
                 fontSize = 13.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = XinUiFont,
                 color = WfPalette.black,
                 lineHeight = 18.sp
             )
@@ -187,7 +187,7 @@ private fun TimelineCard(event: WorkflowState.TimelineEvent) {
                 Text(
                     event.detail,
                     fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = XinUiFont,
                     color = WfPalette.gray,
                     lineHeight = 16.sp,
                     modifier = Modifier.fillMaxWidth()
@@ -198,7 +198,7 @@ private fun TimelineCard(event: WorkflowState.TimelineEvent) {
         Text(
             formatTime(event.timestamp),
             fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = XinUiFont,
             color = WfPalette.gray.copy(alpha = 0.5f),
             modifier = Modifier.padding(start = 8.dp, top = 2.dp)
         )

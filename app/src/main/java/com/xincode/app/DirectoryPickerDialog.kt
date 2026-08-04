@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.sp
 import com.xincode.app.R
 import java.io.File
 
-private val PickerMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val PickerMono = XinUiFont
 
 /**
  * 文件系统目录浏览选择器(非 SAF):直接以 java.io.File 浏览真实路径,

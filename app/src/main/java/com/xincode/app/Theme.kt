@@ -2,6 +2,12 @@ package com.xincode.app
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -11,6 +17,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * XINCODE palette — terminal aesthetic, brand-neutral tokens.
@@ -82,8 +90,116 @@ fun XinTheme(dark: Boolean, content: @Composable () -> Unit) {
     val bgElevated by animateColorAsState(target.bgElevated, tween(300), label = "themeBgE")
     val border by animateColorAsState(target.border, tween(300), label = "themeBorder")
     val animated = target.copy(bg = bg, ink = ink, bgElevated = bgElevated, border = border)
-    CompositionLocalProvider(LocalXinColors provides animated, content = content)
+    val colorScheme = if (dark) {
+        darkColorScheme(
+            primary = animated.green,
+            onPrimary = animated.bg,
+            primaryContainer = animated.activeBg,
+            onPrimaryContainer = animated.ink,
+            secondary = animated.yellow,
+            onSecondary = animated.bg,
+            error = animated.red,
+            background = animated.bg,
+            onBackground = animated.ink,
+            surface = animated.bgElevated,
+            onSurface = animated.ink,
+            surfaceVariant = animated.activeBg,
+            onSurfaceVariant = animated.sub,
+            outline = animated.border,
+            outlineVariant = animated.divider
+        )
+    } else {
+        lightColorScheme(
+            primary = animated.green,
+            onPrimary = animated.bgElevated,
+            primaryContainer = animated.activeBg,
+            onPrimaryContainer = animated.ink,
+            secondary = animated.yellow,
+            onSecondary = animated.bgElevated,
+            error = animated.red,
+            background = animated.bg,
+            onBackground = animated.ink,
+            surface = animated.bgElevated,
+            onSurface = animated.ink,
+            surfaceVariant = animated.activeBg,
+            onSurfaceVariant = animated.sub,
+            outline = animated.border,
+            outlineVariant = animated.divider
+        )
+    }
+
+    CompositionLocalProvider(LocalXinColors provides animated) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = XinTypography,
+            shapes = XinShapes,
+            content = content
+        )
+    }
 }
 
-/** JetBrains Mono, shared across all UI. */
-val XinFont: FontFamily = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+/** Humanist system sans for navigation, settings, forms and conversation copy. */
+val XinUiFont: FontFamily = FontFamily.SansSerif
+
+/** Monospace is intentionally reserved for commands, code and terminal output. */
+val XinCodeFont: FontFamily = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+
+/** Compatibility alias used by existing UI while screens migrate to shared components. */
+val XinFont: FontFamily = XinUiFont
+
+val XinTypography = Typography(
+    displaySmall = androidx.compose.ui.text.TextStyle(
+        fontFamily = XinUiFont,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 32.sp,
+        lineHeight = 40.sp
+    ),
+    headlineSmall = androidx.compose.ui.text.TextStyle(
+        fontFamily = XinUiFont,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 24.sp,
+        lineHeight = 32.sp
+    ),
+    titleLarge = androidx.compose.ui.text.TextStyle(
+        fontFamily = XinUiFont,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 21.sp,
+        lineHeight = 28.sp
+    ),
+    titleMedium = androidx.compose.ui.text.TextStyle(
+        fontFamily = XinUiFont,
+        fontWeight = FontWeight.Medium,
+        fontSize = 17.sp,
+        lineHeight = 24.sp
+    ),
+    bodyLarge = androidx.compose.ui.text.TextStyle(
+        fontFamily = XinUiFont,
+        fontSize = 17.sp,
+        lineHeight = 26.sp
+    ),
+    bodyMedium = androidx.compose.ui.text.TextStyle(
+        fontFamily = XinUiFont,
+        fontSize = 15.sp,
+        lineHeight = 22.sp
+    ),
+    labelLarge = androidx.compose.ui.text.TextStyle(
+        fontFamily = XinUiFont,
+        fontWeight = FontWeight.Medium,
+        fontSize = 14.sp,
+        lineHeight = 20.sp
+    ),
+    labelMedium = androidx.compose.ui.text.TextStyle(
+        fontFamily = XinUiFont,
+        fontWeight = FontWeight.Medium,
+        fontSize = 12.sp,
+        lineHeight = 16.sp
+    )
+)
+
+val XinShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(30.dp)
+)

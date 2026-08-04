@@ -31,7 +31,7 @@ private val Sub: Color @Composable get() = LocalXinColors.current.sub
 private val Faint: Color @Composable get() = LocalXinColors.current.faint
 private val Green: Color @Composable get() = LocalXinColors.current.green
 private val Border: Color @Composable get() = LocalXinColors.current.border
-private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val JetBrainsMono = XinUiFont
 
 /**
  * Hermes-⑤ 精编记忆查看/编辑页:USER.md(耐久画像)+ MEMORY.md(近况)。

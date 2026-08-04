@@ -26,7 +26,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Mono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val Mono = XinUiFont
 
 /** 单项安装状态。 */
 private enum class InstallState { IDLE, INSTALLING, OK, FAIL }

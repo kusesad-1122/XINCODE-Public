@@ -32,7 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Mono = FontFamily.Monospace
+private val Mono = XinUiFont
 
 /**
  * 多 Profile:一套独立的配置环境。

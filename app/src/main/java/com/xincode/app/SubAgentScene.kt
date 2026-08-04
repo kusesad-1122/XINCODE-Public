@@ -35,7 +35,7 @@ import com.xincode.app.R
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-private val Mono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val Mono = XinUiFont
 
 // —— 像素场景固定配色(不随主题;专属像素观感)——
 private val Bg = Color(0xFF1B1E2B)

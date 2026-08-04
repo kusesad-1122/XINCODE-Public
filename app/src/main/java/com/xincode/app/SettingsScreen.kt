@@ -29,7 +29,7 @@ import com.xincode.tools.RootDiagnosticResult
 import kotlinx.coroutines.launch
 
 // Palette now sourced from [LocalXinColors].
-private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
+private val JetBrainsMono = XinUiFont
 
 /**
  * Settings main screen — 5 sections.
