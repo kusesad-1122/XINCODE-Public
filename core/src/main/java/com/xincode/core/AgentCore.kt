@@ -698,7 +698,9 @@ class AgentCore(
                 // gap-24 pre_tool hook
                 fireHook("pre_tool", mapOf("tool" to call.name, "args" to call.arguments))
                 val startTime = System.currentTimeMillis()
-                val toolResult = toolRegistry.execute(call)
+                val toolResult = withContext(ToolSessionElement(sessionId)) {
+                    toolRegistry.execute(call)
+                }
                 val durationMs = System.currentTimeMillis() - startTime
                 // gap-24 post_tool hook
                 fireHook("post_tool", mapOf(

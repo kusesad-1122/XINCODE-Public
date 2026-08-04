@@ -21,7 +21,12 @@ import org.json.JSONObject
  * Multi-step planning is one of the highest-leverage things an agent can do — this
  * gives the model a first-class UI surface for it, not just words buried in a reply.
  */
-class AgentPlanTool(private val planState: PlanState) : Tool {
+class AgentPlanTool(private val planStateProvider: () -> PlanState) : Tool {
+    constructor(planState: PlanState) : this({ planState })
+
+    private val planState: PlanState
+        get() = planStateProvider()
+
     override val name = "agent_plan"
     override val description =
         "维护你的实时任务清单，用户能在界面上看到每一步进展。" +

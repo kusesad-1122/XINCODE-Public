@@ -139,9 +139,7 @@ fun GroupRoomsScreen(
                         modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                             scope.launch {
                                 withContext(Dispatchers.IO) {
-                                    val dao = database.groupRoomDao()
-                                    // 成员和消息要一起删,否则留下永远看不到的孤儿行
-                                    dao.deleteMembersOf(r.id); dao.deleteMessagesOf(r.id); dao.deleteRoom(r)
+                                    deleteRoomAndWorkSessions(database, r)
                                 }
                             }
                         })
@@ -570,7 +568,7 @@ private fun GroupRoomChatScreen(
                                     })
                                 Text("移除", fontSize = 10.sp, fontFamily = Mono, color = xc.red,
                                     modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                        scope.launch { withContext(Dispatchers.IO) { database.groupRoomDao().deleteMember(mem) } }
+                                        scope.launch { withContext(Dispatchers.IO) { deleteMemberAndWorkSession(database, mem) } }
                                     })
                             }
                             Text(
@@ -720,6 +718,10 @@ private fun MemberWorkbench(
     xc: XinColors,
     onBack: () -> Unit
 ) {
+    val app = LocalContext.current.applicationContext as XincodeApplication
+    val planState = remember(member.workSessionId) {
+        app.planStateForSession(member.workSessionId)
+    }
     val messages by database.messageDao()
         .observeBySessionId(member.workSessionId)
         .collectAsState(initial = emptyList())
@@ -736,6 +738,11 @@ private fun MemberWorkbench(
             subtitle = "查看完整执行过程与中间结果",
             onBack = onBack,
             modifier = Modifier.padding(horizontal = 8.dp)
+        )
+
+        PlanCard(
+            planState = planState,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
         )
 
         if (messages.isEmpty()) {
@@ -792,11 +799,42 @@ private suspend fun ensureWorkSession(
 ): Long = withContext(Dispatchers.IO) {
     if (member.workSessionId > 0) return@withContext member.workSessionId
     val roomName = database.groupRoomDao().getRoom(roomId)?.name ?: "群聊"
-    val sid = database.sessionDao().upsert(
-        SessionEntity(title = "🔧 $roomName · ${member.displayName}")
-    )
-    database.groupRoomDao().updateMember(member.copy(workSessionId = sid))
-    sid
+    database.inTransaction {
+        val sid = database.sessionDao().upsert(
+            SessionEntity(title = "🔧 $roomName · ${member.displayName}")
+        )
+        database.groupRoomDao().updateMember(member.copy(workSessionId = sid))
+        sid
+    }
+}
+
+/** Delete an internal member session before removing the relation that hides it. */
+private suspend fun deleteMemberAndWorkSession(
+    database: AppDatabase,
+    member: GroupMemberEntity
+) = database.inTransaction {
+    if (member.workSessionId > 0) {
+        database.messageDao().deleteBySessionId(member.workSessionId)
+        database.sessionDao().getById(member.workSessionId)?.let { database.sessionDao().delete(it) }
+    }
+    database.groupRoomDao().deleteMember(member)
+}
+
+/** Delete a room and every internal work session atomically to avoid orphan chats. */
+private suspend fun deleteRoomAndWorkSessions(
+    database: AppDatabase,
+    room: GroupRoomEntity
+) = database.inTransaction {
+    val dao = database.groupRoomDao()
+    dao.getMembers(room.id).forEach { member ->
+        if (member.workSessionId > 0) {
+            database.messageDao().deleteBySessionId(member.workSessionId)
+            database.sessionDao().getById(member.workSessionId)?.let { database.sessionDao().delete(it) }
+        }
+    }
+    dao.deleteMembersOf(room.id)
+    dao.deleteMessagesOf(room.id)
+    dao.deleteRoom(room)
 }
 
 /**

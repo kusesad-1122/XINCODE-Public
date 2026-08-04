@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.mutableStateListOf
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * A single step in the model's live task plan. Immutable — mutations replace the whole
@@ -98,4 +99,16 @@ class PlanState {
 
     /** Total number of steps. */
     fun totalCount(): Int = steps.size
+}
+
+/** Keeps the live task card owned by the conversation that created it. */
+class SessionPlanStore {
+    private val states = ConcurrentHashMap<Long, PlanState>()
+
+    fun forSession(sessionId: Long): PlanState =
+        states.getOrPut(sessionId) { PlanState() }
+
+    fun remove(sessionId: Long) {
+        states.remove(sessionId)?.reset()
+    }
 }

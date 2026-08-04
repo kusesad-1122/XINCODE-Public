@@ -60,6 +60,7 @@ interface MessageDao {
         SELECT * FROM messages
         WHERE role IN ('user','assistant')
           AND content LIKE '%' || :q || '%'
+          AND sessionId NOT IN (SELECT workSessionId FROM group_members WHERE workSessionId > 0)
         ORDER BY timestamp DESC
         LIMIT :limit
     """)

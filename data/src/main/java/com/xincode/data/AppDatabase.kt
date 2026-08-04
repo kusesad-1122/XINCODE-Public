@@ -7,11 +7,15 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.*
 import androidx.room.migration.Migration
+import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(entities = [SettingEntity::class, MessageEntity::class, ProviderConfigEntity::class, SessionEntity::class, StateCursorEntity::class, AuditLogEntity::class, MemoryEntity::class, TrajectoryEntity::class, SkillEntity::class, McpServerEntity::class, GlobalSettingsEntity::class, ProjectEntity::class, IdentityEntity::class, PermissionRuleEntity::class, HookEntity::class, CronJobEntity::class, SubAgentEntity::class, UsageRecordEntity::class, KanbanTaskEntity::class, GroupRoomEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, KanbanRunEntity::class, CodeSymbolEntity::class, CodeEdgeEntity::class, CodeFileEntity::class], version = 40, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
+
+    /** Exposes Room's suspending transaction boundary without leaking room-ktx to app. */
+    suspend fun <T> inTransaction(block: suspend () -> T): T = withTransaction(block)
 
     abstract fun settingDao(): SettingDao
     abstract fun messageDao(): MessageDao

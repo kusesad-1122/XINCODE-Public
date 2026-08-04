@@ -5,6 +5,7 @@ import android.util.Log
 import com.xincode.core.AgentCore
 import com.xincode.core.PowerMode
 import com.xincode.core.ToolRegistry
+import com.xincode.core.ToolSessionContext
 import com.xincode.data.AppDatabase
 import com.xincode.data.SessionEntity
 import com.xincode.data.GlobalSettingsEntity
@@ -130,9 +131,12 @@ class XincodeApplication : Application() {
     var enterToSend by mutableStateOf(true)
         private set
 
-    /** Live plan card state — populated by `agent_plan` tool. Application-scoped so it
-     *  survives navigation and is visible from ChatScreen regardless of composition. */
-    val planState = PlanState()
+    /** Live task cards are isolated by the AgentCore session that published them. */
+    private val planStates = SessionPlanStore()
+    val planState: PlanState
+        get() = planStateForSession(currentSessionId)
+
+    fun planStateForSession(sessionId: Long): PlanState = planStates.forSession(sessionId)
 
     /** 看板执行器:把 ready 的任务交给隔离 AgentCore 去跑。 */
     lateinit var kanbanRunner: KanbanRunner
@@ -256,7 +260,7 @@ override fun onCreate() {
         identityListFlow = identityRepository.observeAll()
 
         // Ensure a session exists
-        var session = runBlocking { database.sessionDao().getAll().firstOrNull() }
+        var session = runBlocking { database.sessionDao().getAllVisible().firstOrNull() }
         if (session == null) {
             val sid = runBlocking { database.sessionDao().upsert(SessionEntity(title = "对话 1", identityId = activeIdentityId)) }
             session = runBlocking { database.sessionDao().getById(sid) }
@@ -324,7 +328,10 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         toolRegistry.register(SleepTool())
         toolRegistry.register(InvokeSkillTool(database))
         toolRegistry.register(WolfpackOrchestrator(wolfpackClient))
-        toolRegistry.register(AgentPlanTool(planState))
+        toolRegistry.register(AgentPlanTool {
+            val ownerSessionId = ToolSessionContext.sessionId ?: currentSessionId
+            planStates.forSession(ownerSessionId)
+        })
         // AI 的可视终端工具:在内置 Ubuntu 环境跑命令,输出实时镜像到终端页(未部署则不暴露)。
         toolRegistry.register(EnvExecTool(terminalState))
         toolRegistry.register(RecallMemoryTool(database, openAiClient))
@@ -608,6 +615,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
      * 仍在后台跑,也【不会污染】别的会话,也不需要被 stop() 打断(从而不会造成 HTTP 400)。
      */
     private fun buildSessionAgents(sessionId: Long): SessionAgents {
+        planStates.forSession(sessionId)
         val core = AgentCore(
             openAiClient = openAiClient,
             toolRegistry = toolRegistry,
@@ -918,9 +926,6 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         }
 
         currentSessionId = id
-        // 计划卡是 Application 级、跨会话残留——切换时清空,新会话不带旧任务总览(其步骤已随各会话独立记忆隔离)。
-        planState.reset()
-
         val existing = sessionPool[id]
         if (existing != null) {
             // 复用池中实例(可能仍在后台跑):直接换绑,绝不 clearHistory/reload,以免打断正在跑的循环。
@@ -1016,10 +1021,11 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             // 从池中回收被删会话的实例(取消其后台循环与收集器)。
             sessionPool.remove(id)?.let { it.core.stop(); it.collector?.cancel() }
             coreBusy.remove(id)
+            planStates.remove(id)
             // 若删的是当前会话,切到另一个(或新建),并正常换绑加载。
             if (id == currentSessionId) {
                 val targetId = withContext(Dispatchers.IO) {
-                    val remaining = database.sessionDao().getAll()
+                    val remaining = database.sessionDao().getAllVisible()
                     remaining.firstOrNull { it.id != id }?.id
                         ?: database.sessionDao().upsert(SessionEntity(title = "新对话", identityId = activeIdentityId))
                 }
@@ -1276,7 +1282,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         if (query.isBlank()) return emptyList()
         return withContext(Dispatchers.IO) {
             val hits = database.messageDao().searchByKeyword(query, limit = 40)
-            val sessionTitles = database.sessionDao().getAll().associateBy({ it.id }, { it.title })
+            val sessionTitles = database.sessionDao().getAllVisible().associateBy({ it.id }, { it.title })
             hits.map { m ->
                 val idx = m.content.indexOf(query, ignoreCase = true).coerceAtLeast(0)
                 val start = (idx - 20).coerceAtLeast(0)

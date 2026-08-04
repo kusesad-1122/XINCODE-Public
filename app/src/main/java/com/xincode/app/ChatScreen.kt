@@ -2490,9 +2490,9 @@ private fun UserMessageBubble(
         }
         Spacer(Modifier.width(10.dp))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            UserAvatar(size = 44.dp, contentDescription = "RE 头像")
+            UserAvatar(size = 44.dp, contentDescription = "我的头像")
             Text(
-                "RE",
+                "我",
                 fontSize = 12.sp,
                 fontFamily = XinUiFont,
                 color = xc.green,
