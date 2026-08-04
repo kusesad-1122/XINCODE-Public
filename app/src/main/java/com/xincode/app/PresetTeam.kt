@@ -277,24 +277,10 @@ object PresetTeam {
     )
 
     /**
-     * 所有预制团队。装配逻辑共用的同一份,团队只是数据。
+     * 逆向小分队:分析一个 APK/二进制,从摸结构到出报告,各管一段。
+     * 注意:必须声明在 TEAMS 之前 —— object 属性按声明顺序初始化,
+     * TEAMS 引用了 RE_ROLES,前向引用会报 "Variable must be initialized"。
      */
-    val TEAMS: List<Team> = listOf(
-        Team(
-            roomName = ROOM_NAME,
-            note = "预制:秘书助理 / 产品经理 / 架构师 / 工程师 / 前端设计师 / 测试工程师",
-            blurb = "需求 → 方案 → 实现 → 验收,一条龙走完",
-            roles = PRODUCT_ROLES
-        ),
-        Team(
-            roomName = "逆向小分队",
-            note = "预制:侦察兵 / 拆解工 / 分析员 / 验货员",
-            blurb = "分析 APK/so:先摸结构,再拆解,后定性,最后出报告",
-            roles = RE_ROLES
-        )
-    )
-
-    /** 逆向小分队:分析一个 APK/二进制,从摸结构到出报告,各管一段。 */
     private val RE_ROLES: List<Role> = listOf(
         Role(
             name = "侦察兵",
@@ -393,6 +379,24 @@ object PresetTeam {
 
                 什么时候不说话:全队结论都扎实时,直接说「复核通过」,别硬挑毛病。
             """.trimIndent()
+        )
+    )
+
+    /**
+     * 所有预制团队。装配逻辑共用的同一份,团队只是数据。
+     */
+    val TEAMS: List<Team> = listOf(
+        Team(
+            roomName = ROOM_NAME,
+            note = "预制:秘书助理 / 产品经理 / 架构师 / 工程师 / 前端设计师 / 测试工程师",
+            blurb = "需求 → 方案 → 实现 → 验收,一条龙走完",
+            roles = PRODUCT_ROLES
+        ),
+        Team(
+            roomName = "逆向小分队",
+            note = "预制:侦察兵 / 拆解工 / 分析员 / 验货员",
+            blurb = "分析 APK/so:先摸结构,再拆解,后定性,最后出报告",
+            roles = RE_ROLES
         )
     )
 
