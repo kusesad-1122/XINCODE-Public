@@ -52,10 +52,10 @@ fun AgentTurnBlock(
     ) {
         Box(
             modifier = Modifier
-                .width(52.dp)
+                .width(48.dp)
                 .fillMaxHeight()
         ) {
-            Canvas(Modifier.fillMaxHeight().width(52.dp)) {
+            Canvas(Modifier.fillMaxHeight().width(48.dp)) {
                 val x = size.width / 2f
                 drawLine(
                     color = xc.border,
@@ -76,7 +76,7 @@ fun AgentTurnBlock(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .padding(start = 8.dp, end = 4.dp)
+                .padding(start = 4.dp, end = 4.dp)
         ) {
             Text(
                 assistantName,

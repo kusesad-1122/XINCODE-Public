@@ -209,6 +209,7 @@ private fun GroupRoomChatScreen(
 
     val app = LocalContext.current.applicationContext as XincodeApplication
     val room by database.groupRoomDao().observeRoom(roomId).collectAsState(initial = null)
+    val providerConfigs by database.providerConfigDao().observeAll().collectAsState(initial = emptyList())
 
     var input by remember { mutableStateOf("") }
     val busy = app.isGroupRoomBusy(roomId)
@@ -301,7 +302,7 @@ private fun GroupRoomChatScreen(
 
         LazyColumn(
             state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -321,118 +322,144 @@ private fun GroupRoomChatScreen(
                 } else if (m.kind == "toolcall" || m.kind == "toolresult") {
                     GroupToolCard(m, xc)
                 } else {
-                    Column(
+                    val speaker = members.firstOrNull { it.displayName == m.sender }
+                    val hasBench = speaker != null && speaker.workSessionId > 0
+                    val memberCfg = if (speaker != null) {
+                        providerConfigs.firstOrNull { it.id == speaker.providerConfigId }
+                            ?: providerConfigs.firstOrNull { it.isActive }
+                    } else null
+                    Row(
                         Modifier.fillMaxWidth(),
-                        horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
+                        horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
+                        verticalAlignment = Alignment.Top
                     ) {
+                        // 成员头像:左侧,AI 提供商标识;用户头像:右侧,RE。
                         if (!isMine) {
-                            val speaker = members.firstOrNull { it.displayName == m.sender }
-                            val hasBench = speaker != null && speaker.workSessionId > 0
-                            Text(
-                                buildString {
-                                    append(m.sender)
-                                    if (m.model.isNotBlank()) append(" · ").append(m.model)
-                                    if (hasBench) append("  ›工作台")
-                                    if (m.interrupted) append("  · 已中断")
-                                },
-                                fontSize = 10.sp, fontFamily = Mono, color = xc.green,
-                                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
-                                    .clickable(
-                                        indication = null,
-                                        interactionSource = remember { MutableInteractionSource() }
-                                    ) { if (hasBench) workbenchFor = speaker }
+                            ProviderAvatar(
+                                supplierId = memberCfg?.supplierId.orEmpty(),
+                                size = 34.dp,
+                                contentDescription = m.sender,
+                                modifier = Modifier.padding(top = 16.dp, end = 6.dp)
                             )
                         }
-                        Box(
-                            Modifier
-                                // 留出对侧空白,否则长消息占满整行就看不出左右之分了
-                                .fillMaxWidth(0.86f)
-                                .wrapContentWidth(if (isMine) Alignment.End else Alignment.Start)
-                                .clip(
-                                    RoundedCornerShape(
-                                        topStart = 12.dp, topEnd = 12.dp,
-                                        // 靠自己那侧的角收窄,气泡才有指向感
-                                        bottomStart = if (isMine) 12.dp else 3.dp,
-                                        bottomEnd = if (isMine) 3.dp else 12.dp
-                                    )
+                        Column(
+                            Modifier.fillMaxWidth(0.88f),
+                            horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
+                        ) {
+                            if (!isMine) {
+                                Text(
+                                    buildString {
+                                        append(m.sender)
+                                        if (m.model.isNotBlank()) append(" · ").append(m.model)
+                                        if (hasBench) append("  ›工作台")
+                                        if (m.interrupted) append("  · 已中断")
+                                    },
+                                    fontSize = 10.sp, fontFamily = Mono, color = xc.green,
+                                    modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) { if (hasBench) workbenchFor = speaker }
                                 )
+                            }
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .wrapContentWidth(if (isMine) Alignment.End else Alignment.Start)
+                                    .clip(
+                                        RoundedCornerShape(
+                                            topStart = 12.dp, topEnd = 12.dp,
+                                            // 靠自己那侧的角收窄,气泡才有指向感
+                                            bottomStart = if (isMine) 12.dp else 3.dp,
+                                            bottomEnd = if (isMine) 3.dp else 12.dp
+                                        )
+                                    )
                                     .background(if (isMine) xc.activeBg else xc.bgElevated)
                                     .padding(horizontal = 10.dp, vertical = 8.dp)
-                        ) {
-                            // Box 是叠放布局,所有子项必须放进同一个 Column,否则引用块和正文会重叠
-                            Column(Modifier.fillMaxWidth()) {
-                                // 引用块:先说「这是在回谁」,再是正文。多人同时被 @ 时,
-                                // 没有这一块根本分不清每条回复是在回应哪句原话。
-                                if (m.replyToContent.isNotBlank()) {
-                                    Column(
-                                        Modifier.fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(xc.bg.copy(alpha = 0.55f))
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                                            .clickable(
-                                                indication = null,
-                                                interactionSource = remember { MutableInteractionSource() }
-                                            ) { if (m.replyToId > 0) scrollToMessage(m.replyToId) }
-                                    ) {
+                            ) {
+                                // Box 是叠放布局,所有子项必须放进同一个 Column,否则引用块和正文会重叠
+                                Column(Modifier.fillMaxWidth()) {
+                                    // 引用块:先说「这是在回谁」,再是正文。多人同时被 @ 时,
+                                    // 没有这一块根本分不清每条回复是在回应哪句原话。
+                                    if (m.replyToContent.isNotBlank()) {
+                                        Column(
+                                            Modifier.fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(xc.bg.copy(alpha = 0.55f))
+                                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                                .clickable(
+                                                    indication = null,
+                                                    interactionSource = remember { MutableInteractionSource() }
+                                                ) { if (m.replyToId > 0) scrollToMessage(m.replyToId) }
+                                        ) {
+                                            Text(
+                                                "引用 ${m.replyToSender.ifBlank { "用户" }}",
+                                                fontSize = 9.sp, fontFamily = Mono, color = xc.sub
+                                            )
+                                            Text(
+                                                m.replyToContent,
+                                                fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
+                                                lineHeight = 14.sp, maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
+                                        }
+                                        Spacer(Modifier.height(6.dp))
+                                    }
+                                    // 群成员的输出几乎必然带 Markdown,裸 Text 会把 **重点** 的星号显示出来
+                                    MarkdownContent(m.content)
+                                    if (m.streaming) {
+                                        Text("▍", fontSize = 13.sp, fontFamily = Mono, color = xc.green)
+                                    }
+                                    if (m.promptTokens > 0 || m.completionTokens > 0) {
                                         Text(
-                                            "引用 ${m.replyToSender.ifBlank { "用户" }}",
-                                            fontSize = 9.sp, fontFamily = Mono, color = xc.sub
-                                        )
-                                        Text(
-                                            m.replyToContent,
-                                            fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
-                                            lineHeight = 14.sp, maxLines = 3,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.padding(top = 2.dp)
+                                            "↑${m.promptTokens} ↓${m.completionTokens}",
+                                            fontSize = 8.sp, fontFamily = Mono, color = xc.faint,
+                                            modifier = Modifier.padding(top = 3.dp)
                                         )
                                     }
-                                    Spacer(Modifier.height(6.dp))
                                 }
-                                // 群成员的输出几乎必然带 Markdown,裸 Text 会把 **重点** 的星号显示出来
-                                MarkdownContent(m.content)
-                                if (m.streaming) {
-                                    Text("▍", fontSize = 13.sp, fontFamily = Mono, color = xc.green)
-                                }
-                                if (m.promptTokens > 0 || m.completionTokens > 0) {
-                                    Text(
-                                        "↑${m.promptTokens} ↓${m.completionTokens}",
-                                        fontSize = 8.sp, fontFamily = Mono, color = xc.faint,
-                                        modifier = Modifier.padding(top = 3.dp)
-                                    )
+                            }
+                            // 消息操作:复制 / 引用 / 重发
+                            Row(
+                                Modifier.padding(top = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    if (menuFor == m.id) "⋯" else "···",
+                                    fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                    modifier = Modifier.clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { menuFor = if (menuFor == m.id) null else m.id }
+                                )
+                                if (menuFor == m.id) {
+                                    Text("复制", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                        modifier = Modifier.clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) { copyMessage(m) })
+                                    Text("引用", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                        modifier = Modifier.clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) { quoteMessage(m) })
+                                    Text("重发", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                        modifier = Modifier.clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) { resendMessage(m) })
                                 }
                             }
                         }
-                        // 消息操作:复制 / 引用 / 重发
-                        Row(
-                            Modifier.padding(top = 2.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                if (menuFor == m.id) "⋯" else "···",
-                                fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
-                                modifier = Modifier.clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ) { menuFor = if (menuFor == m.id) null else m.id }
+                        if (isMine) {
+                            Spacer(Modifier.width(6.dp))
+                            UserAvatar(
+                                size = 34.dp,
+                                contentDescription = "我",
+                                modifier = Modifier.padding(top = 14.dp)
                             )
-                            if (menuFor == m.id) {
-                                Text("复制", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
-                                    modifier = Modifier.clickable(
-                                        indication = null,
-                                        interactionSource = remember { MutableInteractionSource() }
-                                    ) { copyMessage(m) })
-                                Text("引用", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
-                                    modifier = Modifier.clickable(
-                                        indication = null,
-                                        interactionSource = remember { MutableInteractionSource() }
-                                    ) { quoteMessage(m) })
-                                Text("重发", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
-                                    modifier = Modifier.clickable(
-                                        indication = null,
-                                        interactionSource = remember { MutableInteractionSource() }
-                                    ) { resendMessage(m) })
-                            }
                         }
                     }
                 }

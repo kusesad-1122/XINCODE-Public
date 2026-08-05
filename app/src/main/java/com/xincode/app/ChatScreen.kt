@@ -608,7 +608,7 @@ fun ChatScreen(
         Box(Modifier.weight(1f).fillMaxWidth()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 12.dp)
         ) {
@@ -2209,7 +2209,7 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
         // 气泡。工具消息不套 —— 它是折叠的技术输出,套上反而像有人在说话。
         // 宽度限到 88% 并留出对侧空白:占满整行的话左右之分就看不出来了。
         val bubbleModifier = if (isTool) Modifier else Modifier
-            .fillMaxWidth(0.88f)
+            .fillMaxWidth(0.92f)
             .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start)
             .clip(
                 RoundedCornerShape(
@@ -2567,7 +2567,7 @@ private fun UserMessageBubble(
                 )
             }
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(6.dp))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             UserAvatar(size = 44.dp, contentDescription = "我的头像")
             Text(
