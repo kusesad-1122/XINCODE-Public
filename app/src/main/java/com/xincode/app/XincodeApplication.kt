@@ -697,8 +697,11 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
      */
     private fun buildSessionAgents(sessionId: Long): SessionAgents {
         planStates.forSession(sessionId)
+        // 每个会话一个带会话级模型覆盖的 client:切换对话供应商/模型不影响其他会话,
+        // 也不会和并发会话互相串配置。
+        val sessionClient = OpenAiClient(database, keystore, sessionIdOverride = sessionId)
         val core = AgentCore(
-            openAiClient = openAiClient,
+            openAiClient = sessionClient,
             toolRegistry = toolRegistry,
             securityGate = securityGate,
             cursorDao = database.stateCursorDao(),
@@ -730,7 +733,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             }
         }
         core.updateLimits(currentPowerMode.maxIterations, currentPowerMode.totalTimeoutMs)
-        val chat = AgentChatState(database, core, openAiClient, compactClient)
+        val chat = AgentChatState(database, core, sessionClient, compactClient)
         chat.currentSessionId = sessionId
         chat.thinkingEnabled = thinkingEnabled
         chat.thinkingLevel = thinkingLevel
@@ -1182,6 +1185,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         }
 
         currentSessionId = id
+        applySessionModelLabel(id)
         val existing = sessionPool[id]
         if (existing != null) {
             // 复用池中实例(可能仍在后台跑):直接换绑,绝不 clearHistory/reload,以免打断正在跑的循环。
@@ -1443,6 +1447,47 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
                 database.providerConfigDao().update(updated)
                 currentModelLabel = modelId
             }
+        }
+    }
+
+    /**
+     * 给【当前会话】设置专属模型覆盖:可换供应商配置 + 模型。
+     * providerConfigId 为 null 时只覆盖模型(跟随当前活跃供应商);两者都 null 时清除覆盖。
+     */
+    fun switchSessionModel(sessionId: Long, providerConfigId: Long?, modelId: String?) {
+        GlobalScope.launch(Dispatchers.IO) {
+            val s = database.sessionDao().getById(sessionId) ?: return@launch
+            database.sessionDao().upsert(
+                s.copy(
+                    modelProviderConfigId = providerConfigId?.takeIf { it > 0 },
+                    currentModelId = modelId?.trim()?.ifBlank { null },
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+        applySessionModelLabel(sessionId)
+    }
+
+    /** 清除会话级模型覆盖,回到全局活跃配置。 */
+    fun clearSessionModelOverride(sessionId: Long) {
+        GlobalScope.launch(Dispatchers.IO) {
+            val s = database.sessionDao().getById(sessionId) ?: return@launch
+            database.sessionDao().upsert(
+                s.copy(modelProviderConfigId = null, currentModelId = null, updatedAt = System.currentTimeMillis())
+            )
+        }
+        applySessionModelLabel(sessionId)
+    }
+
+    /** 把顶栏模型标签刷新成当前会话的覆盖(未覆盖则回到活跃配置的模型)。 */
+    fun applySessionModelLabel(sessionId: Long) {
+        GlobalScope.launch(Dispatchers.IO) {
+            val s = database.sessionDao().getById(sessionId) ?: return@launch
+            val cfg = s.modelProviderConfigId?.let { database.providerConfigDao().getById(it) }
+                ?: database.providerConfigDao().getActive()
+            val model = s.currentModelId?.trim()?.ifBlank { null } ?: cfg?.model
+            currentModelLabel = model.orEmpty()
+            currentProviderName = cfg?.name.orEmpty()
         }
     }
 

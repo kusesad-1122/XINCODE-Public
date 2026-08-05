@@ -27,7 +27,13 @@ import java.util.concurrent.TimeUnit
 class OpenAiClient(
     private val database: AppDatabase,
     private val keystore: KeystoreProvider,
-    private val functionKey: String? = null
+    private val functionKey: String? = null,
+    /**
+     * 非空时,这个 client 绑定【某个会话】的模型覆盖:
+     * sessions.modelProviderConfigId 指定供应商配置,currentModelId 指定模型。
+     * 用于实现「一个对话内切换其他厂商模型」——每个会话各自 new 一个 client,互不串配置。
+     */
+    private val sessionIdOverride: Long? = null
 ) {
     companion object {
         private const val TAG = "XincodeProvider"
@@ -127,12 +133,14 @@ class OpenAiClient(
                 if (id > 0) cfgDao.getById(id) else null
             } else null
 
-            val active = assigned ?: cfgDao.getActive()
+            val sessionOverride = if (assigned == null) resolveSessionOverride(cfgDao) else null
+            val active = assigned ?: sessionOverride?.first ?: cfgDao.getActive()
                 ?: return Result.failure(IllegalStateException("未找到活跃配置，请先在供应商配置中创建"))
             val baseUrl = active.baseUrl.ifBlank {
                 return Result.failure(IllegalStateException("base_url 未配置"))
             }
-            val model = modelOverride.ifBlank { active.model }.ifBlank {
+            val effectiveOverride = sessionOverride?.second?.ifBlank { null } ?: modelOverride.ifBlank { null }
+            val model = effectiveOverride?.ifBlank { null } ?: active.model.ifBlank {
                 return Result.failure(IllegalStateException("model 未配置"))
             }
             val apiKey = keystore.decrypt(Base64.decode(active.apiKeyEnc, Base64.NO_WRAP))
@@ -149,6 +157,21 @@ class OpenAiClient(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * 读会话级模型覆盖:返回 (供应商配置, 模型 id)。
+     * 会话没配覆盖、或配置已被删除时返回 null(回落到活跃配置),不让对话直接崩。
+     */
+    private suspend fun resolveSessionOverride(
+        cfgDao: com.xincode.data.ProviderConfigDao
+    ): Pair<com.xincode.data.ProviderConfigEntity, String>? {
+        val sessionId = sessionIdOverride ?: return null
+        val session = database.sessionDao().getById(sessionId) ?: return null
+        val providerId = session.modelProviderConfigId
+        val cfg = if (providerId != null && providerId > 0) cfgDao.getById(providerId) else null
+        if (cfg == null) return null
+        return cfg to (session.currentModelId?.trim().orEmpty())
     }
 
     // -- model list ------------------------------------------------------------

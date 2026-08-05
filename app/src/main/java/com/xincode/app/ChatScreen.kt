@@ -283,6 +283,8 @@ fun ChatScreen(
     providerName: String = "",
     availableModels: List<String> = emptyList(),
     onSwitchModel: (String) -> Unit = {},
+    /** 打开「本对话的供应商/模型选择器」(支持跨厂商切换)。 */
+    onOpenConversationModelPicker: () -> Unit = {},
     thinkingEnabled: Boolean = false,
     thinkingLevel: Int = 2,
     onThinkingEnabledChange: (Boolean) -> Unit = {},
@@ -1325,6 +1327,23 @@ fun ChatScreen(
                                 )
                             }
                         }
+                    }
+
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                showMainMenu = false
+                                onOpenConversationModelPicker()
+                            }
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "⇄ 本对话切换供应商/模型",
+                            fontSize = 12.sp, fontFamily = XinUiFont,
+                            color = Green, fontWeight = FontWeight.Medium
+                        )
                     }
 
                     if (availableModels.isNotEmpty()) {

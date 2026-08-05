@@ -72,6 +72,11 @@ fun AuxModelsScreen(
             subtitle = "为视觉、推理、翻译和转写选择副模型",
             onBack = onBack
         )
+        Text(
+            "未手填端点时,会自动使用「功能模型配置」里给该任务指定的供应商——两者是同一组调用点的两种配置方式。",
+            fontSize = 10.sp, fontFamily = JetBrainsMono, color = LocalXinColors.current.yellow, lineHeight = 15.sp,
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+        )
         Spacer(Modifier.height(8.dp))
 
         if (!loaded) { Text("加载中…", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub); return@Column }

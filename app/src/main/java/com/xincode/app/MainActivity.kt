@@ -256,6 +256,7 @@ class MainActivity : ComponentActivity() {
                     "chat" -> {
                         val active = runBlocking { app.database.providerConfigDao().getActive() }
                         val names = active?.enabledModelIds ?: emptyList()
+                        var showConversationModelPicker by remember { mutableStateOf(false) }
                         val currentSession = sessions.firstOrNull { it.id == app.currentSessionId }
                         val currentIdentityName = identities
                             .firstOrNull { it.id == currentSession?.identityId }
@@ -291,7 +292,11 @@ class MainActivity : ComponentActivity() {
                             onStartGoal = { text -> app.startGoalForSession(app.currentSessionId, text) },
                             onStopGoal = { app.stopGoal(app.currentSessionId) },
                             powerMode = app.currentPowerMode,
-                            onSwitchModel = { modelId -> app.switchModel(modelId) },
+                            onSwitchModel = { modelId ->
+                                // 只改当前对话的模型,不再污染全局活跃配置
+                                app.switchSessionModel(app.currentSessionId, null, modelId)
+                            },
+                            onOpenConversationModelPicker = { showConversationModelPicker = true },
                             thinkingEnabled = app.thinkingEnabled,
                             thinkingLevel = app.thinkingLevel,
                             onThinkingEnabledChange = { app.updateThinkingEnabled(it) },
@@ -327,6 +332,15 @@ class MainActivity : ComponentActivity() {
                             collabMode = app.collabModeEnabled,
                             onSetCollabMode = { on -> app.setCollabMode(on) }
                         )
+                        if (showConversationModelPicker) {
+                            SessionModelPicker(
+                                database = app.database,
+                                keystore = app.keystore,
+                                openAiClient = app.openAiClient,
+                                sessionId = app.currentSessionId,
+                                onClose = { showConversationModelPicker = false }
+                            )
+                        }
                     }
                     "settings" -> SettingsScreen(
                         onBack = { currentPage = "chat" },

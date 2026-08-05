@@ -61,6 +61,27 @@ class GroupChatSupportTest {
     }
 
     @Test
+    fun sseNullFieldsNeverBecomeLiteralNull() {
+        // DeepSeek/OpenAI 流式里 content/reasoning_content 常为 null,绝不能拼出 "null" 文本
+        val contentNull = parseGroupSseLine(
+            """data: {"choices":[{"delta":{"content":null,"reasoning_content":"正在思考"},"index":0}]}"""
+        )
+        assertEquals("", contentNull?.content)
+        assertEquals("正在思考", contentNull?.reasoning)
+
+        val reasoningNull = parseGroupSseLine(
+            """data: {"choices":[{"delta":{"content":"你好","reasoning_content":null},"index":0}]}"""
+        )
+        assertEquals("你好", reasoningNull?.content)
+        assertEquals("", reasoningNull?.reasoning)
+
+        val finishNull = parseGroupSseLine(
+            """data: {"choices":[{"delta":{},"index":0,"finish_reason":null}]}"""
+        )
+        assertNull(finishNull?.finishReason)
+    }
+
+    @Test
     fun summarySlicingUsesCursorAndFallsBackToTimestamp() {
         val messages = listOf(
             msg(1, 100, content = "第一句"),

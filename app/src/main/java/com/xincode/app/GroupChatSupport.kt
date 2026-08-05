@@ -68,15 +68,25 @@ internal fun parseGroupSseLine(line: String): GroupSseChunk? {
     val json = runCatching { JSONObject(data) }.getOrNull() ?: return null
     val choice = json.optJSONArray("choices")?.optJSONObject(0)
     val delta = choice?.optJSONObject("delta")
-    val reasoning = delta?.optString("reasoning_content").orEmpty()
-        .ifBlank { delta?.optString("reasoning").orEmpty() }
+    val reasoning = jsonString(delta, "reasoning_content")
+        .ifBlank { jsonString(delta, "reasoning") }
     return GroupSseChunk(
-        content = delta?.optString("content").orEmpty(),
+        content = jsonString(delta, "content"),
         reasoning = reasoning,
         usage = json.optJSONObject("usage"),
-        finishReason = choice?.optString("finish_reason")?.takeIf { it.isNotBlank() && it != "null" }
+        finishReason = jsonString(choice, "finish_reason").takeIf { it.isNotBlank() }
     )
 }
+
+/**
+ * JSON null 必须返回空串,而不是字面量 "null"。
+ *
+ * org.json 的 `optString()` 在值为 `null`(JSONObject.NULL)时会把 null 转成字符串 "null",
+ * 供应商流式响应里 `"content": null`、`"reasoning_content": null` 非常常见
+ * (推理模型经常只在其中一个字段输出)。不改的话,消息里会反复出现一堆 "null"。
+ */
+private fun jsonString(json: JSONObject?, key: String): String =
+    if (json == null || json.isNull(key)) "" else json.optString(key)
 
 /** 粗略上下文估算:中文约 3 字符/词元,纯启发式,用于回复前展示。 */
 internal fun estimateGroupTokens(chars: Int): Int = (chars / 3).coerceAtLeast(1)

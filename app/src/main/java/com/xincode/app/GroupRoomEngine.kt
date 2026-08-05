@@ -663,8 +663,9 @@ object GroupRoomEngine {
                 resp.body?.string().orEmpty()
             }
             val json = JSONObject(text)
-            val output = json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
-                ?.optString("content").orEmpty().trim()
+            val output = optContent(
+                json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+            ).trim()
             if (output.isBlank()) throw IllegalStateException("总结模型返回空内容")
             json.optJSONObject("usage")?.let {
                 UsageRecorder.record(
@@ -751,9 +752,10 @@ object GroupRoomEngine {
                 .build()
             http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@runCatching
-                val digest = JSONObject(resp.body?.string().orEmpty())
-                    .optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
-                    ?.optString("content").orEmpty().trim()
+                val digest = optContent(
+                    JSONObject(resp.body?.string().orEmpty())
+                        .optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+                ).trim()
                 if (digest.isBlank()) return@runCatching
                 dao.insertMessage(
                     GroupMessageEntity(
@@ -829,6 +831,10 @@ object GroupRoomEngine {
         val miss = usage.optLong("prompt_cache_miss_tokens", -1).let { if (it < 0) null else it.toInt() } ?: 0
         return hit to miss
     }
+
+    /** 非流式响应的正文:JSON null 返回空串,而不是字面量 "null"。 */
+    private fun optContent(message: JSONObject?): String =
+        if (message == null || message.isNull("content")) "" else message.optString("content")
 
     private fun groupRunId(roomId: Long, memberName: String): String {
         val safe = memberName.replace(Regex("[^\\p{Alnum}_-]"), "_").take(24)
