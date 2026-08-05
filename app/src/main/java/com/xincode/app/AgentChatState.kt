@@ -551,11 +551,15 @@ class AgentChatState(
                             .toSet()
                     // gap-10 上下文窗口/自动压缩阈值:全局设置覆盖 > 供应商配置。
                     val activeCfg = database.providerConfigDao().getActive()
+                    // 对话级模型覆盖后,上下文窗口/压缩阈值应跟随【覆盖的供应商】而不是全局活跃配置。
+                    val effectiveCfg = session?.modelProviderConfigId
+                        ?.let { database.providerConfigDao().getById(it) }
+                        ?: activeCfg
                     val winOverride = settings?.contextWindowOverride ?: 0
-                    agentCore.contextWindow = if (winOverride > 0) winOverride else (activeCfg?.contextWindow ?: 0)
+                    agentCore.contextWindow = if (winOverride > 0) winOverride else (effectiveCfg?.contextWindow ?: 0)
                     val thOverride = settings?.autoCompactThresholdOverride ?: 0
                     agentCore.autoCompactThresholdPercent =
-                        if (thOverride in 1..100) thOverride else (activeCfg?.autoCompactThresholdPercent ?: 85)
+                        if (thOverride in 1..100) thOverride else (effectiveCfg?.autoCompactThresholdPercent ?: 85)
                 }
 
                 // Insert user message
