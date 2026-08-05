@@ -30,6 +30,13 @@ abstract class MemoryDao {
     @Query("SELECT * FROM memories WHERE title = :title LIMIT 1")
     abstract suspend fun getByTitle(title: String): MemoryEntity?
 
+    @Query("SELECT * FROM memories WHERE sourceMessageId = :messageId LIMIT 1")
+    abstract suspend fun getBySourceMessageId(messageId: Long): MemoryEntity?
+
+    /** 一次按需召回命中后累计次数,用于判断记忆的真实价值。 */
+    @Query("UPDATE memories SET recallCount = :count, lastRecalledAt = :ts WHERE id = :id")
+    abstract suspend fun bumpRecall(id: Long, count: Int, ts: Long)
+
     @Query("SELECT COUNT(*) FROM memories")
     abstract suspend fun count(): Int
 

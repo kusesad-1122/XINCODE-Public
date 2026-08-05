@@ -4,10 +4,7 @@ import android.util.Log
 import com.xincode.core.AgentCore
 import com.xincode.core.AgentState
 import com.xincode.data.AppDatabase
-import com.xincode.data.MemoryEntity
-import com.xincode.data.MemoryExtractor
 import com.xincode.data.MessageEntity
-import com.xincode.provider.EmbeddingService
 import com.xincode.security.Decision
 import com.xincode.security.GateCommand
 import com.xincode.security.ToolConfirmResult
@@ -453,20 +450,8 @@ class AgentChatState(
             val userMsg = MessageEntity(role = "user", content = text, sessionId = currentSessionId)
             val userId = withContext(Dispatchers.IO) { messageDao.insert(userMsg) }
             messages.add(ChatState.MessageUi(userId, "user", text, userMsg.timestamp))
-            launch(Dispatchers.IO) {
-                try {
-                    val uf = MemoryExtractor.extractUserFact(text, userId)
-                    if (uf != null) {
-                        val emb = runCatching { openAiClient.embeddings(uf.content) }.getOrNull()
-                        memoryDao.upsert(
-                            MemoryEntity(
-                                title = uf.title, content = uf.content, tags = uf.tags,
-                                sourceMessageId = uf.sourceMessageId, projectId = sessionProjectId,
-                                embedding = emb?.let { EmbeddingService.floatArrayToBytes(it) }
-                            )
-                        )
-                    }
-                } catch (_: Exception) {}
+            MemoryWriteQueue.submit {
+                MemoryWriteQueue.persistUserFact(database, sessionProjectId, userId, text)
             }
             agentCore.redirect(text)
         }
@@ -544,6 +529,15 @@ class AgentChatState(
                         lastLayeredSystemPrompt = layered
                         systemPromptSessionId = currentSessionId
                     }
+                    // Hermes 风格按需召回:每个非平凡回合检索相关记忆,注入本次系统提示。
+                    // 不写回 lastLayeredSystemPrompt,避免把召回内容累积进下一轮的基准提示。
+                    val recallBlock = MemoryRecall.recallForQuery(
+                        database, openAiClient, sessionProjectId, text
+                    )
+                    val recallBase = lastLayeredSystemPrompt
+                    if (recallBlock.isNotBlank() && recallBase != null) {
+                        agentCore.updateSystemPrompt(recallBase + "\n\n" + recallBlock)
+                    }
                     agentCore.temperature = identity?.temperature ?: 1.0f
                     // gap-09 采样参数:从 identity 卡注入(null=不发)。
                     agentCore.maxTokens = identity?.maxTokens
@@ -571,20 +565,8 @@ class AgentChatState(
 
                 // 记忆:从【用户这句话】里抓持久偏好/资料(如"我喜欢 go 语言")。用户表述常很短会被
                 // 助手抽取的 MIN_LENGTH 滤掉,却最该记住。按本会话范围(普通=全局池/项目=本项目)沉淀。
-                launch(Dispatchers.IO) {
-                    try {
-                        val uf = MemoryExtractor.extractUserFact(text, userId)
-                        if (uf != null) {
-                            val emb = runCatching { openAiClient.embeddings(uf.content) }.getOrNull()
-                            memoryDao.upsert(
-                                MemoryEntity(
-                                    title = uf.title, content = uf.content, tags = uf.tags,
-                                    sourceMessageId = uf.sourceMessageId, projectId = sessionProjectId,
-                                    embedding = emb?.let { EmbeddingService.floatArrayToBytes(it) }
-                                )
-                            )
-                        }
-                    } catch (_: Exception) {}
+                MemoryWriteQueue.submit {
+                    MemoryWriteQueue.persistUserFact(database, sessionProjectId, userId, text)
                 }
 
                 // Pre-set turnId before creating assistant placeholder:
@@ -756,33 +738,11 @@ class AgentChatState(
                         Log.i(TAG, "Agent complete: ${finalContent.take(80)}...")
 
                         // --- Memory extraction ---
-                        launch(Dispatchers.IO) {
-                          try {
-                            fileLog("triggering extract for msgId=$asstId contentLen=${finalContent.length}")
-                            val extracted = MemoryExtractor.extract(finalContent, asstId)
-                            if (extracted != null) {
-                                val mem = MemoryEntity(
-                                    title = extracted.title,
-                                    content = extracted.content,
-                                    tags = extracted.tags,
-                                    sourceMessageId = extracted.sourceMessageId,
-                                    // 记忆按项目隔离:普通对话(projectId=0)记忆互通;项目内对话只归本项目。
-                                    // 用本会话自己的 sessionProjectId(而非全局 WorkspaceContext),避免并发/后台会话串号。
-                                    projectId = sessionProjectId
-                                )
-                                // Generate embedding (best-effort)。embeddings() 若在无 embedding 端点的供应商上
-                                // 抛异常,绝不能连累 upsert——用 runCatching 兜住,拿不到向量就纯 FTS 存。
-                                val emb = runCatching { openAiClient.embeddings(mem.content.take(8000)) }.getOrNull()
-                                val memWithEmb = if (emb != null) {
-                                    mem.copy(embedding = EmbeddingService.floatArrayToBytes(emb))
-                                } else mem
-                                memoryDao.upsert(memWithEmb)
-                                fileLog("SAVED memory: title='${extracted.title.take(60)}' emb=${if (emb != null) "${emb.size}d" else "NULL"}")
-                                Log.i(TAG, "Memory saved: ${extracted.title.take(60)}")
-                            } else {
-                                fileLog("NOT SAVED: MemoryExtractor returned null")
-                            }
-                          } catch (e: Exception) { fileLog("extract crashed: ${e.message}") }
+                        // 串行队列 + 按 sourceMessageId 去重:自动沉淀不该影响主流程,也不该重复写。
+                        MemoryWriteQueue.submit {
+                            MemoryWriteQueue.persistAssistantMemory(
+                                database, openAiClient, sessionProjectId, asstId, finalContent
+                            )
                         }
                     }
                 }

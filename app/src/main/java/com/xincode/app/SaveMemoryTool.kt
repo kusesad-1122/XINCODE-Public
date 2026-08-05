@@ -81,6 +81,7 @@ class SaveMemoryTool(private val database: AppDatabase) : Tool {
                                 content = content,
                                 projectId = com.xincode.tools.WorkspaceContext.projectId, // 项目隔离
                                 tags = "agent-curated",
+                                source = "agent",
                                 updatedAt = System.currentTimeMillis()
                             ))
                             ToolResult.Success("已记入长期记忆: $title")

@@ -22,30 +22,51 @@ class BackgroundReviewRunner(
     companion object {
         private const val TAG = "BgReview"
         private const val REVIEW_TIMEOUT_MS = 90_000L
+        private const val SKILL_IMPROVE_THRESHOLD = 5
+        private const val SKILL_IMPROVE_COOLDOWN_MS = 6L * 60 * 60 * 1000
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val skillImprovementCooldown = HashMap<String, Long>()
 
     fun onReview(reviewMemory: Boolean, reviewSkill: Boolean, conversationTail: String) {
         scope.launch {
-            try {
-                val prompt = buildPrompt(reviewMemory, reviewSkill, conversationTail)
-                val core = reviewCoreFactory()
-                core.isReviewFork = true
-                core.clearHistory()
-                withTimeoutOrNull(REVIEW_TIMEOUT_MS) {
-                    kotlinx.coroutines.coroutineScope {
-                        // 复盘分身只调工具、不需要展示输出;把 tokenFlow 排空避免背压。
-                        val drain = launch { core.tokenFlow.collect { } }
-                        val job = core.run(prompt, scope = this, thinkingEnabled = false, thinkingLevel = 0)
-                        job.join()
-                        drain.cancel()
-                    }
+            runReview(buildPrompt(reviewMemory, reviewSkill, conversationTail))
+        }
+    }
+
+    /**
+     * 技能「用后自改进」:agent/user 技能每被命中 5 次(5/10/15…)触发一次后台复查,
+     * 让复盘分身基于当前技能内容判断是否需要 patch。bundled 由调用方过滤,这里不重复判断。
+     */
+    fun onSkillImprovement(skillName: String, skillContent: String, useCount: Int) {
+        if (useCount < SKILL_IMPROVE_THRESHOLD || useCount % SKILL_IMPROVE_THRESHOLD != 0) return
+        val now = System.currentTimeMillis()
+        val last = skillImprovementCooldown[skillName] ?: 0L
+        if (now - last < SKILL_IMPROVE_COOLDOWN_MS) return
+        skillImprovementCooldown[skillName] = now
+        scope.launch {
+            runReview(buildImprovePrompt(skillName, skillContent))
+        }
+    }
+
+    private suspend fun runReview(prompt: String) {
+        try {
+            val core = reviewCoreFactory()
+            core.isReviewFork = true
+            core.clearHistory()
+            withTimeoutOrNull(REVIEW_TIMEOUT_MS) {
+                kotlinx.coroutines.coroutineScope {
+                    // 复盘分身只调工具、不需要展示输出;把 tokenFlow 排空避免背压。
+                    val drain = launch { core.tokenFlow.collect { } }
+                    val job = core.run(prompt, scope = this, thinkingEnabled = false, thinkingLevel = 0)
+                    job.join()
+                    drain.cancel()
                 }
-                Log.i(TAG, "background review done (memory=$reviewMemory skill=$reviewSkill)")
-            } catch (e: Exception) {
-                Log.w(TAG, "background review error: ${e.message}")
             }
+            Log.i(TAG, "background review done")
+        } catch (e: Exception) {
+            Log.w(TAG, "background review error: ${e.message}")
         }
     }
 
@@ -70,6 +91,24 @@ class BackgroundReviewRunner(
         appendLine("以下是刚才对话的尾部,供你判断:")
         appendLine("----")
         appendLine(tail.take(6000))
+        appendLine("----")
+    }
+
+    private fun buildImprovePrompt(skillName: String, skillContent: String): String = buildString {
+        appendLine("你是一个【技能自改进】分身。下面是一个已存在、且刚被使用过的技能,请判断它是否需要改进。")
+        appendLine()
+        appendLine("规则:")
+        appendLine("- 只能改进这个技能本身(skill_manage: 先 action=view 读当前内容,再 action=patch 做外科式增量改进)。")
+        appendLine("- 不要改名、不要整体重写、不要删除技能。")
+        appendLine("- 不要凭空添加源里不存在的命令/API/路径;只补实际踩过的坑、订正错误步骤。")
+        appendLine("- 如果内容已经足够好,直接说「无需改进」,不要为了改而改。")
+        appendLine("- 完成后用一句话总结改了什么(或为什么没改)。")
+        appendLine()
+        appendLine("技能名: $skillName")
+        appendLine()
+        appendLine("当前技能内容:")
+        appendLine("----")
+        appendLine(skillContent.take(6000))
         appendLine("----")
     }
 }

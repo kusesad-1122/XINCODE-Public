@@ -386,7 +386,15 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         // 二进制走 web_fetch 既没意义又顶爆上下文。
         toolRegistry.register(DownloadFileTool())
         toolRegistry.register(SleepTool())
-        toolRegistry.register(InvokeSkillTool(database))
+        // 技能用量生命周期:命中即累计;agent/user 技能每用 5 次触发一次后台自改进(bundled 只读不触发)。
+        val invokeSkillTool = InvokeSkillTool(database).also { tool ->
+            tool.onSkillUsed = { skill ->
+                if (skill.source != "bundled") {
+                    backgroundReviewRunner.onSkillImprovement(skill.name, skill.content, skill.useCount)
+                }
+            }
+        }
+        toolRegistry.register(invokeSkillTool)
         toolRegistry.register(WolfpackOrchestrator(wolfpackClient))
         toolRegistry.register(AgentPlanTool {
             val ownerSessionId = ToolSessionContext.sessionId ?: currentSessionId
@@ -551,6 +559,13 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         GlobalScope.launch(Dispatchers.IO) {
             try { SkillImporter.autoDiscover(database) } catch (e: Exception) {
                 Log.w("XincodeApp", "skill auto-discover failed: ${e.message}")
+            }
+        }
+
+        // 技能 curator:按最近使用时间推进 active → stale → archived(默认 7 天检查一次,纯确定性,无 LLM 开销)。
+        GlobalScope.launch(Dispatchers.IO) {
+            try { SkillCurator.runIfDue(database) } catch (e: Exception) {
+                Log.w("XincodeApp", "skill curator failed: ${e.message}")
             }
         }
 
