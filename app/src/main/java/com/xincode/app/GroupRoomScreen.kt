@@ -307,31 +307,34 @@ private fun GroupRoomChatScreen(
                                 .background(if (isMine) xc.activeBg else xc.bgElevated)
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
                         ) {
-                            // 引用块:先说「这是在回谁」,再是正文。多人同时被 @ 时,
-                            // 没有这一块根本分不清每条回复是在回应哪句原话。
-                            if (m.replyToContent.isNotBlank()) {
-                                Column(
-                                    Modifier.fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(xc.bg.copy(alpha = 0.55f))
-                                        .padding(horizontal = 8.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        "引用 ${m.replyToSender.ifBlank { "用户" }}",
-                                        fontSize = 9.sp, fontFamily = Mono, color = xc.sub
-                                    )
-                                    Text(
-                                        m.replyToContent,
-                                        fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
-                                        lineHeight = 14.sp, maxLines = 3,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(top = 2.dp)
-                                    )
+                            // Box 是叠放布局,所有子项必须放进同一个 Column,否则引用块和正文会重叠
+                            Column(Modifier.fillMaxWidth()) {
+                                // 引用块:先说「这是在回谁」,再是正文。多人同时被 @ 时,
+                                // 没有这一块根本分不清每条回复是在回应哪句原话。
+                                if (m.replyToContent.isNotBlank()) {
+                                    Column(
+                                        Modifier.fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(xc.bg.copy(alpha = 0.55f))
+                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            "引用 ${m.replyToSender.ifBlank { "用户" }}",
+                                            fontSize = 9.sp, fontFamily = Mono, color = xc.sub
+                                        )
+                                        Text(
+                                            m.replyToContent,
+                                            fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
+                                            lineHeight = 14.sp, maxLines = 3,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.height(6.dp))
                                 }
-                                Spacer(Modifier.height(6.dp))
+                                // 群成员的输出几乎必然带 Markdown,裸 Text 会把 **重点** 的星号显示出来
+                                MarkdownContent(m.content)
                             }
-                            // 群成员的输出几乎必然带 Markdown,裸 Text 会把 **重点** 的星号显示出来
-                            MarkdownContent(m.content)
                         }
                     }
                 }
