@@ -850,7 +850,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         if (text.isBlank() || isGroupRoomBusy(roomId)) return false
 
         val job = applicationScope.launch(start = CoroutineStart.LAZY) {
-            withContext(Dispatchers.IO) {
+            val seedMessageId = withContext(Dispatchers.IO) {
                 database.groupRoomDao().insertMessage(
                     com.xincode.data.GroupMessageEntity(roomId = roomId, sender = "", content = text)
                 )
@@ -861,6 +861,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
                 roomId = roomId,
                 content = text,
                 senderName = "",
+                seedMessageId = seedMessageId,
                 runWorkTurn = { sid, prompt, workspace ->
                     runGroupWorkTurn(sid, prompt, workspaceRoot = workspace)
                 },

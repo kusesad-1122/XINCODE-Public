@@ -60,7 +60,8 @@ data class GroupRoomEntity(
      *
      * 房间内【共享】而不是每人一个私有目录:他们本来就在协作,架构师写的方案工程师
      * 必须读得到,给每人一个隔离目录只会让产出散落各处、谁也看不见谁的。
-     * 并发写也不是问题 —— 群聊是串行的,同一时刻只有一个成员在动手。
+     * 同一批被 @ 的成员会并行发言,所以成员之间可能同时写这个目录 ——
+     * 各自写各自的文件没问题,但不要假设「上一刻只有一个人在动」。
      */
     val workspacePath: String = "",
 
@@ -114,6 +115,17 @@ data class GroupMessageEntity(
     /** 空 = 用户;否则是成员的 displayName。 */
     val sender: String = "",
     val content: String,
+    /**
+     * 这条消息回复引用的原消息 id;0 = 没有引用。
+     *
+     * sender/content 是引用时的快照,不是外键 —— 被引用的消息可能被自动压缩删掉,
+     * 但引用块仍然要能正常渲染,模型上下文也要能看出「这是在回谁」。
+     */
+    val replyToId: Long = 0,
+    /** 被引用消息的发送者;空 = 用户。 */
+    val replyToSender: String = "",
+    /** 被引用消息的正文快照。 */
+    val replyToContent: String = "",
     /** 摘要消息(自动压缩产生的)标记,渲染时区别对待。 */
     val isDigest: Boolean = false,
     val ts: Long = System.currentTimeMillis()

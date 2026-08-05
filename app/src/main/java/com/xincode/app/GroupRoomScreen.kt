@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.data.AppDatabase
@@ -306,6 +307,29 @@ private fun GroupRoomChatScreen(
                                 .background(if (isMine) xc.activeBg else xc.bgElevated)
                                 .padding(horizontal = 10.dp, vertical = 8.dp)
                         ) {
+                            // 引用块:先说「这是在回谁」,再是正文。多人同时被 @ 时,
+                            // 没有这一块根本分不清每条回复是在回应哪句原话。
+                            if (m.replyToContent.isNotBlank()) {
+                                Column(
+                                    Modifier.fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(xc.bg.copy(alpha = 0.55f))
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        "引用 ${m.replyToSender.ifBlank { "用户" }}",
+                                        fontSize = 9.sp, fontFamily = Mono, color = xc.sub
+                                    )
+                                    Text(
+                                        m.replyToContent,
+                                        fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
+                                        lineHeight = 14.sp, maxLines = 3,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                            }
                             // 群成员的输出几乎必然带 Markdown,裸 Text 会把 **重点** 的星号显示出来
                             MarkdownContent(m.content)
                         }
