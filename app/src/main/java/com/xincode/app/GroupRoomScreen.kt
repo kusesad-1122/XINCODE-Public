@@ -15,19 +15,25 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.data.AppDatabase
 import com.xincode.data.GroupMemberEntity
+import com.xincode.data.GroupMessageEntity
 import com.xincode.data.GroupRoomEntity
 import com.xincode.data.MessageEntity
 import com.xincode.provider.OpenAiClient
@@ -214,16 +220,53 @@ private fun GroupRoomChatScreen(
     // 内嵌工作台:非空时在群聊内部展开那个成员的干活现场,返回就回到这儿
     var workbenchFor by remember { mutableStateOf<GroupMemberEntity?>(null) }
     val listState = rememberLazyListState()
+    val clipboard = LocalClipboardManager.current
+    // 规范排序:同一 run 的工具事件、diff 与最终正文按 phase 排在一起,不被并行回复插乱。
+    val orderedMessages = remember(messages) { sortGroupMessagesCanonical(messages) }
+    // 引用目标:点消息上的「引用」后,下一条用户消息会带引用块。
+    var quoteTarget by remember { mutableStateOf<GroupMessageEntity?>(null) }
+    // 消息操作菜单:复制 / 引用 / 重发。
+    var menuFor by remember { mutableStateOf<Long?>(null) }
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    LaunchedEffect(orderedMessages.size) {
+        if (orderedMessages.isNotEmpty()) listState.animateScrollToItem(orderedMessages.size - 1)
     }
 
     fun send() {
         val text = input.trim()
-        if (text.isBlank() || busy) return
+        if (text.isBlank()) return
         if (members.isEmpty()) return
-        if (app.sendGroupMessage(roomId, text)) input = ""
+        val qt = quoteTarget
+        if (app.sendGroupMessage(
+                roomId, text,
+                replyToId = qt?.id ?: 0L,
+                replyToSender = qt?.sender.orEmpty(),
+                replyToContent = qt?.content.orEmpty()
+            )
+        ) {
+            input = ""
+            quoteTarget = null
+        }
+    }
+
+    fun copyMessage(m: GroupMessageEntity) {
+        clipboard.setText(AnnotatedString(m.content))
+        menuFor = null
+    }
+
+    fun quoteMessage(m: GroupMessageEntity) {
+        quoteTarget = m
+        menuFor = null
+    }
+
+    fun resendMessage(m: GroupMessageEntity) {
+        menuFor = null
+        app.sendGroupMessage(roomId, m.content)
+    }
+
+    fun scrollToMessage(id: Long) {
+        val idx = orderedMessages.indexOfFirst { it.id == id }
+        if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) }
     }
 
     /** 把 @名字 插到输入框末尾,自动补空格,已经 @ 过就不重复插。 */
@@ -262,8 +305,8 @@ private fun GroupRoomChatScreen(
             contentPadding = PaddingValues(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(messages.size) { i ->
-                val m = messages[i]
+            items(orderedMessages.size) { i ->
+                val m = orderedMessages[i]
                 val isMine = m.sender.isBlank() && !m.isDigest
 
                 // 摘要不走气泡:它不是谁说的话,是系统对前面一段的压缩,
@@ -273,6 +316,10 @@ private fun GroupRoomChatScreen(
                     Text(m.content, fontSize = 11.sp, fontFamily = Mono,
                         color = xc.faint, lineHeight = 17.sp,
                         modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
+                } else if (m.kind == "diff") {
+                    GroupDiffCard(m, xc)
+                } else if (m.kind == "toolcall" || m.kind == "toolresult") {
+                    GroupToolCard(m, xc)
                 } else {
                     Column(
                         Modifier.fillMaxWidth(),
@@ -282,7 +329,12 @@ private fun GroupRoomChatScreen(
                             val speaker = members.firstOrNull { it.displayName == m.sender }
                             val hasBench = speaker != null && speaker.workSessionId > 0
                             Text(
-                                if (hasBench) "${m.sender}  ›工作台" else m.sender,
+                                buildString {
+                                    append(m.sender)
+                                    if (m.model.isNotBlank()) append(" · ").append(m.model)
+                                    if (hasBench) append("  ›工作台")
+                                    if (m.interrupted) append("  · 已中断")
+                                },
                                 fontSize = 10.sp, fontFamily = Mono, color = xc.green,
                                 modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
                                     .clickable(
@@ -304,8 +356,8 @@ private fun GroupRoomChatScreen(
                                         bottomEnd = if (isMine) 3.dp else 12.dp
                                     )
                                 )
-                                .background(if (isMine) xc.activeBg else xc.bgElevated)
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                    .background(if (isMine) xc.activeBg else xc.bgElevated)
+                                    .padding(horizontal = 10.dp, vertical = 8.dp)
                         ) {
                             // Box 是叠放布局,所有子项必须放进同一个 Column,否则引用块和正文会重叠
                             Column(Modifier.fillMaxWidth()) {
@@ -317,6 +369,10 @@ private fun GroupRoomChatScreen(
                                             .clip(RoundedCornerShape(8.dp))
                                             .background(xc.bg.copy(alpha = 0.55f))
                                             .padding(horizontal = 8.dp, vertical = 6.dp)
+                                            .clickable(
+                                                indication = null,
+                                                interactionSource = remember { MutableInteractionSource() }
+                                            ) { if (m.replyToId > 0) scrollToMessage(m.replyToId) }
                                     ) {
                                         Text(
                                             "引用 ${m.replyToSender.ifBlank { "用户" }}",
@@ -334,18 +390,71 @@ private fun GroupRoomChatScreen(
                                 }
                                 // 群成员的输出几乎必然带 Markdown,裸 Text 会把 **重点** 的星号显示出来
                                 MarkdownContent(m.content)
+                                if (m.streaming) {
+                                    Text("▍", fontSize = 13.sp, fontFamily = Mono, color = xc.green)
+                                }
+                                if (m.promptTokens > 0 || m.completionTokens > 0) {
+                                    Text(
+                                        "↑${m.promptTokens} ↓${m.completionTokens}",
+                                        fontSize = 8.sp, fontFamily = Mono, color = xc.faint,
+                                        modifier = Modifier.padding(top = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+                        // 消息操作:复制 / 引用 / 重发
+                        Row(
+                            Modifier.padding(top = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                if (menuFor == m.id) "⋯" else "···",
+                                fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                modifier = Modifier.clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) { menuFor = if (menuFor == m.id) null else m.id }
+                            )
+                            if (menuFor == m.id) {
+                                Text("复制", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                    modifier = Modifier.clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { copyMessage(m) })
+                                Text("引用", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                    modifier = Modifier.clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { quoteMessage(m) })
+                                Text("重发", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                    modifier = Modifier.clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { resendMessage(m) })
                             }
                         }
                     }
                 }
             }
-            if (busy) {
+            val summarizing = app.groupRoomSummarizing(roomId)
+            if (busy || summarizing) {
                 item {
-                    Text(
-                        if (speaking.isNotBlank()) "$speaking 正在输入…" else "…",
-                        fontSize = 11.sp, fontFamily = Mono, color = xc.faint,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        if (summarizing) {
+                            Text("正在总结房间历史…", fontSize = 10.sp, fontFamily = Mono, color = xc.yellow)
+                        }
+                        if (busy) {
+                            Text(
+                                if (speaking.isNotBlank()) "$speaking 正在输入…" else "…",
+                                fontSize = 11.sp, fontFamily = Mono, color = xc.faint
+                            )
+                        }
+                        val estimate = app.groupRoomContextEstimateText(roomId)
+                        if (estimate.isNotBlank()) {
+                            Text(estimate, fontSize = 9.sp, fontFamily = Mono, color = xc.faint)
+                        }
+                    }
                 }
             }
         }
@@ -384,6 +493,69 @@ private fun GroupRoomChatScreen(
                         Text("@${mem.displayName}", fontSize = 12.sp, fontFamily = Mono, color = xc.ink)
                     }
                 }
+            }
+        }
+
+        // 房间内工具确认卡:成员工作会话在等批准时,不必切去工作台。
+        app.groupRoomConfirm(roomId)?.let { c ->
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(xc.bgElevated)
+                    .border(1.dp, xc.border, RoundedCornerShape(12.dp))
+                    .padding(10.dp)
+            ) {
+                Text(
+                    "等待确认 · ${c.memberName} · ${c.toolName}",
+                    fontSize = 11.sp, fontFamily = Mono, color = xc.yellow
+                )
+                Text(
+                    c.preview.take(220),
+                    fontSize = 9.sp, fontFamily = Mono, color = xc.faint, lineHeight = 13.sp,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text("允许一次", fontSize = 11.sp, fontFamily = Mono, color = xc.green,
+                        modifier = Modifier.clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            app.resolveGroupConfirm(c.sessionId, com.xincode.security.ToolConfirmResult.ALLOW_ONCE)
+                        })
+                    Text("始终允许", fontSize = 11.sp, fontFamily = Mono, color = xc.green,
+                        modifier = Modifier.clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            app.resolveGroupConfirm(c.sessionId, com.xincode.security.ToolConfirmResult.ALWAYS_ALLOW)
+                        })
+                    Text("拒绝", fontSize = 11.sp, fontFamily = Mono, color = xc.red,
+                        modifier = Modifier.clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            app.resolveGroupConfirm(c.sessionId, com.xincode.security.ToolConfirmResult.DENY)
+                        })
+                }
+            }
+        }
+
+        // 待发送的引用:显示在输入框上方,可取消。
+        quoteTarget?.let { qt ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "引用 ${qt.sender.ifBlank { "我" }}: ${qt.content.take(48)}",
+                    fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                    modifier = Modifier.weight(1f)
+                )
+                Text("✕", fontSize = 12.sp, fontFamily = Mono, color = xc.red,
+                    modifier = Modifier.clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { quoteTarget = null })
             }
         }
 
@@ -429,6 +601,8 @@ private fun GroupRoomChatScreen(
                     cursorColor = xc.ink, focusedTextColor = xc.ink, unfocusedTextColor = xc.ink,
                     focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
                 ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { send() }),
                 textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = Mono)
             )
             // 跑着的时候变成停止 —— 连锁一旦滚起来,能随时叫停比什么都重要
@@ -536,6 +710,46 @@ private fun GroupRoomChatScreen(
                             scope.launch { withContext(Dispatchers.IO) {
                                 database.groupRoomDao().updateRoom(r.copy(fullAccess = it, updatedAt = System.currentTimeMillis()))
                             } }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+                        ToggleRow(
+                            "滚动总结",
+                            "每隔 N 轮把「旧总结 + 新消息」合并成新总结,历史投影只保留总结 + 游标后的原文;关掉则退回一次性压缩。",
+                            r.summaryEnabled, xc
+                        ) {
+                            scope.launch { withContext(Dispatchers.IO) {
+                                database.groupRoomDao().updateRoom(r.copy(summaryEnabled = it, updatedAt = System.currentTimeMillis()))
+                            } }
+                        }
+                        if (r.summaryEnabled) {
+                            Text(
+                                "总结频率:每 ${r.summaryEveryTurns} 轮用户发言",
+                                fontSize = 11.sp, fontFamily = Mono, color = xc.ink,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                            Row {
+                                listOf(10, 20, 50).forEach { n ->
+                                    Text(
+                                        "$n", fontSize = 11.sp, fontFamily = Mono,
+                                        color = if (r.summaryEveryTurns == n) xc.green else xc.sub,
+                                        modifier = Modifier
+                                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                                scope.launch { withContext(Dispatchers.IO) {
+                                                    database.groupRoomDao().updateRoom(
+                                                        r.copy(summaryEveryTurns = n, updatedAt = System.currentTimeMillis())
+                                                    )
+                                                } }
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                "总结模型(空 = 跟随活跃配置):${r.summaryModel.ifBlank { "默认" }}",
+                                fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
                         }
                     }
                 }
@@ -814,6 +1028,7 @@ private suspend fun deleteRoomAndWorkSessions(
     }
     dao.deleteMembersOf(room.id)
     dao.deleteMessagesOf(room.id)
+    dao.deleteSummary(room.id)
     dao.deleteRoom(room)
 }
 
@@ -1013,4 +1228,65 @@ private fun SimpleField(value: String, onChange: (String) -> Unit, hint: String,
         ),
         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = Mono)
     )
+}
+
+/** 工作区变更卡:显示成员这轮改动了哪些文件(A/M/D),不进普通气泡。 */
+@Composable
+private fun GroupDiffCard(m: GroupMessageEntity, xc: XinColors) {
+    val lines = m.content.lineSequence().toList()
+    val title = lines.firstOrNull() ?: "工作区变更"
+    val entries = lines.drop(1)
+    Column(
+        Modifier.fillMaxWidth(0.92f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(xc.bgElevated)
+            .border(1.dp, xc.border, RoundedCornerShape(12.dp))
+            .padding(10.dp)
+    ) {
+        Text(title, fontSize = 11.sp, fontFamily = Mono, color = xc.yellow, fontWeight = FontWeight.Bold)
+        entries.forEach { line ->
+            val op = line.take(1)
+            val path = line.drop(2)
+            Text(
+                path,
+                fontSize = 10.sp, fontFamily = Mono,
+                color = when (op) {
+                    "A" -> xc.green
+                    "M" -> xc.yellow
+                    "D" -> xc.red
+                    else -> xc.sub
+                },
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+/** 工具事件卡:调用参数/退出码与输出,点击展开,不进普通气泡。 */
+@Composable
+private fun GroupToolCard(m: GroupMessageEntity, xc: XinColors) {
+    var expanded by remember(m.id) { mutableStateOf(false) }
+    val firstLine = m.content.lineSequence().firstOrNull().orEmpty()
+    Column(
+        Modifier.fillMaxWidth(0.92f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(xc.bgElevated)
+            .border(1.dp, xc.border, RoundedCornerShape(12.dp))
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                expanded = !expanded
+            }
+            .padding(10.dp)
+    ) {
+        Text(
+            if (m.kind == "toolcall") "🔧 $firstLine" else "◈ $firstLine",
+            fontSize = 10.sp, fontFamily = Mono, color = xc.green, fontWeight = FontWeight.Bold
+        )
+        Text(
+            m.content.lineSequence().drop(1).joinToString("\n"),
+            fontSize = 9.sp, fontFamily = Mono, color = xc.faint, lineHeight = 13.sp,
+            maxLines = if (expanded) Int.MAX_VALUE else 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 3.dp)
+        )
+    }
 }

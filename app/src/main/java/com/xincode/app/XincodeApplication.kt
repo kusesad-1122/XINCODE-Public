@@ -17,6 +17,7 @@ import com.xincode.provider.OpenAiClient
 import com.xincode.security.KeystoreProvider
 import com.xincode.security.PermissionMode
 import com.xincode.security.SecurityGateImpl
+import com.xincode.security.ToolConfirmResult
 import com.xincode.tools.FileReadTool
 import com.xincode.tools.FileWriteTool
 import com.xincode.tools.ListDirTool
@@ -63,6 +64,14 @@ internal fun finalAssistantContentSince(
     .orEmpty()
     .trim()
 
+/** 群聊房间内等待用户批准的工具确认卡。 */
+data class GroupConfirmRequest(
+    val sessionId: Long,
+    val memberName: String,
+    val toolName: String,
+    val preview: String
+)
+
 class XincodeApplication : Application() {
 
     /** Long-lived work that must survive navigation away from its Compose screen. */
@@ -108,8 +117,13 @@ class XincodeApplication : Application() {
     val agentChatState: AgentChatState get() = active.chat
     /** sessionId -> 是否忙碌(由各 core 的状态收集器在主线程维护)。用于前台服务保活判断。 */
     private val coreBusy = HashMap<Long, Boolean>()
-    private val groupRoomJobs = mutableStateMapOf<Long, Job>()
-    private val groupRoomSpeakers = mutableStateMapOf<Long, String>()
+private val groupRoomJobs = mutableStateMapOf<Long, Job>()
+private val groupRoomSpeakers = mutableStateMapOf<Long, String>()
+private val groupRoomSummarizing = mutableStateMapOf<Long, Boolean>()
+private val groupRoomContextEstimate = mutableStateMapOf<Long, String>()
+val groupRoomConfirms = mutableStateMapOf<Long, GroupConfirmRequest>()
+private val groupSessionRoom = HashMap<Long, Long>()
+private val groupSessionMember = HashMap<Long, String>()
     private lateinit var shellExecTool: ShellExecTool
     private lateinit var backgroundReviewRunner: BackgroundReviewRunner
     lateinit var securityGate: SecurityGateImpl
@@ -731,6 +745,36 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
                 workflowState.clear()
             }
         }
+        // 群聊成员工作会话进入等待确认时,把确认卡推到房间;离开该状态就撤下。
+        val confirmRoom = groupSessionRoom[sid]
+        if (confirmRoom != null) {
+            if (state is com.xincode.core.AgentState.WaitingConfirm) {
+                groupRoomConfirms[confirmRoom] = GroupConfirmRequest(
+                    sessionId = sid,
+                    memberName = groupSessionMember[sid] ?: "成员",
+                    toolName = state.toolName,
+                    preview = state.preview
+                )
+            } else {
+                val cur = groupRoomConfirms[confirmRoom]
+                if (cur?.sessionId == sid) groupRoomConfirms.remove(confirmRoom)
+            }
+        } else if (state is com.xincode.core.AgentState.WaitingConfirm) {
+            // 冷启动后内存映射丢失:按 workSessionId 反查成员并补登记。
+            GlobalScope.launch(Dispatchers.IO) {
+                val member = database.groupRoomDao().getMemberByWorkSession(sid)
+                if (member != null) {
+                    groupSessionRoom[sid] = member.roomId
+                    groupSessionMember[sid] = member.displayName
+                    groupRoomConfirms[member.roomId] = GroupConfirmRequest(
+                        sessionId = sid,
+                        memberName = member.displayName,
+                        toolName = state.toolName,
+                        preview = state.preview
+                    )
+                }
+            }
+        }
         refreshForegroundService()
         // 后台会话(非当前)跑完即从池中回收:再回到它时会从 Room 重新加载最新历史。
         // 例外:运行中的 Goal 任务【钉住】不回收(轮次之间会短暂空闲,控制器还要驱动它继续)。
@@ -841,18 +885,64 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
     /** Name of the member currently producing a reply, or an empty string between replies. */
     fun groupRoomSpeaker(roomId: Long): String = groupRoomSpeakers[roomId].orEmpty()
 
+    /** 房间是否正在做滚动总结。 */
+    fun groupRoomSummarizing(roomId: Long): Boolean = groupRoomSummarizing[roomId] == true
+
+    /** 回复前的上下文估算提示(例如「架构师 · 上下文 ≈ 3200 tokens」)。 */
+    fun groupRoomContextEstimateText(roomId: Long): String = groupRoomContextEstimate[roomId].orEmpty()
+
+    /** 房间当前等待批准的确认卡;没有则为 null。 */
+    fun groupRoomConfirm(roomId: Long): GroupConfirmRequest? = groupRoomConfirms[roomId]
+
+    /** 从群聊房间的确认卡批准/拒绝某个成员工作会话里的工具。 */
+    fun resolveGroupConfirm(sessionId: Long, result: ToolConfirmResult) {
+        val chat = sessionPool[sessionId]?.chat
+        when (result) {
+            ToolConfirmResult.ALLOW_ONCE -> chat?.approveOnceConfirmation()
+            ToolConfirmResult.ALWAYS_ALLOW -> chat?.approveAlwaysConfirmation()
+            ToolConfirmResult.DENY -> chat?.denyConfirmation()
+        }
+        val rid = groupSessionRoom[sessionId]
+        if (rid != null && groupRoomConfirms[rid]?.sessionId == sessionId) {
+            groupRoomConfirms.remove(rid)
+        }
+    }
+
     /**
      * Start a room turn in the Application scope so leaving the room does not cancel it.
-     * Returns false when the input is empty or the same room already has a running chain.
+     * If the room is already running, the new message interrupts the old chain first
+     * (its streaming rows are marked interrupted), then starts the new chain.
+     *
+     * @param replyToId 用户消息引用的原消息;成员回复时会自动带上这条引用。
      */
-    fun sendGroupMessage(roomId: Long, rawText: String): Boolean {
+    fun sendGroupMessage(
+        roomId: Long,
+        rawText: String,
+        replyToId: Long = 0,
+        replyToSender: String = "",
+        replyToContent: String = ""
+    ): Boolean {
         val text = rawText.trim()
-        if (text.isBlank() || isGroupRoomBusy(roomId)) return false
+        if (text.isBlank()) return false
+
+        // 新消息打断旧回复:取消旧链,把还在流式的消息标记为已中断,再开新链。
+        val old = groupRoomJobs[roomId]
+        if (old?.isActive == true) {
+            old.cancel()
+            applicationScope.launch(Dispatchers.IO) {
+                database.groupRoomDao().markStreamingInterrupted(roomId)
+            }
+            groupRoomSpeakers.remove(roomId)
+            groupRoomContextEstimate.remove(roomId)
+        }
 
         val job = applicationScope.launch(start = CoroutineStart.LAZY) {
             val seedMessageId = withContext(Dispatchers.IO) {
                 database.groupRoomDao().insertMessage(
-                    com.xincode.data.GroupMessageEntity(roomId = roomId, sender = "", content = text)
+                    com.xincode.data.GroupMessageEntity(
+                        roomId = roomId, sender = "", content = text,
+                        replyToId = replyToId, replyToSender = replyToSender, replyToContent = replyToContent
+                    )
                 )
             }
             GroupRoomEngine.onMessage(
@@ -868,6 +958,14 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
                 ensureWorkSession = { member -> ensureGroupWorkSession(roomId, member) },
                 onSpeaking = { name ->
                     applicationScope.launch { groupRoomSpeakers[roomId] = name }
+                },
+                onSummaryStatus = { active ->
+                    applicationScope.launch { groupRoomSummarizing[roomId] = active }
+                },
+                onContextStatus = { name, estimate ->
+                    applicationScope.launch {
+                        groupRoomContextEstimate[roomId] = "$name · 上下文 ≈ ${estimate} tokens"
+                    }
                 }
             )
         }
@@ -876,6 +974,9 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             applicationScope.launch {
                 if (groupRoomJobs[roomId] === job) groupRoomJobs.remove(roomId)
                 groupRoomSpeakers.remove(roomId)
+                groupRoomSummarizing.remove(roomId)
+                groupRoomContextEstimate.remove(roomId)
+                groupRoomConfirms.remove(roomId)
                 refreshForegroundService()
             }
         }
@@ -887,13 +988,23 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
     /** Stop only this room's chain; other rooms and normal chats continue. */
     fun stopGroupMessage(roomId: Long) {
         groupRoomJobs[roomId]?.cancel()
+        applicationScope.launch(Dispatchers.IO) {
+            database.groupRoomDao().markStreamingInterrupted(roomId)
+        }
+        groupRoomSpeakers.remove(roomId)
+        groupRoomSummarizing.remove(roomId)
+        groupRoomContextEstimate.remove(roomId)
     }
 
     private suspend fun ensureGroupWorkSession(
         roomId: Long,
         member: com.xincode.data.GroupMemberEntity
     ): Long = withContext(Dispatchers.IO) {
-        if (member.workSessionId > 0) return@withContext member.workSessionId
+        if (member.workSessionId > 0) {
+            groupSessionRoom[member.workSessionId] = roomId
+            groupSessionMember[member.workSessionId] = member.displayName
+            return@withContext member.workSessionId
+        }
         val roomName = database.groupRoomDao().getRoom(roomId)?.name ?: "群聊"
         database.inTransaction {
             val sid = database.sessionDao().upsert(
@@ -903,6 +1014,8 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
                 )
             )
             database.groupRoomDao().updateMember(member.copy(workSessionId = sid))
+            groupSessionRoom[sid] = roomId
+            groupSessionMember[sid] = member.displayName
             sid
         }
     }
