@@ -2,6 +2,7 @@ package com.xincode.app
 
 import com.xincode.core.Tool
 import com.xincode.core.ToolResult
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -10,6 +11,11 @@ import org.json.JSONObject
  * 这样用户能直接看到 AI 在操作什么(可视化 AI 终端)。环境未部署时返回提示。
  */
 class EnvExecTool(private val terminal: TerminalState) : Tool {
+    companion object {
+        /** 环境内命令兜底超时:apt 等长任务正常跑得完,但绝不能无限挂起。 */
+        private const val ENV_TIMEOUT_MS = 300_000L
+    }
+
     override val name = "env_exec"
     override val description =
         "在内置 Ubuntu 环境(apt/node/python/rust/go 等都在这里)执行一条 shell 命令并返回输出。" +
@@ -37,10 +43,19 @@ class EnvExecTool(private val terminal: TerminalState) : Tool {
         }
         terminal.appendChunk("$ [AI] $cmd")
         val out = StringBuilder()
-        val res = LinuxEnvironment.runInEnvStreaming(cmd) { line ->
-            terminal.appendChunk(line)
-            out.append(line).append('\n')
-            if (out.length > 12000) out.delete(0, out.length - 8000)
+        val res = withTimeoutOrNull(ENV_TIMEOUT_MS) {
+            LinuxEnvironment.runInEnvStreaming(cmd) { line ->
+                terminal.appendChunk(line)
+                out.append(line).append('\n')
+                if (out.length > 12000) out.delete(0, out.length - 8000)
+            }
+        }
+        if (res == null) {
+            terminal.appendChunk("[timeout ${ENV_TIMEOUT_MS / 1000}s]")
+            return ToolResult.Error(
+                "命令超时 (${ENV_TIMEOUT_MS / 1000}s)。" +
+                    "命令可能正在等待输入或子进程未退出;可给命令加 `</dev/null` 或 `timeout 60` 前缀再试。"
+            )
         }
         terminal.appendChunk("[exit ${res.exitCode}]")
         val text = out.toString().trim().ifBlank { "(无输出)" }
