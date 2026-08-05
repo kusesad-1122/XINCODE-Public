@@ -39,9 +39,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -50,6 +52,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+
+internal fun finalAssistantContentSince(
+    messages: List<ChatState.MessageUi>,
+    startIndex: Int
+): String = messages
+    .drop(startIndex.coerceIn(0, messages.size))
+    .lastOrNull { it.role == "assistant" && it.content.isNotBlank() }
+    ?.content
+    .orEmpty()
+    .trim()
 
 class XincodeApplication : Application() {
 
@@ -931,24 +943,44 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         // 摘走之后用户点进去看到的会是另一份实例,历史对不上。
         activeGoalSessions.add(sessionId)
         try {
-            suspend fun waitUntil(limitMs: Long, cond: () -> Boolean) {
-                val deadline = System.currentTimeMillis() + limitMs
-                while (System.currentTimeMillis() < deadline && !cond()) {
-                    kotlinx.coroutines.delay(200)
+            // isStreaming is a presentation state and can briefly become false between an
+            // assistant segment and a tool call. The Job is the authoritative whole-turn
+            // lifecycle, so never use the UI state to decide which message is the final reply.
+            val previousTurn = withContext(Dispatchers.Main) { chat.activeTurnJob() }
+            if (previousTurn?.isActive == true) {
+                val becameReady = withTimeoutOrNull(15_000L) {
+                    previousTurn.join()
+                    true
+                } == true
+                if (!becameReady) return ""
+            }
+
+            val (messageStartIndex, turnJob) = withContext(Dispatchers.Main) {
+                val startIndex = chat.messages.size
+                chat.input.value = prompt
+                startIndex to chat.sendTracked()
+            }
+            if (turnJob == null) return ""
+
+            try {
+                val completed = withTimeoutOrNull(timeoutMs) {
+                    turnJob.join()
+                    true
+                } == true
+                if (!completed || turnJob.isCancelled) return ""
+
+                return withContext(Dispatchers.Main) {
+                    finalAssistantContentSince(chat.messages, messageStartIndex)
+                }
+            } finally {
+                // Stopping a room or timing out must stop the member turn as well; otherwise
+                // it can keep writing to the workbench after the group chain has ended.
+                if (!turnJob.isCompleted) {
+                    withContext(NonCancellable + Dispatchers.Main) {
+                        chat.cancelTurn(turnJob)
+                    }
                 }
             }
-            waitUntil(15_000) { !chat.isStreaming.value }
-            withContext(Dispatchers.Main) {
-                chat.input.value = prompt
-                chat.send()
-            }
-            // 先等它【开始】说话:没这一步的话,send 还没起来就直接判成「已结束」
-            waitUntil(20_000) { chat.isStreaming.value }
-            waitUntil(timeoutMs) { !chat.isStreaming.value }
-
-            return chat.messages.lastOrNull {
-                it.role == "assistant" && it.content.isNotBlank()
-            }?.content.orEmpty().trim()
         } finally {
             activeGoalSessions.remove(sessionId)
             refreshForegroundService()

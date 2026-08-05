@@ -100,6 +100,20 @@ class AgentChatState(
         activeJob = null
     }
 
+    /** The whole agent turn, including tool calls and final token persistence. Main-thread only. */
+    internal fun activeTurnJob(): Job? = activeJob
+
+    /** Start a normal send and return the exact turn job that owns its full lifecycle. */
+    internal fun sendTracked(): Job? {
+        send()
+        return activeJob
+    }
+
+    /** Cancel only when [job] is still this chat's current turn. Main-thread only. */
+    internal fun cancelTurn(job: Job) {
+        if (activeJob === job) stop()
+    }
+
     /** Called once after construction to bind coroutine scope and observe state. */
     fun init(scope: CoroutineScope) {
         // gap-10:自动压缩触发时复用 /compact 的非流式总结逻辑。
@@ -463,7 +477,7 @@ class AgentChatState(
         val text = input.value.trim()
         if (text.isEmpty()) return
         // AI 正在跑 → 中途插话(注入到当前循环,不打断);否则正常新起一轮。
-        if (isStreaming.value) { steer(text); return }
+        if (activeJob?.isActive == true) { steer(text); return }
 
         input.value = ""
 
