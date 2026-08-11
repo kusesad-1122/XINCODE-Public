@@ -17,7 +17,7 @@ data class ProviderConfigEntity(
     val enabledModelIds: List<String> = emptyList(),  // user-selected models for quick switch
     val isActive: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    val apiPathType: String = "openai",       // "openai" → /v1/chat/completions, "anthropic" → /v1/messages, "custom" → no append
+    val apiPathType: String = "openai",       // "openai" → /v1/chat/completions, "responses" → /v1/responses, "anthropic" → /v1/messages, "custom" → no append
     // gap-08:自定义请求头(JSON 对象字符串),verbatim 注入 inference 请求(BYOK/网关头/归因)。
     val extraHeadersJson: String = "",
     // gap-10:上下文窗口(tokens,0=未声明走默认)与自动压缩阈值百分比。

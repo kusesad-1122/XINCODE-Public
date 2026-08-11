@@ -8,6 +8,8 @@ import com.xincode.data.GroupMessageEntity
 import com.xincode.data.GroupRoomEntity
 import com.xincode.data.GroupRoomSummaryEntity
 import com.xincode.core.AgentState
+import com.xincode.provider.ResponsesProtocol
+import com.xincode.provider.ResponsesStreamParser
 import com.xincode.tools.WorkspaceContext
 import com.xincode.security.KeystoreProvider
 import kotlinx.coroutines.CancellationException
@@ -363,14 +365,25 @@ object GroupRoomEngine {
                     )
                 )
 
-                val body = JSONObject().apply {
-                    put("model", model)
-                    put("messages", messages)
-                    put("stream", true)
+                val messageList = (0 until messages.length()).map { messages.getJSONObject(it) }
+                val responses = cfg.apiPathType == "responses"
+                val body = if (responses) {
+                    ResponsesProtocol.buildRequest(
+                        model = model,
+                        messages = messageList,
+                        stream = true
+                    )
+                } else {
+                    JSONObject().apply {
+                        put("model", model)
+                        put("messages", messages)
+                        put("stream", true)
+                    }
                 }
-                val req = Request.Builder().url(chatUrl(cfg.baseUrl))
+                val req = Request.Builder().url(chatUrl(cfg.baseUrl, cfg.apiPathType))
                     .addHeader("Authorization", "Bearer $apiKey")
                     .addHeader("Content-Type", "application/json")
+                    .applyExtraHeaders(cfg.extraHeadersJson)
                     .post(body.toString().toRequestBody(JSON))
                     .build()
 
@@ -379,21 +392,38 @@ object GroupRoomEngine {
                         throw IllegalStateException("HTTP ${resp.code}: ${resp.body?.string().orEmpty().take(150)}")
                     }
                     val source = resp.body?.source() ?: throw IllegalStateException("空响应体")
-                    var sawFinish = false
-                    while (source.isOpen) {
-                        currentCoroutineContext().ensureActive()
-                        val line = source.readUtf8Line() ?: break
-                        val chunk = parseGroupSseLine(line) ?: continue
-                        if (chunk.content.isNotEmpty()) contentBuf.append(chunk.content)
-                        if (chunk.reasoning.isNotEmpty()) reasoningBuf.append(chunk.reasoning)
-                        chunk.usage?.let { usage = it }
-                        if (chunk.content.isNotEmpty() || chunk.reasoning.isNotEmpty()) flush(false)
-                        if (chunk.finishReason != null) {
-                            sawFinish = true
-                            break
+                    if (responses) {
+                        val parser = ResponsesStreamParser(
+                            onText = { contentBuf.append(it) },
+                            onReasoning = { reasoningBuf.append(it) }
+                        )
+                        while (!source.exhausted()) {
+                            currentCoroutineContext().ensureActive()
+                            val before = contentBuf.length + reasoningBuf.length
+                            parser.accept(source.readUtf8Line() ?: break)
+                            if (contentBuf.length + reasoningBuf.length > before) flush(false)
                         }
+                        val result = parser.result()
+                        if (result.errorMessage != null) throw IllegalStateException(result.errorMessage)
+                        usage = result.usage
+                        !result.truncated
+                    } else {
+                        var sawFinish = false
+                        while (source.isOpen) {
+                            currentCoroutineContext().ensureActive()
+                            val line = source.readUtf8Line() ?: break
+                            val chunk = parseGroupSseLine(line) ?: continue
+                            if (chunk.content.isNotEmpty()) contentBuf.append(chunk.content)
+                            if (chunk.reasoning.isNotEmpty()) reasoningBuf.append(chunk.reasoning)
+                            chunk.usage?.let { usage = it }
+                            if (chunk.content.isNotEmpty() || chunk.reasoning.isNotEmpty()) flush(false)
+                            if (chunk.finishReason != null) {
+                                sawFinish = true
+                                break
+                            }
+                        }
+                        sawFinish
                     }
-                    sawFinish
                 }
 
                 val produced = contentBuf.toString().trim()
@@ -637,25 +667,27 @@ object GroupRoomEngine {
         val model = room.summaryModel.ifBlank { cfg.model }
 
         try {
-            val body = JSONObject().apply {
-                put("model", model)
-                put(
-                    "messages", JSONArray()
-                        .put(JSONObject().put("role", "system").put("content", GROUP_SUMMARY_SYSTEM_PROMPT))
-                        .put(
-                            JSONObject().put(
-                                "role", "user"
-                            ).put(
-                                "content",
-                                buildGroupSummaryPrompt(summary?.summary.orEmpty(), unsummarized)
-                            )
-                        )
+            val messages = listOf(
+                JSONObject().put("role", "system").put("content", GROUP_SUMMARY_SYSTEM_PROMPT),
+                JSONObject().put("role", "user").put(
+                    "content",
+                    buildGroupSummaryPrompt(summary?.summary.orEmpty(), unsummarized)
                 )
-                put("stream", false)
+            )
+            val responses = cfg.apiPathType == "responses"
+            val body = if (responses) {
+                ResponsesProtocol.buildRequest(model = model, messages = messages)
+            } else {
+                JSONObject().apply {
+                    put("model", model)
+                    put("messages", JSONArray(messages))
+                    put("stream", false)
+                }
             }
-            val req = Request.Builder().url(chatUrl(cfg.baseUrl))
+            val req = Request.Builder().url(chatUrl(cfg.baseUrl, cfg.apiPathType))
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
+                .applyExtraHeaders(cfg.extraHeadersJson)
                 .post(body.toString().toRequestBody(JSON))
                 .build()
             val text = http.newCall(req).execute().use { resp ->
@@ -663,11 +695,12 @@ object GroupRoomEngine {
                 resp.body?.string().orEmpty()
             }
             val json = JSONObject(text)
-            val output = optContent(
+            val responsesResult = if (responses) ResponsesProtocol.extractResponse(json) else null
+            val output = (responsesResult?.content ?: optContent(
                 json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
-            ).trim()
+            )).trim()
             if (output.isBlank()) throw IllegalStateException("总结模型返回空内容")
-            json.optJSONObject("usage")?.let {
+            (responsesResult?.usage ?: json.optJSONObject("usage"))?.let {
                 UsageRecorder.record(
                     database = database, usage = it, sessionId = -roomId,
                     model = model, provider = cfg.name, source = "group-summary"
@@ -729,33 +762,36 @@ object GroupRoomEngine {
             val who = if (m.sender.isBlank()) "用户" else m.sender
             "$who: ${displayText(m)}"
         }
-        val body = JSONObject().apply {
-            put("model", cfg.model)
-            put(
-                "messages", JSONArray().put(
-                    JSONObject().put(
-                        "role", "user"
-                    ).put(
-                        "content",
-                        "把下面这段多人群聊压缩成不超过 600 字的摘要,保留每个人的立场、结论和未决问题。" +
-                            "只输出摘要正文。\n\n$transcript"
-                    )
-                )
+        val messages = listOf(
+            JSONObject().put("role", "user").put(
+                "content",
+                "把下面这段多人群聊压缩成不超过 600 字的摘要,保留每个人的立场、结论和未决问题。" +
+                    "只输出摘要正文。\n\n$transcript"
             )
-            put("stream", false)
+        )
+        val responses = cfg.apiPathType == "responses"
+        val body = if (responses) {
+            ResponsesProtocol.buildRequest(model = cfg.model, messages = messages)
+        } else {
+            JSONObject().apply {
+                put("model", cfg.model)
+                put("messages", JSONArray(messages))
+                put("stream", false)
+            }
         }
         runCatching {
-            val req = Request.Builder().url(chatUrl(cfg.baseUrl))
+            val req = Request.Builder().url(chatUrl(cfg.baseUrl, cfg.apiPathType))
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
+                .applyExtraHeaders(cfg.extraHeadersJson)
                 .post(body.toString().toRequestBody(JSON))
                 .build()
             http.newCall(req).execute().use { resp ->
                 if (!resp.isSuccessful) return@runCatching
-                val digest = optContent(
-                    JSONObject(resp.body?.string().orEmpty())
-                        .optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
-                ).trim()
+                val json = JSONObject(resp.body?.string().orEmpty())
+                val digest = (if (responses) ResponsesProtocol.extractResponse(json).content else optContent(
+                    json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+                )).trim()
                 if (digest.isBlank()) return@runCatching
                 dao.insertMessage(
                     GroupMessageEntity(
@@ -880,10 +916,26 @@ object GroupRoomEngine {
         return if (lines.isEmpty()) "" else "工作区变更\n" + lines.joinToString("\n")
     }
 
-    /** 与 OpenAiClient 同一套版本段规则:base_url 自带 /v1 就不再补。 */
-    private fun chatUrl(baseUrl: String): String {
+    /** 与 OpenAiClient 同一套版本段规则,并分派 Responses API 端点。 */
+    private fun chatUrl(baseUrl: String, apiPathType: String = "openai"): String {
+        if (apiPathType == "responses") return ResponsesProtocol.endpoint(baseUrl)
         val b = baseUrl.trim().trimEnd('/')
         return if (Regex("/v\\d+[a-zA-Z0-9]*$").containsMatchIn(b)) "$b/chat/completions"
         else "$b/v1/chat/completions"
+    }
+
+    private fun Request.Builder.applyExtraHeaders(value: String): Request.Builder {
+        if (value.isBlank()) return this
+        try {
+            val headers = JSONObject(value)
+            val keys = headers.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                if (key.isNotBlank() && !headers.isNull(key)) header(key, headers.optString(key))
+            }
+        } catch (_: Exception) {
+            // Optional headers are best-effort.
+        }
+        return this
     }
 }

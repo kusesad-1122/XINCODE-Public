@@ -2,6 +2,7 @@ package com.xincode.app
 
 import android.util.Base64
 import com.xincode.data.AppDatabase
+import com.xincode.provider.ResponsesProtocol
 import com.xincode.security.KeystoreProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -166,40 +167,51 @@ object PromptExpander {
             }
         }
 
-        val body = JSONObject().apply {
-            put("model", cfg.model)
-            put("messages", JSONArray().apply {
-                put(JSONObject().put("role", "system").put("content", instruction))
-                put(
-                    JSONObject().put("role", "user").put(
-                        "content",
-                        "待改写提示词(JSON 字符串):\n${JSONObject.quote(text)}"
-                    )
-                )
-            })
-            put("stream", false)
-            put("temperature", 0.2)
+        val messages = listOf(
+            JSONObject().put("role", "system").put("content", instruction),
+            JSONObject().put("role", "user").put(
+                "content",
+                "待改写提示词(JSON 字符串):\n${JSONObject.quote(text)}"
+            )
+        )
+        val responses = cfg.apiPathType == "responses"
+        val body = if (responses) {
+            ResponsesProtocol.buildRequest(
+                model = cfg.model,
+                messages = messages,
+                temperature = 0.2f
+            )
+        } else {
+            JSONObject().apply {
+                put("model", cfg.model)
+                put("messages", JSONArray(messages))
+                put("stream", false)
+                put("temperature", 0.2)
+            }
         }
 
         return@withContext try {
+            val endpoint = if (responses) ResponsesProtocol.endpoint(cfg.baseUrl) else chatUrl(cfg.baseUrl)
             val req = Request.Builder()
-                .url(chatUrl(cfg.baseUrl))
+                .url(endpoint)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
+                .applyExtraHeaders(cfg.extraHeadersJson)
                 .post(body.toString().toRequestBody(JSON))
                 .build()
             val raw = awaitBody(http.newCall(req))
             val json = JSONObject(raw)
+            val parsed = if (responses) ResponsesProtocol.extractResponse(json) else null
 
             // 这条也要记账 —— 扩展一次是一次真实的模型调用,漏了账就对不上
-            json.optJSONObject("usage")?.let { usage ->
+            (parsed?.usage ?: json.optJSONObject("usage"))?.let { usage ->
                 UsageRecorder.record(
                     database, usage, sessionId = 0,
                     model = cfg.model, provider = cfg.name, source = "expand"
                 )
             }
 
-            val out = json.optJSONArray("choices")?.optJSONObject(0)
+            val out = parsed?.content ?: json.optJSONArray("choices")?.optJSONObject(0)
                 ?.optJSONObject("message")?.optString("content").orEmpty()
             Result.success(extractExpandedPrompt(out))
         } catch (cancelled: CancellationException) {
@@ -254,5 +266,20 @@ object PromptExpander {
         val b = baseUrl.trim().trimEnd('/')
         return if (Regex("/v\\d+[a-zA-Z0-9]*$").containsMatchIn(b)) "$b/chat/completions"
         else "$b/v1/chat/completions"
+    }
+
+    private fun Request.Builder.applyExtraHeaders(value: String): Request.Builder {
+        if (value.isBlank()) return this
+        try {
+            val headers = JSONObject(value)
+            val keys = headers.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                if (key.isNotBlank() && !headers.isNull(key)) header(key, headers.optString(key))
+            }
+        } catch (_: Exception) {
+            // Optional headers are best-effort.
+        }
+        return this
     }
 }

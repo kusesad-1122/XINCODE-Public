@@ -2,13 +2,13 @@
 
 **纯 Kotlin 原生 Android AI 智能体。** 一个运行在手机上的自主 AI Agent:多供应商接入、工具调用循环、子智能体并行协作、长期记忆、内置 root/Ubuntu 环境与终端,以及像素风「智能体指挥室」实时动画。从零构建,无跨端框架。
 
-> 版本:**1.0**(versionCode 100) · 许可:**GPL-3.0-or-later**
+> 版本:**1.19**(versionCode 119) · 许可:**GPL-3.0-or-later**
 
 ---
 
 ## ✨ 主要能力
 
-- **智能体核心** — OpenAI 兼容 / DeepSeek / Anthropic 等多供应商,自定义端点与模型清单;工具调用循环 + 结构化输出 + Prompt 缓存纪律。
+- **智能体核心** — OpenAI Chat Completions / Responses API / DeepSeek / Anthropic 等多供应商,自定义端点与模型清单;工具调用循环 + 结构化输出 + Prompt 缓存纪律。
 - **计划 / 协作模式** — 计划模式可视化任务卡;协作模式下主脑把任务并行派发给多个专职子智能体,汇总回主脑。
 - **指挥室** — 像素风「智能体指挥室」(WebView + HTML5 Canvas),每个子智能体一个工位与像素小人,派活即联动动画。
 - **环境与终端** — root 终端;内置 Ubuntu 环境(root + chroot 自动部署),可直接执行命令;一键部署常用开发环境。
@@ -92,7 +92,7 @@ cd XINCODE
 
 ## ⚙️ 使用前配置
 
-首次启动后,进入设置填写你自己的 LLM 供应商信息(端点 + API Key + 模型)。XINCODE 不内置任何托管密钥,所有请求都直连你配置的供应商。
+首次启动后,进入设置填写你自己的 LLM 供应商信息(端点 + API Key + 模型)。需要 OpenAI Responses API 时选择「OpenAI Responses」路径；它会调用 `/v1/responses`，并将工具调用、结构化输出和流式事件转换为应用内部格式。XINCODE 不内置任何托管密钥，API Key 只保存在设备 Keystore 加密配置中，正式包不包含任何 Key。
 
 ---
 
