@@ -538,7 +538,9 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
                 if (enc.isNotBlank()) keystore.decrypt(android.util.Base64.decode(enc, android.util.Base64.NO_WRAP)) else ""
             },
             judgeBaseUrl = runBlocking { database.providerConfigDao().getActive()?.baseUrl ?: "" },
-            judgeModel = runBlocking { database.providerConfigDao().getActive()?.model ?: "" }
+            judgeModel = runBlocking { database.providerConfigDao().getActive()?.model ?: "" },
+            judgeApiPathType = runBlocking { database.providerConfigDao().getActive()?.apiPathType ?: "openai" },
+            judgeExtraHeadersJson = runBlocking { database.providerConfigDao().getActive()?.extraHeadersJson ?: "" }
         )
 
         // 首启种子:5 基础技能 + 2 默认 MCP(只种一次)。
@@ -1143,7 +1145,9 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         com.xincode.provider.JudgeService(
             baseUrl = cfg?.baseUrl ?: "",
             apiKey = key,
-            model = modelOverride.ifBlank { cfg?.model ?: "" }
+            model = modelOverride.ifBlank { cfg?.model ?: "" },
+            apiPathType = cfg?.apiPathType ?: "openai",
+            extraHeadersJson = cfg?.extraHeadersJson ?: ""
         )
     }
 

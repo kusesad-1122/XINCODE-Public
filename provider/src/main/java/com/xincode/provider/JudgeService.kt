@@ -22,7 +22,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class JudgeService(
     private val baseUrl: String,
     private val apiKey: String,
-    private val model: String
+    private val model: String,
+    private val apiPathType: String = "openai",
+    private val extraHeadersJson: String = ""
 ) {
     companion object {
         private const val TAG = "JudgeService"
@@ -74,52 +76,69 @@ class JudgeService(
     suspend fun judge(goal: String, output: String, iteration: Int): JudgeResult? = withContext(Dispatchers.IO) {
         try {
             val trimmedOutput = output.take(3000)
-            val body = JSONObject().apply {
-                put("model", model)
-                put("messages", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "system")
-                        put("content", JUDGE_PROMPT)
+            val messages = listOf(
+                JSONObject().apply {
+                    put("role", "system")
+                    put("content", JUDGE_PROMPT)
+                },
+                JSONObject().apply {
+                    put("role", "user")
+                    put("content", "目标: $goal\n\n当前轮次: $iteration\n\nAgent 最新输出:\n$trimmedOutput")
+                }
+            )
+            val responses = apiPathType == "responses"
+            val body = if (responses) {
+                ResponsesProtocol.buildRequest(
+                    model = model,
+                    messages = messages,
+                    maxOutputTokens = 500
+                )
+            } else {
+                JSONObject().apply {
+                    put("model", model)
+                    put("messages", JSONArray(messages))
+                    put("max_tokens", 500)
+                    put("stream", false)
+                    // DeepSeek: explicitly disable thinking for non-streaming judge calls
+                    put("thinking", JSONObject().apply {
+                        put("type", "disabled")
                     })
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", "目标: $goal\n\n当前轮次: $iteration\n\nAgent 最新输出:\n$trimmedOutput")
-                    })
-                })
-                put("max_tokens", 500)
-                put("stream", false)
-                // DeepSeek: explicitly disable thinking for non-streaming judge calls
-                put("thinking", JSONObject().apply {
-                    put("type", "disabled")
-                })
+                }
             }
 
-            Log.d(TAG, "→ POST $baseUrl/v1/chat/completions (judge, model=$model)")
+            val endpoint = if (responses) ResponsesProtocol.endpoint(baseUrl)
+            else "${baseUrl.trimEnd('/')}/v1/chat/completions"
+            Log.d(TAG, "→ POST $endpoint (judge, model=$model)")
 
             val request = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/v1/chat/completions")
+                .url(endpoint)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
+                .applyExtraHeaders(extraHeadersJson)
                 .post(body.toString().toRequestBody(JSON_TYPE))
                 .build()
 
             val response = httpClient.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
+            val responseCode = response.code
+            val responseBody = response.use { it.body?.string() ?: "" }
 
-            Log.d(TAG, "← ${response.code} ${responseBody.take(300)}")
+            Log.d(TAG, "← $responseCode ${responseBody.take(300)}")
 
-            if (!response.isSuccessful) {
-                Log.w(TAG, "Judge API error: ${response.code} ${responseBody.take(200)}")
+            if (responseCode !in 200..299) {
+                Log.w(TAG, "Judge API error: $responseCode ${responseBody.take(200)}")
                 return@withContext null
             }
 
-            // Extract content - handle both standard and reasoning_content responses
             val json = JSONObject(responseBody)
-            val choices = json.getJSONArray("choices")
-            val message = choices.getJSONObject(0).getJSONObject("message")
-            val content = if (!message.isNull("content")) {
-                message.getString("content")
+            val content = if (responses) {
+                ResponsesProtocol.extractResponse(json).content
             } else {
+                // Extract content - handle both standard and reasoning_content responses
+                val choices = json.getJSONArray("choices")
+                val message = choices.getJSONObject(0).getJSONObject("message")
+                if (!message.isNull("content")) message.getString("content") else ""
+            }
+            if (content.isBlank()) {
                 Log.w(TAG, "Judge returned null content")
                 return@withContext null
             }
@@ -130,6 +149,21 @@ class JudgeService(
             Log.w(TAG, "Judge failed: ${e.message}", e)
             null
         }
+    }
+
+    private fun Request.Builder.applyExtraHeaders(value: String): Request.Builder {
+        if (value.isBlank()) return this
+        try {
+            val headers = JSONObject(value)
+            val keys = headers.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                if (key.isNotBlank() && !headers.isNull(key)) header(key, headers.optString(key))
+            }
+        } catch (_: Exception) {
+            // Optional headers are best-effort; malformed JSON must not break judging.
+        }
+        return this
     }
 
     private fun parseJudgeResult(content: String): JudgeResult {

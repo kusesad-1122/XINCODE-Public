@@ -231,6 +231,44 @@ class OpenAiClient(
         try {
             val cfg = resolveConfig().getOrElse { return@withContext Result.failure(it) }
 
+            if (cfg.apiPathType == "responses") {
+                val body = ResponsesProtocol.buildRequest(
+                    model = cfg.model,
+                    messages = listOf(
+                        JSONObject().put("role", "system").put("content", "You are a helpful assistant."),
+                        JSONObject().put("role", "user").put("content", userMessage)
+                    )
+                )
+                val endpoint = ResponsesProtocol.endpoint(cfg.baseUrl)
+                val request = Request.Builder()
+                    .url(endpoint)
+                    .addHeader("Authorization", "Bearer ${cfg.apiKey}")
+                    .addHeader("Content-Type", "application/json")
+                    .applyExtraHeaders(cfg.extraHeadersJson)
+                    .post(body.toString().toRequestBody(JSON))
+                    .build()
+
+                Log.d(TAG, "→ POST $endpoint model=${cfg.model} (responses)")
+                httpClient.newCall(request).execute().use { response ->
+                    val responseBody = response.body?.string() ?: ""
+                    Log.d(TAG, "← ${response.code} ${responseBody.take(500)}")
+                    if (!response.isSuccessful) {
+                        return@withContext Result.failure(
+                            ApiError.from(IOException("HTTP ${response.code}"), httpCode = response.code)
+                        )
+                    }
+                    val parsed = ResponsesProtocol.extractResponse(JSONObject(responseBody))
+                    if (parsed.errorMessage != null) {
+                        return@withContext Result.failure(ApiError.from(IOException(parsed.errorMessage)))
+                    }
+                    if (parsed.content.isBlank()) {
+                        return@withContext Result.failure(IllegalStateException("Responses 返回为空"))
+                    }
+                    Log.i(TAG, "✓ Responses response: ${parsed.content.take(200)}")
+                    return@withContext Result.success(parsed.content)
+                }
+            }
+
             val body = JSONObject().apply {
                 put("model", cfg.model)
                 put("messages", JSONArray().apply {
@@ -250,6 +288,7 @@ class OpenAiClient(
                 .url(chatEndpoint(cfg.baseUrl, cfg.apiPathType))
                 .addHeader("Authorization", "Bearer ${cfg.apiKey}")
                 .addHeader("Content-Type", "application/json")
+                .applyExtraHeaders(cfg.extraHeadersJson)
                 .post(body.toString().toRequestBody(JSON))
                 .build()
 
@@ -310,6 +349,11 @@ class OpenAiClient(
                     return@withContext
                 }
 
+                if (cfg.apiPathType == "responses") {
+                    chatStreamResponses(cfg, userMessage, systemPrompt, onToken, onReasoning, onComplete, onError)
+                    return@withContext
+                }
+
                 val body = JSONObject().apply {
                     put("model", cfg.model)
                     put("messages", JSONArray().apply {
@@ -332,6 +376,7 @@ class OpenAiClient(
                     .url(chatEndpoint(cfg.baseUrl, cfg.apiPathType))
                     .addHeader("Authorization", "Bearer ${cfg.apiKey}")
                     .addHeader("Content-Type", "application/json")
+                    .applyExtraHeaders(cfg.extraHeadersJson)
                     .post(body.toString().toRequestBody(JSON))
                     .build()
 
@@ -384,6 +429,73 @@ class OpenAiClient(
         }
     }
 
+    private suspend fun chatStreamResponses(
+        cfg: ResolvedConfig,
+        userMessage: String,
+        systemPrompt: String,
+        onToken: (String) -> Unit,
+        onReasoning: (String) -> Unit,
+        onComplete: () -> Unit,
+        onError: suspend (ApiError) -> Unit
+    ) {
+        var response: okhttp3.Response? = null
+        try {
+            val body = ResponsesProtocol.buildRequest(
+                model = cfg.model,
+                messages = listOf(
+                    JSONObject().put("role", "system").put("content", systemPrompt),
+                    JSONObject().put("role", "user").put("content", userMessage)
+                ),
+                stream = true
+            )
+            val endpoint = ResponsesProtocol.endpoint(cfg.baseUrl)
+            val request = Request.Builder()
+                .url(endpoint)
+                .addHeader("Authorization", "Bearer ${cfg.apiKey}")
+                .addHeader("Content-Type", "application/json")
+                .applyExtraHeaders(cfg.extraHeadersJson)
+                .post(body.toString().toRequestBody(JSON))
+                .build()
+
+            Log.d(TAG, "→ SSE POST $endpoint model=${cfg.model} (responses)")
+            response = streamingHttpClient.newCall(request).execute()
+            if (!response.isSuccessful) {
+                val errorBody = response.body?.string() ?: ""
+                val message = try {
+                    JSONObject(errorBody).optJSONObject("error")?.optString("message")
+                } catch (_: Exception) { null } ?: errorBody.take(200)
+                onError(ApiError.from(IOException("HTTP ${response.code}: $message"), httpCode = response.code))
+                return
+            }
+            val source = response.body?.source() ?: run {
+                onError(ApiError.from(IOException("Response body is null")))
+                return
+            }
+            val parser = ResponsesStreamParser(onToken, onReasoning)
+            while (!source.exhausted()) {
+                parser.accept(source.readUtf8Line() ?: break)
+            }
+            val result = parser.result()
+            if (result.errorMessage != null) {
+                onError(ApiError.from(IOException(result.errorMessage)))
+                return
+            }
+            if (result.truncated) {
+                onError(ApiError.from(IOException("Responses SSE stream truncated")))
+                return
+            }
+            Log.i(TAG, "✓ Responses SSE complete: ${result.content.length} chars")
+            onComplete()
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            Log.e(TAG, "✗ Responses SSE failed: ${t.message}", t)
+            onError(ApiError.from(t as? Exception ?: IOException("流式请求异常: ${t::class.java.simpleName}: ${t.message}")))
+        } finally {
+            response?.close()
+        }
+    }
+
     /**
      * Streaming chat completion with full message history and tool support.
      *
@@ -423,7 +535,8 @@ class OpenAiClient(
                 }
                 // gap-07:OpenAI Responses /v1/responses 走独立分支。
                 if (cfg.apiPathType == "responses") {
-                    agentStreamResponses(cfg, messages, tools, temperature, maxTokens, topP,
+                    agentStreamResponses(cfg, messages, tools, temperature, thinkingEnabled, thinkingLevel,
+                        maxTokens, topP,
                         responseFormat, onToken, onReasoning, onComplete, onError)
                     return@withContext
                 }
@@ -732,6 +845,8 @@ class OpenAiClient(
         messages: List<JSONObject>,
         tools: JSONArray,
         temperature: Float,
+        thinkingEnabled: Boolean,
+        thinkingLevel: Int,
         maxTokens: Int?,
         topP: Float?,
         responseFormat: JSONObject?,
@@ -742,29 +857,29 @@ class OpenAiClient(
     ) {
         var response: okhttp3.Response? = null
         try {
-            val (instructions, input) = buildResponsesInput(messages)
-            val body = JSONObject().apply {
-                put("model", cfg.model)
-                if (instructions.isNotBlank()) put("instructions", instructions)
-                put("input", input)
-                if (tools.length() > 0 && cfg.supportsToolCall) put("tools", convertToolsToResponses(tools))
-                put("temperature", temperature)
-                if (maxTokens != null && maxTokens > 0) put("max_output_tokens", maxTokens)
-                if (topP != null) put("top_p", topP)
-                responseFormatToResponsesText(responseFormat)?.let { put("text", it) } // gap-19
-                put("stream", true)
-            }
+            val body = ResponsesProtocol.buildRequest(
+                model = cfg.model,
+                messages = messages,
+                tools = if (cfg.supportsToolCall) tools else JSONArray(),
+                temperature = temperature,
+                maxOutputTokens = maxTokens,
+                topP = topP,
+                responseFormat = responseFormat,
+                stream = true,
+                thinkingEnabled = thinkingEnabled,
+                thinkingLevel = thinkingLevel
+            )
 
+            val endpoint = ResponsesProtocol.endpoint(cfg.baseUrl)
             val request = Request.Builder()
-                // 同上:base_url 带 /v1 时硬拼会变成 /v1/v1/responses → 404。
-                .url(chatEndpoint(cfg.baseUrl, "responses"))
+                .url(endpoint)
                 .addHeader("Authorization", "Bearer ${cfg.apiKey}")
                 .addHeader("Content-Type", "application/json")
                 .applyExtraHeaders(cfg.extraHeadersJson) // gap-08
                 .post(body.toString().toRequestBody(JSON))
                 .build()
 
-            Log.d(TAG, "→ Responses SSE POST ${cfg.baseUrl}/v1/responses model=${cfg.model} tools=${tools.length()}")
+            Log.d(TAG, "→ Responses SSE POST $endpoint model=${cfg.model} tools=${tools.length()}")
             response = streamingHttpClient.newCall(request).execute()
             if (!response.isSuccessful) {
                 val errBody = response.body?.string() ?: ""
@@ -777,91 +892,25 @@ class OpenAiClient(
                 onError(ApiError.from(IOException("Response body is null"))); return
             }
 
-            val contentBuf = StringBuilder()
-            // output_index → (call_id, name, argsBuf) for function_call items
-            val toolItems = HashMap<Int, Triple<String, String, StringBuilder>>()
-            var inputTokens = 0
-            var outputTokens = 0
-            // Responses 的正常收尾是 response.completed / response.incomplete;
-            // 没见到就说明流被掐断(见 AgentStreamResult.truncated)。
-            var sawTerminator = false
-
+            val parser = ResponsesStreamParser(onToken, onReasoning)
             while (!source.exhausted()) {
-                val line = source.readUtf8Line() ?: break
-                if (!line.startsWith("data:")) continue
-                val payload = line.substring(5).trim()
-                if (payload.isEmpty() || payload == "[DONE]") continue
-                val evt = try { JSONObject(payload) } catch (_: Exception) { continue }
-                when (evt.optStr("type")) {
-                    "response.output_text.delta" -> {
-                        val t = evt.optStr("delta")
-                        if (t.isNotEmpty()) { contentBuf.append(t); onToken(t) }
-                    }
-                    "response.reasoning_summary_text.delta", "response.reasoning_text.delta" -> {
-                        val t = evt.optStr("delta")
-                        if (t.isNotEmpty()) onReasoning(t)
-                    }
-                    "response.output_item.added" -> {
-                        val idx = evt.optInt("output_index", toolItems.size)
-                        val item = evt.optJSONObject("item")
-                        if (item?.optStr("type") == "function_call") {
-                            toolItems[idx] = Triple(
-                                item.optStr("call_id").ifBlank { item.optStr("id") },
-                                item.optStr("name"),
-                                StringBuilder(item.optStr("arguments"))
-                            )
-                        }
-                    }
-                    "response.function_call_arguments.delta" -> {
-                        val idx = evt.optInt("output_index", -1)
-                        val d = evt.optStr("delta")
-                        if (idx >= 0) toolItems[idx]?.third?.append(d)
-                    }
-                    "response.output_item.done" -> {
-                        // 兜底:某些实现只在 done 事件里给出完整 function_call(arguments 齐全)。
-                        val idx = evt.optInt("output_index", -1)
-                        val item = evt.optJSONObject("item")
-                        if (idx >= 0 && item?.optStr("type") == "function_call") {
-                            val callId = item.optStr("call_id").ifBlank { item.optStr("id") }
-                            val name = item.optStr("name")
-                            val existing = toolItems[idx]
-                            if (existing == null || existing.third.isEmpty()) {
-                                toolItems[idx] = Triple(callId, name, StringBuilder(item.optStr("arguments")))
-                            }
-                        }
-                    }
-                    "response.completed", "response.incomplete" -> {
-                        sawTerminator = true
-                        val usage = evt.optJSONObject("response")?.optJSONObject("usage")
-                        if (usage != null) {
-                            inputTokens = usage.optInt("input_tokens", inputTokens)
-                            outputTokens = usage.optInt("output_tokens", outputTokens)
-                        }
-                    }
-                    "response.failed", "error" -> {
-                        val m = evt.optJSONObject("response")?.optJSONObject("error")?.optString("message")
-                            ?: evt.optString("message", "responses stream error")
-                        onError(ApiError.from(IOException(m)))
-                        return
-                    }
-                }
+                parser.accept(source.readUtf8Line() ?: break)
             }
 
-            val toolCalls = toolItems.values
-                .filter { it.first.isNotEmpty() && it.second.isNotEmpty() }
-                .map { ToolCall(id = it.first, name = it.second, arguments = it.third.toString().ifBlank { "{}" }) }
-
-            // 映射为 OpenAI 形态 usage,便于下游 token 统计复用。
-            val usage = JSONObject().apply {
-                put("prompt_tokens", inputTokens)
-                put("completion_tokens", outputTokens)
-                put("total_tokens", inputTokens + outputTokens)
+            val result = parser.result()
+            if (result.errorMessage != null) {
+                onError(ApiError.from(IOException(result.errorMessage)))
+                return
             }
-            if (!sawTerminator) Log.w(TAG, "⚠ Responses SSE truncated: no response.completed")
-            Log.i(TAG, "✓ Responses SSE complete: ${contentBuf.length} chars, ${toolCalls.size} function_call")
+            if (result.truncated) {
+                Log.w(TAG, "⚠ Responses SSE truncated: no response.completed")
+            }
+            Log.i(TAG, "✓ Responses SSE complete: ${result.content.length} chars, ${result.toolCalls.size} function_call")
             onComplete(AgentStreamResult(
-                content = contentBuf.toString(), toolCalls = toolCalls, usage = usage,
-                truncated = !sawTerminator
+                content = result.content,
+                toolCalls = result.toolCalls,
+                usage = result.usage,
+                truncated = result.truncated
             ))
         } catch (c: kotlinx.coroutines.CancellationException) {
             throw c
@@ -871,88 +920,6 @@ class OpenAiClient(
         } finally {
             response?.close()
         }
-    }
-
-    /**
-     * 把 XINCODE 的 OpenAI 形态 messages 转成 Responses `input` 条目数组。
-     * 返回 (instructions=聚合的 system 文本, input 数组)。
-     * assistant.tool_calls → function_call 条目;role=tool → function_call_output 条目。
-     */
-    private fun buildResponsesInput(messages: List<JSONObject>): Pair<String, JSONArray> {
-        val instructions = StringBuilder()
-        val out = JSONArray()
-        for (m in messages) {
-            when (m.optString("role")) {
-                "system" -> {
-                    if (instructions.isNotEmpty()) instructions.append("\n\n")
-                    instructions.append(m.optString("content"))
-                }
-                "user" -> {
-                    out.put(JSONObject().put("role", "user").put("content", m.optString("content")))
-                }
-                "assistant" -> {
-                    val content = m.optString("content", "")
-                    if (content.isNotEmpty()) {
-                        out.put(JSONObject().put("role", "assistant").put("content", content))
-                    }
-                    m.optJSONArray("tool_calls")?.let { tcs ->
-                        for (j in 0 until tcs.length()) {
-                            val tc = tcs.optJSONObject(j) ?: continue
-                            val fn = tc.optJSONObject("function") ?: continue
-                            out.put(JSONObject()
-                                .put("type", "function_call")
-                                .put("call_id", tc.optString("id"))
-                                .put("name", fn.optString("name"))
-                                .put("arguments", fn.optString("arguments", "{}")))
-                        }
-                    }
-                }
-                "tool" -> {
-                    out.put(JSONObject()
-                        .put("type", "function_call_output")
-                        .put("call_id", m.optString("tool_call_id"))
-                        .put("output", m.optString("content")))
-                }
-            }
-        }
-        return instructions.toString() to out
-    }
-
-    /** OpenAI chat tools[{type:function,function:{...}}] → Responses 扁平 [{type:function,name,description,parameters}]. */
-    private fun convertToolsToResponses(tools: JSONArray): JSONArray {
-        val out = JSONArray()
-        for (i in 0 until tools.length()) {
-            val fn = tools.optJSONObject(i)?.optJSONObject("function") ?: continue
-            out.put(JSONObject()
-                .put("type", "function")
-                .put("name", fn.optString("name"))
-                .put("description", fn.optString("description"))
-                .put("parameters", fn.optJSONObject("parameters") ?: JSONObject().put("type", "object")))
-        }
-        return out
-    }
-
-    /**
-     * gap-19:把 chat 形态 response_format({type:json_schema,json_schema:{name,schema,strict}})
-     * 转成 Responses 的 text.format({type:json_schema,name,schema,strict})。已是扁平形态则原样透传。
-     */
-    private fun responseFormatToResponsesText(responseFormat: JSONObject?): JSONObject? {
-        if (responseFormat == null) return null
-        return try {
-            val type = responseFormat.optString("type", "json_schema")
-            val nested = responseFormat.optJSONObject("json_schema")
-            val format = if (nested != null) {
-                JSONObject().apply {
-                    put("type", type)
-                    put("name", nested.optString("name", "response"))
-                    nested.optJSONObject("schema")?.let { put("schema", it) }
-                    if (nested.has("strict")) put("strict", nested.optBoolean("strict"))
-                }
-            } else {
-                responseFormat // 调用方已给扁平 format
-            }
-            JSONObject().put("format", format)
-        } catch (_: Exception) { null }
     }
 
     /** 把 XINCODE 的 OpenAI 形态 messages 转成 Anthropic(顶层 system + content blocks)。 */

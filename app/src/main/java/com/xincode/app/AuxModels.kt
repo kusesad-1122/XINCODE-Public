@@ -38,7 +38,13 @@ object AuxModels {
         .build()
     private val JSON = "application/json; charset=utf-8".toMediaType()
 
-    data class Resolved(val baseUrl: String, val apiKey: String, val model: String)
+    data class Resolved(
+        val baseUrl: String,
+        val apiKey: String,
+        val model: String,
+        val apiPathType: String = "openai",
+        val extraHeadersJson: String = ""
+    )
 
     /** 读取某 task 的委托配置;未配置返回 null。 */
     suspend fun resolve(db: AppDatabase, keystore: KeystoreProvider, key: String): Resolved? {
@@ -51,8 +57,10 @@ object AuxModels {
         if (baseUrl.isBlank() || keyEnc.isBlank()) return resolveFromFunctionConfig(db, keystore, key)
         val model = db.settingDao().get(Profiles.key(p, "aux_${key}_model"))?.trim()
             ?.ifBlank { TASKS.firstOrNull { it.key == key }?.defaultModel ?: "" } ?: ""
+        val apiPathType = db.settingDao().get(Profiles.key(p, "aux_${key}_api_path_type"))
+            ?.trim()?.ifBlank { "openai" } ?: "openai"
         val apiKey = try { keystore.decrypt(Base64.decode(keyEnc, Base64.NO_WRAP)) } catch (_: Exception) { keyEnc }
-        return Resolved(baseUrl, apiKey, model)
+        return Resolved(baseUrl, apiKey, model, apiPathType)
     }
 
     /** 从功能模型配置(fn_<key>_config_id / fn_<key>_model)取一套已保存的供应商配置。 */
@@ -68,7 +76,7 @@ object AuxModels {
         val apiKey = try {
             keystore.decrypt(Base64.decode(cfg.apiKeyEnc, Base64.NO_WRAP))
         } catch (_: Exception) { return null }
-        return Resolved(cfg.baseUrl, apiKey, model)
+        return Resolved(cfg.baseUrl, apiKey, model, cfg.apiPathType, cfg.extraHeadersJson)
     }
 
     suspend fun isConfigured(db: AppDatabase, key: String): Boolean {
@@ -80,10 +88,19 @@ object AuxModels {
     }
 
     /** 保存某 task 的委托配置(apiKey 空=不改)。 */
-    suspend fun save(db: AppDatabase, keystore: KeystoreProvider, key: String, baseUrl: String, apiKey: String, model: String) {
+    suspend fun save(
+        db: AppDatabase,
+        keystore: KeystoreProvider,
+        key: String,
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        apiPathType: String = "openai"
+    ) {
         val p = Profiles.currentId(db)
         db.settingDao().put(Profiles.key(p, "aux_${key}_base_url"), baseUrl.trim())
         db.settingDao().put(Profiles.key(p, "aux_${key}_model"), model.trim())
+        db.settingDao().put(Profiles.key(p, "aux_${key}_api_path_type"), apiPathType.trim().ifBlank { "openai" })
         if (apiKey.isNotBlank()) {
             val enc = Base64.encodeToString(keystore.encrypt(apiKey), Base64.NO_WRAP)
             db.settingDao().put(Profiles.key(p, "aux_${key}_api_key"), enc)
@@ -101,6 +118,30 @@ object AuxModels {
             val messages = JSONArray()
             if (!systemPrompt.isNullOrBlank()) messages.put(JSONObject().put("role", "system").put("content", systemPrompt))
             messages.put(JSONObject().put("role", "user").put("content", userText))
+
+            if (cfg.apiPathType == "responses") {
+                val body = com.xincode.provider.ResponsesProtocol.buildRequest(
+                    model = cfg.model.ifBlank { "gpt-4o-mini" },
+                    messages = (0 until messages.length()).map { messages.getJSONObject(it) },
+                    maxOutputTokens = 500
+                )
+                val endpoint = com.xincode.provider.ResponsesProtocol.endpoint(cfg.baseUrl)
+                val req = Request.Builder()
+                    .url(endpoint)
+                    .addHeader("Authorization", "Bearer ${cfg.apiKey}")
+                    .addHeader("Content-Type", "application/json")
+                    .applyExtraHeaders(cfg.extraHeadersJson)
+                    .post(body.toString().toRequestBody(JSON))
+                    .build()
+                http.newCall(req).execute().use { resp ->
+                    val respBody = resp.body?.string() ?: ""
+                    if (!resp.isSuccessful) return@use Result.failure(RuntimeException("HTTP ${resp.code}: ${respBody.take(200)}"))
+                    val parsed = com.xincode.provider.ResponsesProtocol.extractResponse(JSONObject(respBody))
+                    if (parsed.errorMessage != null) Result.failure(RuntimeException(parsed.errorMessage))
+                    else if (parsed.content.isBlank()) Result.failure(RuntimeException("委托模型无有效返回"))
+                    else Result.success(parsed.content.trim())
+                }
+            } else {
             val body = JSONObject().apply {
                 put("model", cfg.model.ifBlank { "gpt-4o-mini" })
                 put("messages", messages)
@@ -110,6 +151,7 @@ object AuxModels {
                 .url("${cfg.baseUrl.trimEnd('/')}/v1/chat/completions")
                 .addHeader("Authorization", "Bearer ${cfg.apiKey}")
                 .addHeader("Content-Type", "application/json")
+                .applyExtraHeaders(cfg.extraHeadersJson)
                 .post(body.toString().toRequestBody(JSON))
                 .build()
             http.newCall(req).execute().use { resp ->
@@ -120,8 +162,24 @@ object AuxModels {
                 if (text.isBlank()) Result.failure(RuntimeException("委托模型无有效返回"))
                 else Result.success(text.trim())
             }
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private fun Request.Builder.applyExtraHeaders(value: String): Request.Builder {
+        if (value.isBlank()) return this
+        try {
+            val headers = JSONObject(value)
+            val keys = headers.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                if (key.isNotBlank() && !headers.isNull(key)) header(key, headers.optString(key))
+            }
+        } catch (_: Exception) {
+            // Optional headers are best-effort.
+        }
+        return this
     }
 }

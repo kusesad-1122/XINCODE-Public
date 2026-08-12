@@ -24,7 +24,9 @@ class GoalRunner(
     private val database: AppDatabase,
     private val judgeApiKey: String,
     private val judgeBaseUrl: String,
-    private val judgeModel: String
+    private val judgeModel: String,
+    private val judgeApiPathType: String = "openai",
+    private val judgeExtraHeadersJson: String = ""
 ) {
     companion object {
         private const val TAG = "GoalRunner"
@@ -122,7 +124,9 @@ class GoalRunner(
         val judge = JudgeService(
             baseUrl = judgeBaseUrl,
             apiKey = judgeApiKey,
-            model = judgeModel
+            model = judgeModel,
+            apiPathType = judgeApiPathType,
+            extraHeadersJson = judgeExtraHeadersJson
         )
 
         // Compose the goal prompt — tells Agent to work toward the goal

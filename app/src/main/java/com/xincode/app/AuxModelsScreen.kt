@@ -114,6 +114,7 @@ fun AuxModelsScreen(
                                                 database.settingDao().put("aux_${t.key}_base_url", p.baseUrl.trimEnd('/'))
                                                 database.settingDao().put("aux_${t.key}_api_key", p.apiKeyEnc)
                                                 database.settingDao().put("aux_${t.key}_model", mdl)
+                                                database.settingDao().put("aux_${t.key}_api_path_type", p.apiPathType)
                                             }
                                             selection[t.key] = "${p.name} / $mdl"
                                             savedHint = "${t.label} → ${p.name} / $mdl ✓"
@@ -131,6 +132,7 @@ fun AuxModelsScreen(
                                         database.settingDao().put("aux_${t.key}_base_url", "")
                                         database.settingDao().put("aux_${t.key}_api_key", "")
                                         database.settingDao().put("aux_${t.key}_model", "")
+                                        database.settingDao().put("aux_${t.key}_api_path_type", "openai")
                                     }
                                     selection.remove(t.key); savedHint = "${t.label} 已清除"
                                 }
