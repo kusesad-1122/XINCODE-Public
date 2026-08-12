@@ -87,7 +87,10 @@ class SaveMemoryTool(private val database: AppDatabase) : Tool {
                             ToolResult.Success("已记入长期记忆: $title")
                         }
                         "remove" -> {
-                            val hit = dao.getByTitle(match.ifBlank { content })
+                            val hit = dao.getByTitleAndProject(
+                                match.ifBlank { content },
+                                com.xincode.tools.WorkspaceContext.projectId
+                            )
                                 ?: return@withContext ToolResult.Error("未找到标题匹配的记忆")
                             dao.delete(hit)
                             ToolResult.Success("已删除记忆: ${hit.title}")

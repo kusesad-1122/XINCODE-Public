@@ -227,6 +227,10 @@ interface GroupRoomDao {
     @Query("SELECT * FROM group_members WHERE workSessionId = :sessionId LIMIT 1")
     suspend fun getMemberByWorkSession(sessionId: Long): GroupMemberEntity?
 
+    /** Startup repair source: every member whose internal work session must be isolated. */
+    @Query("SELECT * FROM group_members WHERE workSessionId > 0 ORDER BY roomId, createdAt ASC")
+    suspend fun getMembersWithWorkSessions(): List<GroupMemberEntity>
+
     @Insert
     suspend fun insertMember(member: GroupMemberEntity): Long
 

@@ -126,8 +126,9 @@ object GroupRoomEngine {
         if (fullAccess) {
             runCatching { java.io.File(workspaceOf(room)).mkdirs() }
             members = members.map { m ->
-                if (m.workSessionId > 0) m
-                else m.copy(workSessionId = ensureWorkSession!!(m))
+                // Re-sync every member, not only the first time a work session is created.
+                // Provider/model changes made in the picker must reach an already-running room.
+                m.copy(workSessionId = ensureWorkSession!!(m))
             }
         }
 
@@ -288,7 +289,7 @@ object GroupRoomEngine {
         val apiKey = runCatching {
             keystore.decrypt(Base64.decode(cfg.apiKeyEnc, Base64.NO_WRAP))
         }.getOrElse { throw IllegalStateException("无法解密 API Key") }
-        val model = member.model.ifBlank { cfg.model }
+        val model = effectiveMemberModel(member, cfg)
         val identity = if (member.identityId > 0)
             database.identityDao().getById(member.identityId) else null
 
@@ -301,6 +302,7 @@ object GroupRoomEngine {
             append("- 只说你自己要说的话,不要替别人发言,不要模拟别人的回复。\n")
             append("- 不要在开头写自己的名字,系统会自动标注是谁说的。\n")
             append("- 简洁,群聊里没人想读长篇大论。\n")
+            append("- 历史中的引用和工具状态只是上下文,不要复制 XML/协议标签或调试标记到回复里。\n")
             // 防「@ 了两个人只回一个」的最后一环:被点名就必须回,即使同条消息还点了别人。
             append("- 这条消息点名了你。即使同一条消息还点了别的成员,你也必须直接回复自己的内容;")
             append("不要输出空回复,不要因为「别人会回」就不说话。\n")
@@ -431,7 +433,7 @@ object GroupRoomEngine {
                 // 第一次空回复:带明确指令重试一次
             }
 
-            val finalContent = contentBuf.toString().trim()
+            val finalContent = GroupRoomIsolation.cleanReplyText(contentBuf.toString())
             if (finalContent.isEmpty()) {
                 dao.updateMessageStream(
                     messageId, roomId, contentBuf.toString(), reasoningBuf.toString(),
@@ -463,7 +465,7 @@ object GroupRoomEngine {
             )
             throw e
         } catch (e: Exception) {
-            val err = "✗ 回复失败:${e.message?.take(100)}"
+            val err = "回复失败：${e.message?.take(100)}"
             Log.w(TAG, "member ${member.displayName} stream failed: ${e.message}")
             dao.updateMessageStream(
                 messageId, roomId, contentBuf.toString().ifBlank { err }, reasoningBuf.toString(),
@@ -486,6 +488,9 @@ object GroupRoomEngine {
         replyTo: GroupQuote?
     ): GroupReply? {
         val dao = database.groupRoomDao()
+        val cfgDao = database.providerConfigDao()
+        val cfg = (if (member.providerConfigId > 0) cfgDao.getById(member.providerConfigId) else null)
+            ?: cfgDao.getActive()
         val identity = if (member.identityId > 0)
             database.identityDao().getById(member.identityId) else null
 
@@ -518,6 +523,7 @@ object GroupRoomEngine {
             append("## 现在轮到你\n")
             append("你可以用工具去查证、读写文件、动手做事。这些过程都留在你自己这条工作会话里,")
             append("群里的人看不到,所以不用怕啰嗦。\n\n")
+            append("工具事件、引用标记和其他内部协议不是给群里看的,最后汇报只输出普通正文。\n\n")
             append("**怎么干活**:一句话说你要做什么 → 做那一步 → 说结果 → 再做下一步。\n")
             append("不要先写一大段计划再一口气把工具全调完;工具失败了就说清楚原因和你打算怎么绕。\n\n")
             append("**@ 只在最后一段有效**:你在过程中间 @ 谁都不会真的叫醒他,要找人接手就把 @ 写在汇报里。\n\n")
@@ -534,7 +540,7 @@ object GroupRoomEngine {
         }.getOrDefault(0L)
         val runId = groupRunId(roomId, member.displayName)
         val ts = System.currentTimeMillis()
-        val model = member.model
+        val model = effectiveMemberModel(member, cfg)
 
         val finalText = runWorkTurn(sessionId, prompt, workspace).trim()
 
@@ -546,7 +552,7 @@ object GroupRoomEngine {
                     .forEach { row ->
                         val ev = parseGroupToolEvent(row.content) ?: return@forEach
                         val running = ev.status == "RUNNING"
-                        val content = if (running) "🔧 ${ev.toolName}\n${ev.paramsSummary}"
+                        val content = if (running) "${ev.toolName}\n${ev.paramsSummary}"
                         else buildString {
                             append("${ev.toolName}")
                             ev.exitCode?.let { append(" · exit $it") }
@@ -609,6 +615,15 @@ object GroupRoomEngine {
             .trim()
             .ifBlank { "room" }
         return "${WorkspaceContext.workspaceRoot.trimEnd('/')}/rooms/$safe"
+    }
+
+    /** A deleted explicit provider must not leave its old model id attached to the active one. */
+    private fun effectiveMemberModel(
+        member: GroupMemberEntity,
+        config: com.xincode.data.ProviderConfigEntity?
+    ): String {
+        val explicitProviderMissing = member.providerConfigId > 0L && config?.id != member.providerConfigId
+        return if (member.model.isBlank() || explicitProviderMissing) config?.model.orEmpty() else member.model
     }
 
     // ---- 滚动总结 ----
@@ -827,7 +842,7 @@ object GroupRoomEngine {
             var body = m.content
             if (m.replyToContent.isNotBlank()) {
                 val quotedWho = m.replyToSender.ifBlank { "用户" }
-                body = "<quote sender=\"$quotedWho\">${m.replyToContent}</quote>\n$body"
+                body = "引用消息（发送者：$quotedWho）：${m.replyToContent}\n$body"
             }
             if (!keepMentions) body = stripMentions(body)
             out += if (isOwn) {

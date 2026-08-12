@@ -61,6 +61,10 @@ interface SessionDao {
     @Query("UPDATE sessions SET projectId = :projectId WHERE id = :sessionId")
     suspend fun moveToProject(sessionId: Long, projectId: Long?)
 
+    /** Repair or bind an internal group work session without replacing unrelated fields. */
+    @Query("UPDATE sessions SET projectId = :projectId WHERE id = :sessionId")
+    suspend fun setProjectId(sessionId: Long, projectId: Long?)
+
     @Query("UPDATE sessions SET isStarred = :starred WHERE id = :id")
     suspend fun setStarred(id: Long, starred: Boolean)
 

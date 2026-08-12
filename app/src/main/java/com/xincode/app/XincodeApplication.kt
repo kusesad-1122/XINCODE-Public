@@ -34,6 +34,7 @@ import com.xincode.tools.SuExecTool
 import com.xincode.tools.WebSearchTool
 import com.xincode.tools.WebFetchTool
 import com.xincode.tools.RootShellManager
+import com.xincode.tools.WorkspaceContext
 import com.xincode.provider.HttpCacheProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
@@ -269,6 +270,23 @@ private val groupSessionMember = HashMap<Long, String>()
         com.xincode.tools.WorkspaceContext.configureDefaultRoot(chosen.absolutePath)
     }
 
+    /**
+     * Internal group work sessions predate room-scoped memory. Repair only memories whose
+     * source message points at one of those sessions; an untraceable manual note must not be
+     * guessed into a room.
+     */
+    private fun repairGroupWorkScopes() {
+        runBlocking {
+            database.inTransaction {
+                database.groupRoomDao().getMembersWithWorkSessions().forEach { member ->
+                    val scope = GroupRoomIsolation.memoryScopeId(member.roomId)
+                    database.sessionDao().setProjectId(member.workSessionId, scope)
+                    database.memoryDao().rehomeBySourceSession(member.workSessionId, scope)
+                }
+            }
+        }
+    }
+
 override fun onCreate() {
         super.onCreate()
         Log.i("XINCODE", "=== APP START ===")
@@ -284,6 +302,7 @@ override fun onCreate() {
         // 抛在 Application.onCreate 里 = 进程当场死 = 用户看到的「点开就闪退」,
         // 而且全新安装一样崩,没有任何幸存路径。下面新增初始化时务必守住这个顺序。
         database = AppDatabase.getInstance(this)
+        repairGroupWorkScopes()
         // Initialize shared HTTP disk cache
         HttpCacheProvider.init(cacheDir)
 
@@ -293,13 +312,6 @@ override fun onCreate() {
         // 进程被杀时正在跑的任务会永远停在 running,重启后没人管它 —— 启动时统一收回 ready
         GlobalScope.launch(Dispatchers.IO) {
             runCatching { database.kanbanTaskDao().reclaimStuckRunning() }
-        }
-        GlobalScope.launch(Dispatchers.IO) {
-            runCatching {
-                database.providerConfigDao().getActive()?.let {
-                    currentModelName = it.model; currentProviderName = it.name
-                }
-            }
         }
         keystore = KeystoreProvider()
         openAiClient = OpenAiClient(database, keystore)
@@ -390,7 +402,13 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         val invokeSkillTool = InvokeSkillTool(database).also { tool ->
             tool.onSkillUsed = { skill ->
                 if (skill.source != "bundled") {
-                    backgroundReviewRunner.onSkillImprovement(skill.name, skill.content, skill.useCount)
+                    backgroundReviewRunner.onSkillImprovement(
+                        skill.name,
+                        skill.content,
+                        skill.useCount,
+                        workspaceRoot = WorkspaceContext.workspaceRoot,
+                        projectId = WorkspaceContext.projectId
+                    )
                 }
             }
         }
@@ -579,10 +597,11 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         // 每会话状态收集器在 buildSessionAgents() 工厂内挂载(→ onCoreState),前台服务保活跨全部 core 聚合。
 
         // Set current model label for UI display
-        currentModelLabel = runBlocking {
-            val configs = database.providerConfigDao().getAll()
-            val active = configs.firstOrNull { it.isActive }
-            active?.model ?: ""
+        runBlocking {
+            val selected = resolveModelSelection(currentSessionId)
+            currentModelLabel = selected.modelId
+            currentModelName = selected.modelId
+            currentProviderName = selected.provider?.name.orEmpty()
         }
         // Load thinking prefs from Room
         thinkingEnabled = runBlocking { database.settingDao().get("thinking_enabled")?.toBooleanStrictOrNull() ?: false }
@@ -711,13 +730,30 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             systemPrompt = BASE_SYSTEM_PROMPT
         )
         core.hookDispatcher = HookDispatcherImpl(database, shellExecTool, suExecTool)
-        core.onBackgroundReview = { m, s, tail -> backgroundReviewRunner.onReview(m, s, tail) }
+        core.onBackgroundReview = { m, s, tail ->
+            backgroundReviewRunner.onReview(
+                m,
+                s,
+                tail,
+                workspaceRoot = WorkspaceContext.workspaceRoot,
+                projectId = WorkspaceContext.projectId
+            )
+        }
         // 用量记录:每次模型调用都落一笔(不是每回合),否则工具回环的调用全被漏掉。
         core.onUsageRecorded = { usage, sid ->
-            UsageRecorder.record(
-                database, usage, sid,
-                model = currentModelName, provider = currentProviderName, source = "chat"
-            )
+            // Usage belongs to the session that made the request. Resolving the label from that
+            // row avoids a background session inheriting whatever the foreground UI displays.
+            applicationScope.launch(Dispatchers.IO) {
+                val selected = resolveModelSelection(sid)
+                UsageRecorder.record(
+                    database,
+                    usage,
+                    sid,
+                    model = selected.modelId,
+                    provider = selected.provider?.name.orEmpty(),
+                    source = "chat"
+                )
+            }
         }
         // P2: Prefix hash drift detection — persist computed hash and warn on drift
         core.onPrefixHashComputed = { hash, sid ->
@@ -1020,17 +1056,41 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         roomId: Long,
         member: com.xincode.data.GroupMemberEntity
     ): Long = withContext(Dispatchers.IO) {
-        if (member.workSessionId > 0) {
-            groupSessionRoom[member.workSessionId] = roomId
-            groupSessionMember[member.workSessionId] = member.displayName
-            return@withContext member.workSessionId
-        }
+        val memoryScope = GroupRoomIsolation.memoryScopeId(roomId)
+        val providerId = member.providerConfigId.takeIf { it > 0L }
+        val modelId = member.model.trim().ifBlank { null }
         val roomName = database.groupRoomDao().getRoom(roomId)?.name ?: "群聊"
+
+        if (member.workSessionId > 0L) {
+            val existing = database.sessionDao().getById(member.workSessionId)
+            if (existing != null) {
+                // The member picker is authoritative. Re-bind an existing work session on
+                // every room turn so changing provider/model is not a one-time-only setting.
+                database.inTransaction {
+                    database.sessionDao().upsert(
+                        existing.copy(
+                            modelProviderConfigId = providerId,
+                            currentModelId = modelId,
+                            projectId = memoryScope,
+                            identityId = member.identityId.takeIf { it > 0L }
+                        )
+                    )
+                    database.memoryDao().rehomeBySourceSession(member.workSessionId, memoryScope)
+                }
+                groupSessionRoom[member.workSessionId] = roomId
+                groupSessionMember[member.workSessionId] = member.displayName
+                return@withContext member.workSessionId
+            }
+        }
+
         database.inTransaction {
             val sid = database.sessionDao().upsert(
                 SessionEntity(
-                    title = "🔧 $roomName · ${member.displayName}",
-                    identityId = member.identityId.takeIf { it > 0 }
+                    title = "$roomName · ${member.displayName}",
+                    modelProviderConfigId = providerId,
+                    currentModelId = modelId,
+                    projectId = memoryScope,
+                    identityId = member.identityId.takeIf { it > 0L }
                 )
             )
             database.groupRoomDao().updateMember(member.copy(workSessionId = sid))
@@ -1069,9 +1129,18 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             sessionPool[sessionId] ?: buildSessionAgents(sessionId).also { sessionPool[sessionId] = it }
         }
         val chat = agents.chat
+        val memberScope = withContext(Dispatchers.IO) {
+            database.groupRoomDao().getMemberByWorkSession(sessionId)
+                ?.roomId
+                ?.let { GroupRoomIsolation.memoryScopeId(it) }
+        }
+        val storedScope = withContext(Dispatchers.IO) {
+            database.sessionDao().getById(sessionId)?.projectId
+        }
         // 绑到这条会话自己的作用域上(WorkspaceThreadElement 会在它的协程里生效),
         // 不影响主对话和别的会话。
         workspaceRoot?.let { chat.sessionWorkspaceRoot = it }
+        chat.sessionProjectId = storedScope ?: memberScope ?: 0L
 
         // 跑的过程中钉住,别让 onCoreState 里的「空闲即回收」把它从池里摘走 ——
         // 摘走之后用户点进去看到的会是另一份实例,历史对不上。
@@ -1252,10 +1321,18 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
     suspend fun applyWorkspaceForSession(sessionId: Long) {
         try {
             val session = database.sessionDao().getById(sessionId)
-            val pid = session?.projectId ?: 0L
+            // Group work sessions use a negative room scope and do not have a ProjectEntity.
+            // Resolve their room directory here too, so opening the embedded workbench or
+            // switching to a work session never temporarily binds it to the global workspace.
+            val groupMember = database.groupRoomDao().getMemberByWorkSession(sessionId)
+            val groupRoom = groupMember?.let { database.groupRoomDao().getRoom(it.roomId) }
+            val pid = session?.projectId
+                ?: groupMember?.roomId?.let { GroupRoomIsolation.memoryScopeId(it) }
+                ?: 0L
             val projectRoot = if (pid > 0L) database.projectDao().getById(pid)?.workspaceRoot?.takeIf { it.isNotBlank() } else null
             val globalRoot = database.settingDao().get("workspace_root")?.takeIf { it.isNotBlank() }
-            val configuredRoot = projectRoot ?: globalRoot
+            val groupRoot = groupRoom?.let { GroupRoomEngine.workspaceOf(it) }
+            val configuredRoot = groupRoot ?: projectRoot ?: globalRoot
             val root = if (configuredRoot?.trimEnd('/') ==
                 com.xincode.tools.WorkspaceContext.LEGACY_SHARED_ROOT) {
                 com.xincode.tools.WorkspaceContext.defaultRoot
@@ -1442,14 +1519,37 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         }
     }
 
+    private suspend fun resolveModelSelection(sessionId: Long): EffectiveModelSelection {
+        val session = database.sessionDao().getById(sessionId)
+            ?: SessionEntity(id = sessionId)
+        val configs = database.providerConfigDao().getAll()
+        val active = configs.firstOrNull { it.isActive }
+        return ModelSelection.resolve(session, configs, active)
+    }
+
+    /** Refresh the process labels after a provider config was edited, added, removed or activated. */
+    fun refreshProviderRuntime() {
+        applicationScope.launch(Dispatchers.IO) {
+            val selected = resolveModelSelection(currentSessionId)
+            currentModelName = selected.modelId
+            currentProviderName = selected.provider?.name.orEmpty()
+            withContext(Dispatchers.Main) {
+                currentModelLabel = selected.modelId
+            }
+        }
+    }
+
     fun switchModel(modelId: String) {
-        GlobalScope.launch(Dispatchers.IO) {
+        applicationScope.launch(Dispatchers.IO) {
             val configs = database.providerConfigDao().getAll()
             val active = configs.firstOrNull { it.isActive } ?: return@launch
             if (modelId in active.enabledModelIds) {
                 val updated = active.copy(model = modelId)
                 database.providerConfigDao().update(updated)
-                currentModelLabel = modelId
+                val selected = resolveModelSelection(currentSessionId)
+                currentModelName = selected.modelId
+                currentProviderName = selected.provider?.name.orEmpty()
+                withContext(Dispatchers.Main) { currentModelLabel = selected.modelId }
             }
         }
     }
@@ -1459,39 +1559,50 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
      * providerConfigId 为 null 时只覆盖模型(跟随当前活跃供应商);两者都 null 时清除覆盖。
      */
     fun switchSessionModel(sessionId: Long, providerConfigId: Long?, modelId: String?) {
-        GlobalScope.launch(Dispatchers.IO) {
+        val normalized = ModelSelection.normalize(providerConfigId, modelId)
+        applicationScope.launch(Dispatchers.IO) {
             val s = database.sessionDao().getById(sessionId) ?: return@launch
             database.sessionDao().upsert(
                 s.copy(
-                    modelProviderConfigId = providerConfigId?.takeIf { it > 0 },
-                    currentModelId = modelId?.trim()?.ifBlank { null },
+                    modelProviderConfigId = normalized.providerConfigId,
+                    currentModelId = normalized.modelId,
                     updatedAt = System.currentTimeMillis()
                 )
             )
+            val selected = resolveModelSelection(sessionId)
+            currentModelName = selected.modelId
+            currentProviderName = selected.provider?.name.orEmpty()
+            if (sessionId == currentSessionId) {
+                withContext(Dispatchers.Main) { currentModelLabel = selected.modelId }
+            }
         }
-        applySessionModelLabel(sessionId)
     }
 
     /** 清除会话级模型覆盖,回到全局活跃配置。 */
     fun clearSessionModelOverride(sessionId: Long) {
-        GlobalScope.launch(Dispatchers.IO) {
+        applicationScope.launch(Dispatchers.IO) {
             val s = database.sessionDao().getById(sessionId) ?: return@launch
             database.sessionDao().upsert(
                 s.copy(modelProviderConfigId = null, currentModelId = null, updatedAt = System.currentTimeMillis())
             )
+            val selected = resolveModelSelection(sessionId)
+            currentModelName = selected.modelId
+            currentProviderName = selected.provider?.name.orEmpty()
+            if (sessionId == currentSessionId) {
+                withContext(Dispatchers.Main) { currentModelLabel = selected.modelId }
+            }
         }
-        applySessionModelLabel(sessionId)
     }
 
     /** 把顶栏模型标签刷新成当前会话的覆盖(未覆盖则回到活跃配置的模型)。 */
     fun applySessionModelLabel(sessionId: Long) {
-        GlobalScope.launch(Dispatchers.IO) {
-            val s = database.sessionDao().getById(sessionId) ?: return@launch
-            val cfg = s.modelProviderConfigId?.let { database.providerConfigDao().getById(it) }
-                ?: database.providerConfigDao().getActive()
-            val model = s.currentModelId?.trim()?.ifBlank { null } ?: cfg?.model
-            currentModelLabel = model.orEmpty()
-            currentProviderName = cfg?.name.orEmpty()
+        applicationScope.launch(Dispatchers.IO) {
+            val selected = resolveModelSelection(sessionId)
+            currentModelName = selected.modelId
+            currentProviderName = selected.provider?.name.orEmpty()
+            if (sessionId == currentSessionId) {
+                withContext(Dispatchers.Main) { currentModelLabel = selected.modelId }
+            }
         }
     }
 

@@ -139,6 +139,7 @@ class MainActivity : ComponentActivity() {
             val goalSessions by app.goalSessionsFlow.collectAsState(initial = emptyList())
             val projects by app.projectListFlow.collectAsState(initial = emptyList())
             val groupRooms by app.database.groupRoomDao().observeRooms().collectAsState(initial = emptyList())
+            val providerConfigs by app.database.providerConfigDao().observeAll().collectAsState(initial = emptyList())
             // 从侧栏直接点进某个房间时带上 id,群聊页据此跳过列表直接开那间
             var openRoomId by remember { mutableStateOf<Long?>(null) }
             val allIdentities by app.identityListFlow.collectAsState(initial = emptyList())
@@ -254,10 +255,16 @@ class MainActivity : ComponentActivity() {
                 ) { page ->
                     when (page) {
                     "chat" -> {
-                        val active = runBlocking { app.database.providerConfigDao().getActive() }
-                        val names = active?.enabledModelIds ?: emptyList()
                         var showConversationModelPicker by remember { mutableStateOf(false) }
                         val currentSession = sessions.firstOrNull { it.id == app.currentSessionId }
+                        val active = providerConfigs.firstOrNull { it.isActive }
+                        val effective = ModelSelection.resolve(
+                            currentSession ?: SessionEntity(id = app.currentSessionId),
+                            providerConfigs,
+                            active
+                        )
+                        val effectiveProvider = effective.provider
+                        val names = effectiveProvider?.enabledModelIds ?: emptyList()
                         val currentIdentityName = identities
                             .firstOrNull { it.id == currentSession?.identityId }
                             ?.name
@@ -281,9 +288,9 @@ class MainActivity : ComponentActivity() {
                             chatState = app.agentChatState,
                             conversationTitle = conversationTitle,
                             assistantName = currentIdentityName,
-                            currentModel = app.currentModelLabel,
-                            supplierId = active?.supplierId.orEmpty(),
-                            providerName = active?.name.orEmpty(),
+                            currentModel = effective.modelId,
+                            supplierId = effectiveProvider?.supplierId.orEmpty(),
+                            providerName = effectiveProvider?.name.orEmpty(),
                             availableModels = names,
                             isGoalSession = curIsGoal,
                             goalStatusCode = curGoal?.goalStatus ?: "",
@@ -293,8 +300,17 @@ class MainActivity : ComponentActivity() {
                             onStopGoal = { app.stopGoal(app.currentSessionId) },
                             powerMode = app.currentPowerMode,
                             onSwitchModel = { modelId ->
-                                // 只改当前对话的模型,不再污染全局活跃配置
-                                app.switchSessionModel(app.currentSessionId, null, modelId)
+                                // 只改当前对话的模型,且保留当前会话已经选择的供应商。
+                                val override = ModelSelection.quickSwitch(
+                                    currentSession ?: SessionEntity(id = app.currentSessionId),
+                                    active,
+                                    modelId
+                                )
+                                app.switchSessionModel(
+                                    app.currentSessionId,
+                                    override.providerConfigId,
+                                    override.modelId
+                                )
                             },
                             onOpenConversationModelPicker = { showConversationModelPicker = true },
                             thinkingEnabled = app.thinkingEnabled,
@@ -404,7 +420,8 @@ class MainActivity : ComponentActivity() {
                         database = app.database,
                         keystore = app.keystore,
                         openAiClient = app.openAiClient,
-                        onBack = { currentPage = "settings" }
+                        onBack = { currentPage = "settings" },
+                        onConfigChanged = { app.refreshProviderRuntime() }
                     )
                     "git_config" -> GitConfigScreen(
                         database = app.database,
@@ -415,7 +432,8 @@ class MainActivity : ComponentActivity() {
                         database = app.database,
                         keystore = app.keystore,
                         openAiClient = app.openAiClient,
-                        onBack = { currentPage = "settings" }
+                        onBack = { currentPage = "settings" },
+                        onConfigChanged = { app.refreshProviderRuntime() }
                     )
                     "audit" -> AuditLogScreen(
                         onBack = { currentPage = "settings" },

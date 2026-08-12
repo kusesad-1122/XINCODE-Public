@@ -38,6 +38,7 @@ import com.xincode.data.GroupRoomEntity
 import com.xincode.data.MessageEntity
 import com.xincode.provider.OpenAiClient
 import com.xincode.security.KeystoreProvider
+import com.xincode.tools.WorkspaceContext
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -177,7 +178,21 @@ fun GroupRoomsScreen(
                     val n = newName.trim()
                     if (n.isNotBlank()) scope.launch {
                         withContext(Dispatchers.IO) {
-                            database.groupRoomDao().insertRoom(GroupRoomEntity(name = n))
+                            database.inTransaction {
+                                val dao = database.groupRoomDao()
+                                val id = dao.insertRoom(GroupRoomEntity(name = n))
+                                dao.updateRoom(
+                                    GroupRoomEntity(
+                                        id = id,
+                                        name = n,
+                                        workspacePath = GroupRoomIsolation.defaultWorkspacePath(
+                                            WorkspaceContext.workspaceRoot,
+                                            n,
+                                            id
+                                        )
+                                    )
+                                )
+                            }
                         }
                     }
                     showAdd = false
@@ -328,6 +343,12 @@ private fun GroupRoomChatScreen(
                         providerConfigs.firstOrNull { it.id == speaker.providerConfigId }
                             ?: providerConfigs.firstOrNull { it.isActive }
                     } else null
+                    val displayModel = when {
+                        speaker == null -> m.model
+                        speaker.providerConfigId > 0L && memberCfg?.id != speaker.providerConfigId -> memberCfg?.model.orEmpty()
+                        m.model.isBlank() -> memberCfg?.model.orEmpty()
+                        else -> m.model
+                    }
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
@@ -350,7 +371,7 @@ private fun GroupRoomChatScreen(
                                 Text(
                                     buildString {
                                         append(m.sender)
-                                        if (m.model.isNotBlank()) append(" · ").append(m.model)
+                                        if (displayModel.isNotBlank()) append(" · ").append(displayModel)
                                         if (hasBench) append("  ›工作台")
                                         if (m.interrupted) append("  · 已中断")
                                     },
@@ -409,7 +430,7 @@ private fun GroupRoomChatScreen(
                                     // 群成员的输出几乎必然带 Markdown,裸 Text 会把 **重点** 的星号显示出来
                                     MarkdownContent(m.content)
                                     if (m.streaming) {
-                                        Text("▍", fontSize = 13.sp, fontFamily = Mono, color = xc.green)
+                                        Text("正在生成…", fontSize = 10.sp, fontFamily = Mono, color = xc.green)
                                     }
                                     if (m.promptTokens > 0 || m.completionTokens > 0) {
                                         Text(
@@ -828,7 +849,10 @@ private fun GroupRoomChatScreen(
                             }
                             Text(
                                 buildString {
-                                    append(if (mem.model.isBlank()) "模型:跟随活跃配置" else "模型:${mem.model}")
+                                    val cfgName = providerConfigs.firstOrNull { it.id == mem.providerConfigId }?.name
+                                        ?: providerConfigs.firstOrNull { it.isActive }?.name
+                                    append(cfgName?.let { "配置商:$it · " } ?: "")
+                                    append(if (mem.model.isBlank()) "模型:跟随配置默认" else "模型:${mem.model}")
                                     if (mem.workSessionId > 0) append("  ·  有独立工作会话")
                                 },
                                 fontSize = 9.sp, fontFamily = Mono, color = xc.faint
@@ -1085,7 +1109,10 @@ private fun MemberModelPicker(
     var status by remember { mutableStateOf("") }
     var manualId by remember { mutableStateOf("") }
 
+    // Keep the model controls usable while following active, and recover gracefully if the
+    // previously selected provider was deleted.
     val cfg = configs.firstOrNull { it.id == pickedConfig }
+        ?: configs.firstOrNull { it.isActive }
 
     // 配置里【已启用】的模型。这是之前唯一的来源,也是「只显示一个模型」的原因:
     // 用户没在供应商页勾选多个时,这里就只有一个,而这个列表并不代表供应商真正提供了什么。
@@ -1141,7 +1168,7 @@ private fun MemberModelPicker(
                     }
                 }
 
-                if (pickedConfig != 0L) {
+                if (cfg != null) {
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("模型", fontSize = 11.sp, fontFamily = Mono, color = xc.sub,
@@ -1205,8 +1232,9 @@ private fun MemberModelPicker(
             TextButton(onClick = {
                 scope.launch {
                     withContext(Dispatchers.IO) {
+                        val providerId = pickedConfig.takeIf { id -> id == 0L || configs.any { it.id == id } } ?: 0L
                         database.groupRoomDao().updateMember(
-                            member.copy(providerConfigId = pickedConfig, model = pickedModel)
+                            member.copy(providerConfigId = providerId, model = pickedModel)
                         )
                     }
                     onClose()
@@ -1305,7 +1333,7 @@ private fun GroupToolCard(m: GroupMessageEntity, xc: XinColors) {
             .padding(10.dp)
     ) {
         Text(
-            if (m.kind == "toolcall") "🔧 $firstLine" else "◈ $firstLine",
+            if (m.kind == "toolcall") "工具调用 · $firstLine" else "工具结果 · $firstLine",
             fontSize = 10.sp, fontFamily = Mono, color = xc.green, fontWeight = FontWeight.Bold
         )
         Text(

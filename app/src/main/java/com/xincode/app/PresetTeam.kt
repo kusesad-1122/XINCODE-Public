@@ -4,12 +4,13 @@ import com.xincode.data.AppDatabase
 import com.xincode.data.GroupMemberEntity
 import com.xincode.data.GroupRoomEntity
 import com.xincode.data.IdentityEntity
+import com.xincode.tools.WorkspaceContext
 
 /**
  * 预制团队:一键把一屋子能干活的角色摆好。
  *
  * 「产品团队」不该是唯一形态 —— 逆向一个 APK 和评审一个需求,需要的根本不是同一屋人。
- * 但装配逻辑是同一套:按房间名查重、身份卡按名字复用、默认开互相 @。所以团队只是数据,
+ * 但装配逻辑是同一套:身份卡按名字复用、默认开互相 @。所以团队只是数据,
  * 装配代码只有一份。
  *
  * ## 为什么身份卡不能只是「加个名字」
@@ -406,8 +407,8 @@ object PresetTeam {
     /**
      * 把预制团队装进数据库,返回房间 id。
      *
-     * 身份卡按名字查重后复用:重复点不会攒出一堆同名卡。
-     * 已经有同名房间时直接返回它,不重复建。
+     * 每次点击都创建一间新的房间。房间名是展示文本,不能作为数据库身份；同名团队也必须
+     * 拥有各自的成员绑定、工作区、工作会话和记忆作用域。身份卡定义仍可按名字复用。
      */
     suspend fun install(database: AppDatabase, team: Team = TEAMS.first()): Long {
         val roomDao = database.groupRoomDao()
@@ -416,43 +417,56 @@ object PresetTeam {
         // 技能先装:身份卡的工具白名单里要带上 invoke_skill,没技能可调等于白给
         TeamSkills.install(database)
 
-        val existing = roomDao.getRoomByName(team.roomName)
-        if (existing != null) return existing.id
-
-        val roomId = roomDao.insertRoom(
-            GroupRoomEntity(
-                name = team.roomName,
-                note = team.note,
-                // 预制团队默认开着互相 @,不然一屋子人还是只能一句一句点名
-                allowMemberMentions = true,
-                maxHops = 3
+        return database.inTransaction {
+            val roomId = roomDao.insertRoom(
+                GroupRoomEntity(
+                    name = team.roomName,
+                    note = team.note,
+                    // 预制团队默认开着互相 @,不然一屋子人还是只能一句一句点名
+                    allowMemberMentions = true,
+                    maxHops = 3
+                )
             )
-        )
-
-        val allIdentities = identityDao.getAll()
-        for (role in team.roles) {
-            val identityId = allIdentities.firstOrNull { it.name == role.name }?.id
-                ?: identityDao.insert(
-                    IdentityEntity(
-                        name = role.name,
-                        systemPrompt = role.prompt,
-                        description = role.description,
-                        openingStatement = role.opening,
-                        allowedTools = role.tools,
-                        temperature = role.temperature,
-                        // 标成 group:这些卡写的是「团队里的一个位置」,满篇「该找谁」
-                        // 「什么时候不说话」,拿到主对话里单独用没有意义,只会淹掉真正想选的卡。
-                        scope = IdentityEntity.SCOPE_GROUP
+            roomDao.updateRoom(
+                GroupRoomEntity(
+                    id = roomId,
+                    name = team.roomName,
+                    note = team.note,
+                    allowMemberMentions = true,
+                    maxHops = 3,
+                    workspacePath = GroupRoomIsolation.defaultWorkspacePath(
+                        WorkspaceContext.workspaceRoot,
+                        team.roomName,
+                        roomId
                     )
                 )
-            roomDao.insertMember(
-                GroupMemberEntity(
-                    roomId = roomId,
-                    displayName = role.name,
-                    identityId = identityId
-                )
             )
+
+            val allIdentities = identityDao.getAll()
+            for (role in team.roles) {
+                val identityId = allIdentities.firstOrNull { it.name == role.name }?.id
+                    ?: identityDao.insert(
+                        IdentityEntity(
+                            name = role.name,
+                            systemPrompt = role.prompt,
+                            description = role.description,
+                            openingStatement = role.opening,
+                            allowedTools = role.tools,
+                            temperature = role.temperature,
+                            // 标成 group:这些卡写的是「团队里的一个位置」,满篇「该找谁」
+                            // 「什么时候不说话」,拿到主对话里单独用没有意义,只会淹掉真正想选的卡。
+                            scope = IdentityEntity.SCOPE_GROUP
+                        )
+                    )
+                roomDao.insertMember(
+                    GroupMemberEntity(
+                        roomId = roomId,
+                        displayName = role.name,
+                        identityId = identityId
+                    )
+                )
+            }
+            roomId
         }
-        return roomId
     }
 }

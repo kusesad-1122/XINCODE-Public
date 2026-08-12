@@ -99,7 +99,8 @@ fun SupplierConfigScreen(
     database: AppDatabase,
     keystore: KeystoreProvider,
     openAiClient: OpenAiClient,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onConfigChanged: () -> Unit = {}
 ) {
     val configDao = database.providerConfigDao()
     val scope = rememberCoroutineScope()
@@ -164,15 +165,33 @@ fun SupplierConfigScreen(
         val id = pendingActivateId ?: return
         pendingActivateId = null
         scope.launch {
-            withContext(Dispatchers.IO) { configDao.deactivateAll(); configDao.setActive(id) }
+            withContext(Dispatchers.IO) {
+                database.inTransaction {
+                    configDao.deactivateAll()
+                    configDao.setActive(id)
+                }
+            }
             activeId = id; status = "✓ 已切换配置"
+            onConfigChanged()
         }
     }
 
     fun deleteConfig(cfg: ProviderConfigEntity) {
         scope.launch {
-            withContext(Dispatchers.IO) { configDao.delete(cfg) }
-            if (activeId == cfg.id) activeId = null; loadConfigs(); status = "✓ 已删除"
+            withContext(Dispatchers.IO) {
+                database.inTransaction {
+                    configDao.delete(cfg)
+                    if (cfg.isActive) {
+                        val fallback = configDao.getAll().firstOrNull()
+                        configDao.deactivateAll()
+                        fallback?.let { configDao.setActive(it.id) }
+                    }
+                }
+            }
+            activeId = null
+            loadConfigs()
+            status = "✓ 已删除"
+            onConfigChanged()
         }
     }
 
@@ -268,15 +287,23 @@ fun SupplierConfigScreen(
                 autoCompactThresholdPercent = editingConfig?.autoCompactThresholdPercent ?: 85,
                 extraHeadersJson = editingConfig?.extraHeadersJson ?: ""
             )
-            if (editingConfig != null) {
-                withContext(Dispatchers.IO) { configDao.update(entity) }
-            } else {
-                val newId = withContext(Dispatchers.IO) { configDao.insert(entity) }
-                withContext(Dispatchers.IO) { configDao.deactivateAll(); configDao.setActive(newId) }
-                activeId = newId
+            val newId = withContext(Dispatchers.IO) {
+                database.inTransaction {
+                    if (editingConfig != null) {
+                        configDao.update(entity)
+                        0L
+                    } else {
+                        val id = configDao.insert(entity.copy(isActive = false))
+                        configDao.deactivateAll()
+                        configDao.setActive(id)
+                        id
+                    }
+                }
             }
+            if (newId > 0L) activeId = newId
             showForm = false; loadConfigs()
             status = "✓ 配置已保存"
+            onConfigChanged()
         }
     }
 

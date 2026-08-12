@@ -197,7 +197,8 @@ fun ModelMarketScreen(
     database: AppDatabase,
     keystore: KeystoreProvider,
     openAiClient: com.xincode.provider.OpenAiClient,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onConfigChanged: () -> Unit = {}
 ) {
     val xc = LocalXinColors.current
     val ctx = LocalContext.current
@@ -357,19 +358,23 @@ fun ModelMarketScreen(
                         /** 用给定令牌落库并启用。抽出来是因为「授权完」和「选完模型再确认」两条路都要走它。 */
                         suspend fun persist(tok: String, m: String) {
                             withContext(Dispatchers.IO) {
-                                val enc = android.util.Base64.encodeToString(keystore.encrypt(tok), android.util.Base64.NO_WRAP)
-                                database.providerConfigDao().deactivateAll()
-                                val id = database.providerConfigDao().insert(
-                                    ProviderConfigEntity(
-                                        name = p.name, supplierId = p.supplierId, baseUrl = p.baseUrl,
-                                        apiKeyEnc = enc, model = m,
-                                        enabledModelIds = (p.models + fetched + m).filter { it.isNotBlank() }.distinct(),
-                                        isActive = true, apiPathType = p.apiPathType, contextWindow = p.contextWindow
+                                database.inTransaction {
+                                    val enc = android.util.Base64.encodeToString(keystore.encrypt(tok), android.util.Base64.NO_WRAP)
+                                    val dao = database.providerConfigDao()
+                                    dao.deactivateAll()
+                                    val id = dao.insert(
+                                        ProviderConfigEntity(
+                                            name = p.name, supplierId = p.supplierId, baseUrl = p.baseUrl,
+                                            apiKeyEnc = enc, model = m,
+                                            enabledModelIds = (p.models + fetched + m).filter { it.isNotBlank() }.distinct(),
+                                            isActive = false, apiPathType = p.apiPathType, contextWindow = p.contextWindow
+                                        )
                                     )
-                                )
-                                database.providerConfigDao().setActive(id)
+                                    dao.setActive(id)
+                                }
                             }
                             toast = "已登录并启用 ${p.name}"
+                            onConfigChanged()
                             oauthBusy = false; oauthUserCode = ""
                             keyDialogFor = null
                         }
@@ -427,19 +432,23 @@ fun ModelMarketScreen(
                     if (k.isBlank() || m.isBlank()) { toast = "请填 key 和模型"; return@TextButton }
                     scope.launch {
                         withContext(Dispatchers.IO) {
-                            val enc = android.util.Base64.encodeToString(keystore.encrypt(k), android.util.Base64.NO_WRAP)
-                            database.providerConfigDao().deactivateAll()
-                            val id = database.providerConfigDao().insert(
-                                ProviderConfigEntity(
-                                    name = p.name, supplierId = p.supplierId, baseUrl = p.baseUrl,
-                                    apiKeyEnc = enc, model = m,
-                                    enabledModelIds = (p.models + m).distinct(),
-                                    isActive = true, apiPathType = p.apiPathType, contextWindow = p.contextWindow
+                            database.inTransaction {
+                                val enc = android.util.Base64.encodeToString(keystore.encrypt(k), android.util.Base64.NO_WRAP)
+                                val dao = database.providerConfigDao()
+                                dao.deactivateAll()
+                                val id = dao.insert(
+                                    ProviderConfigEntity(
+                                        name = p.name, supplierId = p.supplierId, baseUrl = p.baseUrl,
+                                        apiKeyEnc = enc, model = m,
+                                        enabledModelIds = (p.models + m).distinct(),
+                                        isActive = false, apiPathType = p.apiPathType, contextWindow = p.contextWindow
+                                    )
                                 )
-                            )
-                            database.providerConfigDao().setActive(id)
+                                dao.setActive(id)
+                            }
                         }
                         toast = "已添加并启用 ${p.name}"
+                        onConfigChanged()
                         keyDialogFor = null
                     }
                 }) {
