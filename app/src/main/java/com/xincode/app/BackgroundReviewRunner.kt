@@ -2,6 +2,8 @@ package com.xincode.app
 
 import android.util.Log
 import com.xincode.core.AgentCore
+import com.xincode.tools.WorkspaceContext
+import com.xincode.tools.WorkspaceThreadElement
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,8 +31,14 @@ class BackgroundReviewRunner(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val skillImprovementCooldown = HashMap<String, Long>()
 
-    fun onReview(reviewMemory: Boolean, reviewSkill: Boolean, conversationTail: String) {
-        scope.launch {
+    fun onReview(
+        reviewMemory: Boolean,
+        reviewSkill: Boolean,
+        conversationTail: String,
+        workspaceRoot: String = WorkspaceContext.workspaceRoot,
+        projectId: Long = WorkspaceContext.projectId
+    ) {
+        scope.launch(WorkspaceThreadElement { workspaceRoot to projectId }) {
             runReview(buildPrompt(reviewMemory, reviewSkill, conversationTail))
         }
     }
@@ -39,13 +47,19 @@ class BackgroundReviewRunner(
      * 技能「用后自改进」:agent/user 技能每被命中 5 次(5/10/15…)触发一次后台复查,
      * 让复盘分身基于当前技能内容判断是否需要 patch。bundled 由调用方过滤,这里不重复判断。
      */
-    fun onSkillImprovement(skillName: String, skillContent: String, useCount: Int) {
+    fun onSkillImprovement(
+        skillName: String,
+        skillContent: String,
+        useCount: Int,
+        workspaceRoot: String = WorkspaceContext.workspaceRoot,
+        projectId: Long = WorkspaceContext.projectId
+    ) {
         if (useCount < SKILL_IMPROVE_THRESHOLD || useCount % SKILL_IMPROVE_THRESHOLD != 0) return
         val now = System.currentTimeMillis()
         val last = skillImprovementCooldown[skillName] ?: 0L
         if (now - last < SKILL_IMPROVE_COOLDOWN_MS) return
         skillImprovementCooldown[skillName] = now
-        scope.launch {
+        scope.launch(WorkspaceThreadElement { workspaceRoot to projectId }) {
             runReview(buildImprovePrompt(skillName, skillContent))
         }
     }

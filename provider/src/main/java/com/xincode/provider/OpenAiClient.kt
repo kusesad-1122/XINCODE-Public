@@ -169,9 +169,17 @@ class OpenAiClient(
         val sessionId = sessionIdOverride ?: return null
         val session = database.sessionDao().getById(sessionId) ?: return null
         val providerId = session.modelProviderConfigId
-        val cfg = if (providerId != null && providerId > 0) cfgDao.getById(providerId) else null
-        if (cfg == null) return null
-        return cfg to (session.currentModelId?.trim().orEmpty())
+        val model = session.currentModelId?.trim().orEmpty()
+        if (providerId == null || providerId <= 0L) {
+            // Legacy/session-picker state may contain only a model override. Keep it while
+            // following the active provider instead of silently reverting to that provider's
+            // default model.
+            if (model.isBlank()) return null
+            val active = cfgDao.getActive() ?: return null
+            return active to model
+        }
+        val cfg = cfgDao.getById(providerId) ?: return null
+        return cfg to model
     }
 
     // -- model list ------------------------------------------------------------

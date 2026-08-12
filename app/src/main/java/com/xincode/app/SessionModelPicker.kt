@@ -66,7 +66,10 @@ fun SessionModelPicker(
         loadedSession = true
     }
 
+    // When following the global active provider, its model list is still selectable. A deleted
+    // explicit provider also falls back visually to active instead of leaving a dead picker.
     val cfg = configs.firstOrNull { it.id == pickedProvider }
+        ?: configs.firstOrNull { it.isActive }
     val enabled = remember(cfg) {
         runCatching {
             val arr = org.json.JSONArray(cfg?.enabledModelIds ?: "[]")
@@ -124,7 +127,7 @@ fun SessionModelPicker(
                     }
                 }
 
-                if (pickedProvider != null && cfg != null) {
+                if (cfg != null) {
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("模型", fontSize = 11.sp, fontFamily = Mono, color = xc.sub,
@@ -191,7 +194,8 @@ fun SessionModelPicker(
         },
         confirmButton = {
             TextButton(onClick = {
-                app.switchSessionModel(sessionId, pickedProvider, pickedModel)
+                val providerId = pickedProvider?.takeIf { id -> configs.any { it.id == id } }
+                app.switchSessionModel(sessionId, providerId, pickedModel)
                 onClose()
             }) { Text("保存", fontFamily = Mono, color = xc.green) }
         },
