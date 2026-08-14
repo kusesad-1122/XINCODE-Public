@@ -596,7 +596,6 @@ class AgentChatState(
                     val buffer = StringBuilder()
                     var lastDbUpdate = 0L
                     while (isActive) {
-                        if (tokenChannel.isClosedForReceive) break
                         delay(16)
                         var drained = 0
                         while (true) {
@@ -635,6 +634,7 @@ class AgentChatState(
                                 lastDbUpdate = 0L
                             }
                         }
+                        if (tokenChannel.isClosedForReceive) break
                     }
                     // Final drain
                     while (true) {
@@ -649,6 +649,8 @@ class AgentChatState(
                 }
 
                 consumerRef = consumer
+                // B 方案:先 run()(内部重建本轮 channel)再启动 collector,确保绑定本轮新队列。
+                val agentJob = agentCore.run(text, s, thinkingEnabled, thinkingLevel)
                 // Collect tokens from AgentCore → feed to channel
                 val tokenCollector = s.launch {
                     var tcCnt = 0
@@ -705,14 +707,14 @@ class AgentChatState(
                     }
                 }
                 reasoningCollectorRef = reasoningCollector
-                val agentJob = agentCore.run(text, s, thinkingEnabled, thinkingLevel)
                 agentJob.join()
                 Log.d(TAG, "loop end, state=${agentCore.state.value}")
 
                 // Signal end, wait for consumer
+                // B 方案:AgentCore 已在 run() finally 中 close 两个 channel,collector 消费完残留后自然结束。
+                tokenCollector.join()
+                reasoningCollector.join()
                 tokenChannel.close()
-                tokenCollector.cancel()
-                reasoningCollector.cancel()
                 consumer.join()
 
                 // Final persistence + attach reasoning

@@ -125,13 +125,18 @@ class AgentCore(
     private val _state = MutableStateFlow<AgentState>(AgentState.Idle)
     val state: StateFlow<AgentState> = _state.asStateFlow()
 
-    /** Tokens for real-time UI display. Consume on Main dispatcher at 16ms alignment. */
-    private val _tokenChannel = Channel<String>(Channel.UNLIMITED)
-    val tokenFlow: Flow<String> = _tokenChannel.receiveAsFlow()
-
-    /** Reasoning/thinking tokens for collapsed display. */
-    private val _reasoningChannel = Channel<String>(Channel.UNLIMITED)
-    val reasoningFlow: Flow<String> = _reasoningChannel.receiveAsFlow()
+    /**
+     * B 方案(2026-08-14):流式 channel 每轮新建、轮末关闭。
+     * 修复:①上一轮残留片段被新一轮 collector 继续消费(症状:重复思考内容/正文);
+     * ②轮末 cancel 转发协程导致尾部 token 丢弃(症状:输出被截断)。
+     * tokenFlow/reasoningFlow 是 getter,collector 每轮在 run() 之后取当前实例。
+     */
+    @Volatile
+    private var tokenChannel = Channel<String>(Channel.UNLIMITED)
+    @Volatile
+    private var reasoningChannel = Channel<String>(Channel.UNLIMITED)
+    val tokenFlow: Flow<String> get() = tokenChannel.receiveAsFlow()
+    val reasoningFlow: Flow<String> get() = reasoningChannel.receiveAsFlow()
 
     // ---- P1: Tool result compaction ----
     /** When true, compact long tool results before sending to API (default: true). */
@@ -455,6 +460,9 @@ class AgentCore(
             return Job()
         }
 
+        // B 方案:每轮重建 channel,确保本轮 collector 绑定的是全新队列(无上轮残留)。
+        tokenChannel = Channel<String>(Channel.UNLIMITED)
+        reasoningChannel = Channel<String>(Channel.UNLIMITED)
         currentJob = scope.launch {
             try {
                 withTimeout(totalTimeoutMs) {
@@ -468,6 +476,10 @@ class AgentCore(
                 Log.e(TAG, "Loop exception: ${e.message}", e)
                 _state.value = AgentState.Error(e.message ?: "未知错误")
             } finally {
+                // B 方案:轮末 close 两个 channel,让 collector 消费完队列残留后自然结束,
+                // 不丢尾部 token;对异常/取消路径同样兜底。
+                tokenChannel.close()
+                reasoningChannel.close()
                 currentJob = null
                 if (!_state.value.isTerminal) {
                     _state.value = AgentState.Idle
@@ -909,8 +921,8 @@ class AgentCore(
                 maxTokens = maxTokens,   // gap-09
                 topP = topP,             // gap-09
                 responseFormat = responseFormat, // gap-19
-                onToken = { token -> _tokenChannel.trySend(token) },
-                onReasoning = { r -> _reasoningChannel.trySend(r) },
+                onToken = { token -> tokenChannel.trySend(token) },
+                onReasoning = { r -> reasoningChannel.trySend(r) },
 onComplete = { result ->
                         lastUsage = result.usage
                         result.usage?.let {
