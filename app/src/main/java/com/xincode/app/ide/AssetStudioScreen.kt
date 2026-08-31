@@ -125,14 +125,11 @@ fun AssetStudioScreen(
             }
             Spacer(Modifier.width(8.dp))
             val previewDp = size.toInt().dp.coerceIn(48.dp, 120.dp)
-            val iconSizeFloat = size
             Canvas(Modifier.size(previewDp).clip(
                 when(selectedShape){ "circle"-> CircleShape else-> RoundedCornerShape(corner.toInt().dp) }
             ).background(bgColor)) {
-                // DrawScope.size 为 px 尺寸，取短边 1/3 为半径，避免 dp/px 混用
-                val rPx = minOf(size.width, size.height) * 0.35f
-                // iconSizeFloat 保留给外部逻辑使用，避免与 DrawScope.size 命名冲突
-                @Suppress("UNUSED_VARIABLE") val _outer = iconSizeFloat
+                // DrawScope.size 为 px 尺寸，取短边 1/3 为半径
+                val rPx = minOf(this.size.width, this.size.height) * 0.35f
                 drawCircle(color = fgColor, radius = rPx, style = Fill)
             }
         }

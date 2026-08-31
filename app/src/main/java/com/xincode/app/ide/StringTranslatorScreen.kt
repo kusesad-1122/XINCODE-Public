@@ -161,7 +161,7 @@ fun StringTranslatorScreen(
                         val existing = if (f.exists()) f.readText() else "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n</resources>"
                         val k = newKey.trim()
                         if (containsExactStringName(existing, k)) {
-                            withContext(Dispatchers.Main) { showAdd=false; return@launch }
+                            withContext(Dispatchers.Main) { showAdd=false }
                             return@launch
                         }
                         val entry = "    <string name=\"$k\">${escapeXml(newValue.trim())}</string>\n"

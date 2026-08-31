@@ -79,15 +79,15 @@ object GitOps {
     }
 
     suspend fun commit(projectPath: String, message: String, onLog:(String)->Unit={}): Boolean = withContext(Dispatchers.IO) {
-        val r = LinuxEnvironment.runInEnvStreaming("cd ${q(projectPath)} && git add -A && git commit -m ${q(message)} 2>&1", onLog)
+        val r = LinuxEnvironment.runInEnvStreaming("cd ${q(projectPath)} && git add -A && git commit -m ${q(message)} 2>&1", onLine = onLog)
         r.exitCode==0
     }
 
     suspend fun push(projectPath: String, onLog:(String)->Unit={}): Boolean = withContext(Dispatchers.IO) {
-        LinuxEnvironment.runInEnvStreaming("cd ${q(projectPath)} && git push 2>&1", onLog).exitCode==0
+        LinuxEnvironment.runInEnvStreaming("cd ${q(projectPath)} && git push 2>&1", onLine = onLog).exitCode==0
     }
     suspend fun pull(projectPath: String, onLog:(String)->Unit={}): Boolean = withContext(Dispatchers.IO) {
-        LinuxEnvironment.runInEnvStreaming("cd ${q(projectPath)} && git pull --rebase 2>&1", onLog).exitCode==0
+        LinuxEnvironment.runInEnvStreaming("cd ${q(projectPath)} && git pull --rebase 2>&1", onLine = onLog).exitCode==0
     }
 
     private fun q(s: String) = "'" + s.replace("'", "'\\''") + "'"

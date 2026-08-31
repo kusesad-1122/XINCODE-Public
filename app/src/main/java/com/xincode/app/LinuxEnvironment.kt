@@ -308,7 +308,7 @@ object LinuxEnvironment {
     }
 
     /** 在环境内【流式】执行命令,输出逐行回调 [onLine](可视终端/部署进度用)。scope 用于 env 作用域过滤 */
-    suspend fun runInEnvStreaming(cmd: String, onLine: (String) -> Unit, scope: String? = null): ExecResult = withContext(Dispatchers.IO) {
+    suspend fun runInEnvStreaming(cmd: String, scope: String? = null, onLine: (String) -> Unit): ExecResult = withContext(Dispatchers.IO) {
         val dir = rootfsDir ?: return@withContext ExecResult("", "环境未初始化", 1, 0L, false)
         RootShellManager.executeStreaming(buildChrootScript(dir.absolutePath, cmd, scope), onLine)
     }

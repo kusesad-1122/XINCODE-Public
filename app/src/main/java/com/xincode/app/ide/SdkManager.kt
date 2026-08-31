@@ -46,7 +46,7 @@ object SdkManager {
     suspend fun install(pkg: String, onLog: (String)->Unit = {}): Boolean = withContext(Dispatchers.IO) {
         if (!LinuxEnvironment.isReady()) return@withContext false
         val cmd = "yes | $SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$SDK_ROOT '$pkg' 2>&1"
-        val r = LinuxEnvironment.runInEnvStreaming(cmd, onLog, scope = "build")
+        val r = LinuxEnvironment.runInEnvStreaming(cmd, scope = "build", onLine = onLog)
         r.exitCode == 0
     }
 

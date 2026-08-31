@@ -46,11 +46,11 @@ class EnvExecTool(private val terminal: TerminalState) : Tool {
         terminal.appendChunk("$ [AI] $cmd")
         val out = StringBuilder()
         val res = withTimeoutOrNull(ENV_TIMEOUT_MS) {
-            LinuxEnvironment.runInEnvStreaming(cmd, { line ->
+            LinuxEnvironment.runInEnvStreaming(cmd, scope = "terminal") { line ->
                 terminal.appendChunk(line)
                 out.append(line).append('\n')
                 if (out.length > 12000) out.delete(0, out.length - 8000)
-            }, scope = "terminal")
+            }
         }
         if (res == null) {
             terminal.appendChunk("[timeout ${ENV_TIMEOUT_MS / 1000}s]")

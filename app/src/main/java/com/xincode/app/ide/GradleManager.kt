@@ -79,7 +79,7 @@ object GradleManager {
             "export JAVA_HOME=$home; export PATH=\$JAVA_HOME/bin:\$PATH; "
         } else ""
         val fullCmd = "cd ${shellQuote(projectPath)} && ${envPrefix}$baseCmd $task $extraArgs 2>&1"
-        val r = LinuxEnvironment.runInEnvStreaming(fullCmd, onLog, scope = "build")
+        val r = LinuxEnvironment.runInEnvStreaming(fullCmd, scope = "build", onLine = onLog)
         r.exitCode
     }
 

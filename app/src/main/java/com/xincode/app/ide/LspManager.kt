@@ -58,7 +58,7 @@ object LspManager {
 
     suspend fun install(server: LspServer, onLog: (String)->Unit = {}): Boolean = withContext(Dispatchers.IO) {
         if (!LinuxEnvironment.isReady()) return@withContext false
-        val r = LinuxEnvironment.runInEnvStreaming(server.installCmd, onLog)
+        val r = LinuxEnvironment.runInEnvStreaming(server.installCmd, onLine = onLog)
         r.exitCode == 0
     }
 

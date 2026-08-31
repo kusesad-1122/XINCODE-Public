@@ -72,7 +72,7 @@ class TerminalState {
         try {
             val res = withContext(Dispatchers.IO) {
                 if (LinuxEnvironment.isReady())
-                    LinuxEnvironment.runInEnvStreaming(c, { appendChunk(it) }, scope = "terminal")
+                    LinuxEnvironment.runInEnvStreaming(c, scope = "terminal") { appendChunk(it) }
                 else
                     RootShellManager.executeStreaming(c) { appendChunk(it) }
             }
