@@ -1,5 +1,6 @@
 package com.xincode.app
 
+import android.app.Activity
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,14 +12,18 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 
 /**
  * XINCODE palette — terminal aesthetic, brand-neutral tokens.
@@ -126,6 +131,19 @@ fun XinTheme(dark: Boolean, content: @Composable () -> Unit) {
             outline = animated.border,
             outlineVariant = animated.divider
         )
+    }
+
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as? Activity)?.window ?: return@SideEffect
+            window.statusBarColor = animated.bg.toArgb()
+            window.navigationBarColor = animated.bg.toArgb()
+            WindowCompat.getInsetsController(window, view).let {
+                it.isAppearanceLightStatusBars = !dark
+                it.isAppearanceLightNavigationBars = !dark
+            }
+        }
     }
 
     CompositionLocalProvider(LocalXinColors provides animated) {

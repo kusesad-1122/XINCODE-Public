@@ -20,8 +20,8 @@ android {
         applicationId = "com.xincode.app"
         minSdk = 28
         targetSdk = 34
-        versionCode = 121          // 1.0 → 100;之后每次 +0.01 版本对应 +1(1.01→101…)
-        versionName = "1.21"
+        versionCode = 122          // 1.0 → 100;之后每次 +0.01 版本对应 +1(1.01→101…)
+        versionName = "1.22"
     }
 
     // 只有在 keystore.properties 真实存在时才建 release 签名配置。
@@ -97,6 +97,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.github.topjohnwu.libsu:core:5.2.2")
+    // Shizuku 通过反射调用，无需编译期依赖，避免 Maven 拉取；普通用户仍可通过普通 shell 使用
     // execute_code 的 JS 解释器(CodeExecTool 依赖 org.mozilla.javascript.*)。缺失会导致
     // compileDebugKotlin 报 35 处 "Unresolved reference: mozilla" —— 别删。
     implementation("org.mozilla:rhino:1.7.14")
