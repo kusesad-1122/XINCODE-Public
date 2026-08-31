@@ -83,6 +83,12 @@ fun FunctionModelsScreen(
                 fontSize = 10.sp, fontFamily = Mono, color = xc.faint, lineHeight = 15.sp,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
+            Text(
+                "说明:「图像识别 / 深度推理 / 翻译 / 语音转写」与「模型委托」配置的是同一组调用点——" +
+                    "模型委托里手填了自定义端点时以委托端点为优先,否则用这里指定的供应商。",
+                fontSize = 10.sp, fontFamily = Mono, color = xc.yellow, lineHeight = 15.sp,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
 
             if (configs.isEmpty()) {
                 Text("还没有任何供应商配置,请先去「供应商配置」添加。",

@@ -64,6 +64,8 @@ private val knownSuppliers = listOf(
         listOf("deepseek-chat", "deepseek-reasoner")),
     Supplier("openai", "OpenAI", "https://api.openai.com", "gpt-4o-mini",
         listOf("gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo", "o1-mini", "o3-mini")),
+    Supplier("openai-responses", "OpenAI Responses", "https://api.openai.com/v1", "gpt-4o",
+        listOf("gpt-4o", "gpt-4o-mini", "o3-mini"), apiPathType = "responses"),
     Supplier("siliconflow", "硅基流动", "https://api.siliconflow.cn", "deepseek-ai/DeepSeek-V3",
         listOf("deepseek-ai/DeepSeek-V3", "deepseek-ai/DeepSeek-R1", "Qwen/Qwen2.5-7B-Instruct")),
     Supplier("groq", "Groq", "https://api.groq.com/openai", "llama-3.3-70b-versatile",
@@ -97,7 +99,8 @@ fun SupplierConfigScreen(
     database: AppDatabase,
     keystore: KeystoreProvider,
     openAiClient: OpenAiClient,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onConfigChanged: () -> Unit = {}
 ) {
     val configDao = database.providerConfigDao()
     val scope = rememberCoroutineScope()
@@ -162,15 +165,33 @@ fun SupplierConfigScreen(
         val id = pendingActivateId ?: return
         pendingActivateId = null
         scope.launch {
-            withContext(Dispatchers.IO) { configDao.deactivateAll(); configDao.setActive(id) }
+            withContext(Dispatchers.IO) {
+                database.inTransaction {
+                    configDao.deactivateAll()
+                    configDao.setActive(id)
+                }
+            }
             activeId = id; status = "✓ 已切换配置"
+            onConfigChanged()
         }
     }
 
     fun deleteConfig(cfg: ProviderConfigEntity) {
         scope.launch {
-            withContext(Dispatchers.IO) { configDao.delete(cfg) }
-            if (activeId == cfg.id) activeId = null; loadConfigs(); status = "✓ 已删除"
+            withContext(Dispatchers.IO) {
+                database.inTransaction {
+                    configDao.delete(cfg)
+                    if (cfg.isActive) {
+                        val fallback = configDao.getAll().firstOrNull()
+                        configDao.deactivateAll()
+                        fallback?.let { configDao.setActive(it.id) }
+                    }
+                }
+            }
+            activeId = null
+            loadConfigs()
+            status = "✓ 已删除"
+            onConfigChanged()
         }
     }
 
@@ -266,15 +287,23 @@ fun SupplierConfigScreen(
                 autoCompactThresholdPercent = editingConfig?.autoCompactThresholdPercent ?: 85,
                 extraHeadersJson = editingConfig?.extraHeadersJson ?: ""
             )
-            if (editingConfig != null) {
-                withContext(Dispatchers.IO) { configDao.update(entity) }
-            } else {
-                val newId = withContext(Dispatchers.IO) { configDao.insert(entity) }
-                withContext(Dispatchers.IO) { configDao.deactivateAll(); configDao.setActive(newId) }
-                activeId = newId
+            val newId = withContext(Dispatchers.IO) {
+                database.inTransaction {
+                    if (editingConfig != null) {
+                        configDao.update(entity)
+                        0L
+                    } else {
+                        val id = configDao.insert(entity.copy(isActive = false))
+                        configDao.deactivateAll()
+                        configDao.setActive(id)
+                        id
+                    }
+                }
             }
+            if (newId > 0L) activeId = newId
             showForm = false; loadConfigs()
             status = "✓ 配置已保存"
+            onConfigChanged()
         }
     }
 
@@ -398,6 +427,7 @@ fun SupplierConfigScreen(
                     val versioned = Regex("/v\\d+[a-zA-Z0-9]*$").containsMatchIn(base)
                     base + when (selectedApiPathType) {
                         "anthropic" -> if (versioned) "/messages" else "/v1/messages"
+                        "responses" -> if (versioned) "/responses" else "/v1/responses"
                         else -> if (versioned) "/chat/completions" else "/v1/chat/completions"
                     }
                 }
@@ -416,6 +446,7 @@ fun SupplierConfigScreen(
                 Box(Modifier.fillMaxWidth().zIndex(9f)) {
                     val apiPathLabel = when (selectedApiPathType) {
                         "openai" -> "OpenAI 兼容 (自动追加 /v1/chat/completions)"
+                        "responses" -> "OpenAI Responses (自动追加 /v1/responses)"
                         "anthropic" -> "Anthropic 兼容 (自动追加 /v1/messages)"
                         else -> "自定义 (完整 URL，不追加)"
                     }
@@ -430,6 +461,7 @@ fun SupplierConfigScreen(
                         Column(Modifier.fillMaxWidth().offset(y = 42.dp).background(Bg).border(1.dp, Faint)
                             .padding(vertical = 4.dp)) {
                             listOf("openai" to "OpenAI 兼容\n自动追加 /v1/chat/completions",
+                                   "responses" to "OpenAI Responses\n自动追加 /v1/responses",
                                    "anthropic" to "Anthropic 兼容\n自动追加 /v1/messages",
                                    "custom" to "自定义\n完整 URL，不追加").forEach { (id, label) ->
                                 Text(label, fontSize = 11.sp, fontFamily = XinUiFont,

@@ -35,6 +35,7 @@ import android.provider.OpenableColumns
 import android.widget.Toast
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
@@ -283,6 +284,8 @@ fun ChatScreen(
     providerName: String = "",
     availableModels: List<String> = emptyList(),
     onSwitchModel: (String) -> Unit = {},
+    /** 打开「本对话的供应商/模型选择器」(支持跨厂商切换)。 */
+    onOpenConversationModelPicker: () -> Unit = {},
     thinkingEnabled: Boolean = false,
     thinkingLevel: Int = 2,
     onThinkingEnabledChange: (Boolean) -> Unit = {},
@@ -405,7 +408,7 @@ fun ChatScreen(
     }
     // 相册取图。
     val imageLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.PickVisualMedia()
     ) { uri: Uri? ->
         if (uri != null) scope.launch {
             withContext(Dispatchers.IO) { processAttachmentUri(context, uri, pendingAttachments) }
@@ -606,7 +609,7 @@ fun ChatScreen(
         Box(Modifier.weight(1f).fillMaxWidth()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 12.dp)
         ) {
@@ -758,7 +761,7 @@ fun ChatScreen(
             ) {
                 // 上排:图片 / 文件 / 文件夹
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    PlusAction(Icons.Outlined.Image, "图片", Ink, Sub) { showPlusCard = false; imageLauncher.launch("image/*") }
+                    PlusAction(Icons.Outlined.Image, "图片", Ink, Sub) { showPlusCard = false; imageLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                     PlusAction(Icons.Outlined.Description, "文件", Ink, Sub) { showPlusCard = false; attachLauncher.launch(arrayOf("*/*")) }
                     PlusAction(Icons.Outlined.Folder, "文件夹", Ink, Sub) { showPlusCard = false; showFolderPicker = true }
                 }
@@ -1325,6 +1328,23 @@ fun ChatScreen(
                                 )
                             }
                         }
+                    }
+
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                showMainMenu = false
+                                onOpenConversationModelPicker()
+                            }
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "⇄ 本对话切换供应商/模型",
+                            fontSize = 12.sp, fontFamily = XinUiFont,
+                            color = Green, fontWeight = FontWeight.Medium
+                        )
                     }
 
                     if (availableModels.isNotEmpty()) {
@@ -2190,7 +2210,7 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
         // 气泡。工具消息不套 —— 它是折叠的技术输出,套上反而像有人在说话。
         // 宽度限到 88% 并留出对侧空白:占满整行的话左右之分就看不出来了。
         val bubbleModifier = if (isTool) Modifier else Modifier
-            .fillMaxWidth(0.88f)
+            .fillMaxWidth(0.92f)
             .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start)
             .clip(
                 RoundedCornerShape(
@@ -2548,7 +2568,7 @@ private fun UserMessageBubble(
                 )
             }
         }
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(6.dp))
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             UserAvatar(size = 44.dp, contentDescription = "我的头像")
             Text(

@@ -5,6 +5,7 @@ import com.xincode.core.ToolResult
 import kotlinx.coroutines.*
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * Executes a shell command.
@@ -51,32 +52,44 @@ class ShellExecTool : Tool {
     private suspend fun executeViaSh(command: String): ToolResult {
         var process: Process? = null
         try {
-            process = ProcessBuilder("sh", "-c", command)
+            val p = ProcessBuilder("sh", "-c", command)
                 .redirectErrorStream(false)
                 .start()
+            process = p
 
-            return@executeViaSh withTimeout(TIMEOUT_SECONDS * 1000) {
-                val stdout = process.inputStream.bufferedReader().use { it.readText() }
-                val stderr = process.errorStream.bufferedReader().use { it.readText() }
-                val exitCode = process.waitFor()
+            return@executeViaSh coroutineScope {
+                // 并发读 stdout/stderr,避免「先读完 stdout 再读 stderr」的管道写满死锁
+                // (命令 stderr 一多,子进程写阻塞,父进程读不到 EOF → 卡到超时)。
+                // 两边都只保留最近 cap 字符,既持续排空管道,又不让大输出撑爆内存。
+                val stdout = StringBuilder()
+                val stderr = StringBuilder()
+                val readers = listOf(
+                    async(Dispatchers.IO) {
+                        p.inputStream.bufferedReader().use { r ->
+                            while (true) {
+                                val line = r.readLine() ?: break
+                                appendBounded(stdout, line, MAX_STDOUT * 2)
+                            }
+                        }
+                    },
+                    async(Dispatchers.IO) {
+                        p.errorStream.bufferedReader().use { r ->
+                            while (true) {
+                                val line = r.readLine() ?: break
+                                appendBounded(stderr, line, MAX_STDERR * 2)
+                            }
+                        }
+                    }
+                )
 
-                if (exitCode == 0) {
-                    ToolResult.Success(stdout.trim().let {
-                        if (it.length > MAX_STDOUT) it.take(MAX_STDOUT / 2) +
-                            "\n[...已截断 ${it.length - MAX_STDOUT} 字符...]\n" +
-                            it.takeLast(MAX_STDOUT / 2)
-                        else it
-                    })
+                val exited = p.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                if (!exited) {
+                    killProcessGroup(p)
+                    readers.forEach { reader -> withTimeoutOrNull(2000) { reader.join() } }
+                    ToolResult.Error("命令超时 (${TIMEOUT_SECONDS}s)，已强杀进程组")
                 } else {
-                    ToolResult.Error(
-                        message = "命令退出码 $exitCode",
-                        exitCode = exitCode,
-                        stderr = stderr.trim().let {
-                            if (it.length > MAX_STDERR) it.take(MAX_STDERR / 2) +
-                                "\n[...已截断...]\n" + it.takeLast(MAX_STDERR / 2)
-                            else it
-                        }.ifBlank { "(无 stderr 输出)" }
-                    )
+                    readers.forEach { reader -> withTimeoutOrNull(2000) { reader.join() } }
+                    buildResult(p.exitValue(), stdout.toString(), stderr.toString())
                 }
             }
         } catch (e: TimeoutCancellationException) {
@@ -87,6 +100,24 @@ class ShellExecTool : Tool {
             return@executeViaSh ToolResult.Error("执行异常: ${e.message}")
         }
     }
+
+    private fun buildResult(exitCode: Int, stdoutRaw: String, stderrRaw: String): ToolResult {
+        val stdout = stdoutRaw.trim()
+        val stderr = stderrRaw.trim()
+        return if (exitCode == 0) {
+            ToolResult.Success(truncate(stdout, MAX_STDOUT))
+        } else {
+            ToolResult.Error(
+                message = "命令退出码 $exitCode",
+                exitCode = exitCode,
+                stderr = truncate(stderr, MAX_STDERR).ifBlank { "(无 stderr 输出)" }
+            )
+        }
+    }
+
+    private fun truncate(s: String, max: Int): String =
+        if (s.length > max) s.take(max / 2) + "\n[...已截断 ${s.length - max} 字符...]\n" + s.takeLast(max / 2)
+        else s
 
     /** Kill process group to prevent orphan child processes. */
     private fun killProcessGroup(process: Process?) {
@@ -112,4 +143,10 @@ class ShellExecTool : Tool {
             -1
         }
     }
+}
+
+/** 向 StringBuilder 追加一行并只保留最近 [cap] 字符,持续排空管道的同时限制内存。 */
+internal fun appendBounded(sb: StringBuilder, line: String, cap: Int) {
+    sb.append(line).append('\n')
+    if (sb.length > cap) sb.delete(0, sb.length - cap)
 }

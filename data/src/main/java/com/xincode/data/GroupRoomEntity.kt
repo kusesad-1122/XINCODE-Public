@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Update
@@ -64,6 +65,16 @@ data class GroupRoomEntity(
      * 各自写各自的文件没问题,但不要假设「上一刻只有一个人在动」。
      */
     val workspacePath: String = "",
+
+    /**
+     * 滚动总结:开时每隔 [summaryEveryTurns] 轮把「旧总结 + 新增消息」合并成新总结,
+     * 历史投影只保留总结 + 游标之后的原文。关时退回旧的字符阈值一次性压缩。
+     */
+    val summaryEnabled: Boolean = true,
+    /** 每累计多少轮用户发言触发一次滚动总结。 */
+    val summaryEveryTurns: Int = 20,
+    /** 总结专用模型;空 = 跟随当前活跃配置。 */
+    val summaryModel: String = "",
 
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
@@ -126,9 +137,51 @@ data class GroupMessageEntity(
     val replyToSender: String = "",
     /** 被引用消息的正文快照。 */
     val replyToContent: String = "",
+    /** 同一次成员回复的稳定分组 id;工具事件、diff 与最终正文共用,用于规范排序。 */
+    val runId: String = "",
+    /**
+     * 同一 run 内的展示顺序:0=用户消息,1=工具调用,2=工具结果/diff,3=助手最终正文。
+     * 排序先按 run 的起始时间分组,组内再按 phase,避免并行回复与工具事件交错。
+     */
+    val phase: Int = 0,
+    /** 消息类型:message=普通对话,toolcall=工具调用,toolresult=工具结果,diff=工作区变更。 */
+    val kind: String = "message",
+    /** 是否正在流式写入(前端据此显示光标与实时内容)。 */
+    val streaming: Boolean = false,
+    /** 被用户打断/失败中止。 */
+    val interrupted: Boolean = false,
+    /** 流式过程中的思考内容快照。 */
+    val reasoning: String = "",
+    /** 生成这条回复用的模型,前端展示在成员名旁边。 */
+    val model: String = "",
+    val promptTokens: Int = 0,
+    val completionTokens: Int = 0,
+    val cacheHitTokens: Int = 0,
+    val cacheMissTokens: Int = 0,
     /** 摘要消息(自动压缩产生的)标记,渲染时区别对待。 */
     val isDigest: Boolean = false,
     val ts: Long = System.currentTimeMillis()
+)
+
+/**
+ * 房间的滚动总结状态。
+ *
+ * summaryThroughMessageId 是游标:总结覆盖到哪条消息为止。历史投影 = 总结 + 游标之后的原文,
+ * 总结失败时保留旧版本并在 lastError 记录原因,不阻塞聊天。
+ */
+@Entity(tableName = "group_room_summaries")
+data class GroupRoomSummaryEntity(
+    @PrimaryKey
+    val roomId: Long,
+    val summary: String = "",
+    val summaryThroughMessageId: Long = 0,
+    val summaryThroughMessageTimestamp: Long = 0,
+    val summarizedTurnCount: Int = 0,
+    /** idle / summarizing / success / failed。 */
+    val status: String = "idle",
+    val version: Int = 0,
+    val updatedAt: Long = 0,
+    val lastError: String = ""
 )
 
 @Dao
@@ -170,6 +223,14 @@ interface GroupRoomDao {
     @Query("SELECT * FROM group_members WHERE roomId = :roomId ORDER BY createdAt ASC")
     suspend fun getMembers(roomId: Long): List<GroupMemberEntity>
 
+    /** 按工作会话反查成员:App 重启后确认卡也能定位回房间。 */
+    @Query("SELECT * FROM group_members WHERE workSessionId = :sessionId LIMIT 1")
+    suspend fun getMemberByWorkSession(sessionId: Long): GroupMemberEntity?
+
+    /** Startup repair source: every member whose internal work session must be isolated. */
+    @Query("SELECT * FROM group_members WHERE workSessionId > 0 ORDER BY roomId, createdAt ASC")
+    suspend fun getMembersWithWorkSessions(): List<GroupMemberEntity>
+
     @Insert
     suspend fun insertMember(member: GroupMemberEntity): Long
 
@@ -188,6 +249,43 @@ interface GroupRoomDao {
 
     @Insert
     suspend fun insertMessage(message: GroupMessageEntity): Long
+
+    /** 流式回复的原地更新:内容、思考、完成/中断状态与用量一次写完。 */
+    @Query(
+        """
+        UPDATE group_messages
+        SET content = :content, reasoning = :reasoning,
+            streaming = :streaming, interrupted = :interrupted,
+            promptTokens = :promptTokens, completionTokens = :completionTokens,
+            cacheHitTokens = :cacheHitTokens, cacheMissTokens = :cacheMissTokens
+        WHERE id = :id AND roomId = :roomId
+        """
+    )
+    suspend fun updateMessageStream(
+        id: Long,
+        roomId: Long,
+        content: String,
+        reasoning: String,
+        streaming: Boolean,
+        interrupted: Boolean,
+        promptTokens: Int,
+        completionTokens: Int,
+        cacheHitTokens: Int,
+        cacheMissTokens: Int
+    )
+
+    /** 用户打断/停止时,把所有仍在流式的消息标记为已中断。 */
+    @Query("UPDATE group_messages SET streaming = 0, interrupted = 1 WHERE roomId = :roomId AND streaming = 1")
+    suspend fun markStreamingInterrupted(roomId: Long)
+
+    @Query("SELECT * FROM group_room_summaries WHERE roomId = :roomId")
+    suspend fun getSummary(roomId: Long): GroupRoomSummaryEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSummary(summary: GroupRoomSummaryEntity)
+
+    @Query("DELETE FROM group_room_summaries WHERE roomId = :roomId")
+    suspend fun deleteSummary(roomId: Long)
 
     @Query("DELETE FROM group_messages WHERE roomId = :roomId AND id <= :maxId")
     suspend fun deleteMessagesUpTo(roomId: Long, maxId: Long)

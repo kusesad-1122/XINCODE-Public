@@ -15,23 +15,30 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.data.AppDatabase
 import com.xincode.data.GroupMemberEntity
+import com.xincode.data.GroupMessageEntity
 import com.xincode.data.GroupRoomEntity
 import com.xincode.data.MessageEntity
 import com.xincode.provider.OpenAiClient
 import com.xincode.security.KeystoreProvider
+import com.xincode.tools.WorkspaceContext
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -171,7 +178,21 @@ fun GroupRoomsScreen(
                     val n = newName.trim()
                     if (n.isNotBlank()) scope.launch {
                         withContext(Dispatchers.IO) {
-                            database.groupRoomDao().insertRoom(GroupRoomEntity(name = n))
+                            database.inTransaction {
+                                val dao = database.groupRoomDao()
+                                val id = dao.insertRoom(GroupRoomEntity(name = n))
+                                dao.updateRoom(
+                                    GroupRoomEntity(
+                                        id = id,
+                                        name = n,
+                                        workspacePath = GroupRoomIsolation.defaultWorkspacePath(
+                                            WorkspaceContext.workspaceRoot,
+                                            n,
+                                            id
+                                        )
+                                    )
+                                )
+                            }
                         }
                     }
                     showAdd = false
@@ -203,6 +224,7 @@ private fun GroupRoomChatScreen(
 
     val app = LocalContext.current.applicationContext as XincodeApplication
     val room by database.groupRoomDao().observeRoom(roomId).collectAsState(initial = null)
+    val providerConfigs by database.providerConfigDao().observeAll().collectAsState(initial = emptyList())
 
     var input by remember { mutableStateOf("") }
     val busy = app.isGroupRoomBusy(roomId)
@@ -214,16 +236,53 @@ private fun GroupRoomChatScreen(
     // 内嵌工作台:非空时在群聊内部展开那个成员的干活现场,返回就回到这儿
     var workbenchFor by remember { mutableStateOf<GroupMemberEntity?>(null) }
     val listState = rememberLazyListState()
+    val clipboard = LocalClipboardManager.current
+    // 规范排序:同一 run 的工具事件、diff 与最终正文按 phase 排在一起,不被并行回复插乱。
+    val orderedMessages = remember(messages) { sortGroupMessagesCanonical(messages) }
+    // 引用目标:点消息上的「引用」后,下一条用户消息会带引用块。
+    var quoteTarget by remember { mutableStateOf<GroupMessageEntity?>(null) }
+    // 消息操作菜单:复制 / 引用 / 重发。
+    var menuFor by remember { mutableStateOf<Long?>(null) }
 
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    LaunchedEffect(orderedMessages.size) {
+        if (orderedMessages.isNotEmpty()) listState.animateScrollToItem(orderedMessages.size - 1)
     }
 
     fun send() {
         val text = input.trim()
-        if (text.isBlank() || busy) return
+        if (text.isBlank()) return
         if (members.isEmpty()) return
-        if (app.sendGroupMessage(roomId, text)) input = ""
+        val qt = quoteTarget
+        if (app.sendGroupMessage(
+                roomId, text,
+                replyToId = qt?.id ?: 0L,
+                replyToSender = qt?.sender.orEmpty(),
+                replyToContent = qt?.content.orEmpty()
+            )
+        ) {
+            input = ""
+            quoteTarget = null
+        }
+    }
+
+    fun copyMessage(m: GroupMessageEntity) {
+        clipboard.setText(AnnotatedString(m.content))
+        menuFor = null
+    }
+
+    fun quoteMessage(m: GroupMessageEntity) {
+        quoteTarget = m
+        menuFor = null
+    }
+
+    fun resendMessage(m: GroupMessageEntity) {
+        menuFor = null
+        app.sendGroupMessage(roomId, m.content)
+    }
+
+    fun scrollToMessage(id: Long) {
+        val idx = orderedMessages.indexOfFirst { it.id == id }
+        if (idx >= 0) scope.launch { listState.animateScrollToItem(idx) }
     }
 
     /** 把 @名字 插到输入框末尾,自动补空格,已经 @ 过就不重复插。 */
@@ -258,12 +317,12 @@ private fun GroupRoomChatScreen(
 
         LazyColumn(
             state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp),
+            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(messages.size) { i ->
-                val m = messages[i]
+            items(orderedMessages.size) { i ->
+                val m = orderedMessages[i]
                 val isMine = m.sender.isBlank() && !m.isDigest
 
                 // 摘要不走气泡:它不是谁说的话,是系统对前面一段的压缩,
@@ -273,79 +332,177 @@ private fun GroupRoomChatScreen(
                     Text(m.content, fontSize = 11.sp, fontFamily = Mono,
                         color = xc.faint, lineHeight = 17.sp,
                         modifier = Modifier.padding(top = 2.dp, bottom = 4.dp))
+                } else if (m.kind == "diff") {
+                    GroupDiffCard(m, xc)
+                } else if (m.kind == "toolcall" || m.kind == "toolresult") {
+                    GroupToolCard(m, xc)
                 } else {
-                    Column(
+                    val speaker = members.firstOrNull { it.displayName == m.sender }
+                    val hasBench = speaker != null && speaker.workSessionId > 0
+                    val memberCfg = if (speaker != null) {
+                        providerConfigs.firstOrNull { it.id == speaker.providerConfigId }
+                            ?: providerConfigs.firstOrNull { it.isActive }
+                    } else null
+                    val displayModel = when {
+                        speaker == null -> m.model
+                        speaker.providerConfigId > 0L && memberCfg?.id != speaker.providerConfigId -> memberCfg?.model.orEmpty()
+                        m.model.isBlank() -> memberCfg?.model.orEmpty()
+                        else -> m.model
+                    }
+                    Row(
                         Modifier.fillMaxWidth(),
-                        horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
+                        horizontalArrangement = if (isMine) Arrangement.End else Arrangement.Start,
+                        verticalAlignment = Alignment.Top
                     ) {
+                        // 成员头像:左侧,AI 提供商标识;用户头像:右侧,RE。
                         if (!isMine) {
-                            val speaker = members.firstOrNull { it.displayName == m.sender }
-                            val hasBench = speaker != null && speaker.workSessionId > 0
-                            Text(
-                                if (hasBench) "${m.sender}  ›工作台" else m.sender,
-                                fontSize = 10.sp, fontFamily = Mono, color = xc.green,
-                                modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
-                                    .clickable(
-                                        indication = null,
-                                        interactionSource = remember { MutableInteractionSource() }
-                                    ) { if (hasBench) workbenchFor = speaker }
+                            ProviderAvatar(
+                                supplierId = memberCfg?.supplierId.orEmpty(),
+                                size = 34.dp,
+                                contentDescription = m.sender,
+                                modifier = Modifier.padding(top = 16.dp, end = 6.dp)
                             )
                         }
-                        Box(
-                            Modifier
-                                // 留出对侧空白,否则长消息占满整行就看不出左右之分了
-                                .fillMaxWidth(0.86f)
-                                .wrapContentWidth(if (isMine) Alignment.End else Alignment.Start)
-                                .clip(
-                                    RoundedCornerShape(
-                                        topStart = 12.dp, topEnd = 12.dp,
-                                        // 靠自己那侧的角收窄,气泡才有指向感
-                                        bottomStart = if (isMine) 12.dp else 3.dp,
-                                        bottomEnd = if (isMine) 3.dp else 12.dp
-                                    )
-                                )
-                                .background(if (isMine) xc.activeBg else xc.bgElevated)
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                        Column(
+                            Modifier.fillMaxWidth(0.88f),
+                            horizontalAlignment = if (isMine) Alignment.End else Alignment.Start
                         ) {
-                            // Box 是叠放布局,所有子项必须放进同一个 Column,否则引用块和正文会重叠
-                            Column(Modifier.fillMaxWidth()) {
-                                // 引用块:先说「这是在回谁」,再是正文。多人同时被 @ 时,
-                                // 没有这一块根本分不清每条回复是在回应哪句原话。
-                                if (m.replyToContent.isNotBlank()) {
-                                    Column(
-                                        Modifier.fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(xc.bg.copy(alpha = 0.55f))
-                                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                                    ) {
-                                        Text(
-                                            "引用 ${m.replyToSender.ifBlank { "用户" }}",
-                                            fontSize = 9.sp, fontFamily = Mono, color = xc.sub
+                            if (!isMine) {
+                                Text(
+                                    buildString {
+                                        append(m.sender)
+                                        if (displayModel.isNotBlank()) append(" · ").append(displayModel)
+                                        if (hasBench) append("  ›工作台")
+                                        if (m.interrupted) append("  · 已中断")
+                                    },
+                                    fontSize = 10.sp, fontFamily = Mono, color = xc.green,
+                                    modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)
+                                        .clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) { if (hasBench) workbenchFor = speaker }
+                                )
+                            }
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .wrapContentWidth(if (isMine) Alignment.End else Alignment.Start)
+                                    .clip(
+                                        RoundedCornerShape(
+                                            topStart = 12.dp, topEnd = 12.dp,
+                                            // 靠自己那侧的角收窄,气泡才有指向感
+                                            bottomStart = if (isMine) 12.dp else 3.dp,
+                                            bottomEnd = if (isMine) 3.dp else 12.dp
                                         )
+                                    )
+                                    .background(if (isMine) xc.activeBg else xc.bgElevated)
+                                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                            ) {
+                                // Box 是叠放布局,所有子项必须放进同一个 Column,否则引用块和正文会重叠
+                                Column(Modifier.fillMaxWidth()) {
+                                    // 引用块:先说「这是在回谁」,再是正文。多人同时被 @ 时,
+                                    // 没有这一块根本分不清每条回复是在回应哪句原话。
+                                    if (m.replyToContent.isNotBlank()) {
+                                        Column(
+                                            Modifier.fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(xc.bg.copy(alpha = 0.55f))
+                                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                                .clickable(
+                                                    indication = null,
+                                                    interactionSource = remember { MutableInteractionSource() }
+                                                ) { if (m.replyToId > 0) scrollToMessage(m.replyToId) }
+                                        ) {
+                                            Text(
+                                                "引用 ${m.replyToSender.ifBlank { "用户" }}",
+                                                fontSize = 9.sp, fontFamily = Mono, color = xc.sub
+                                            )
+                                            Text(
+                                                m.replyToContent,
+                                                fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
+                                                lineHeight = 14.sp, maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
+                                        }
+                                        Spacer(Modifier.height(6.dp))
+                                    }
+                                    // 群成员的输出几乎必然带 Markdown,裸 Text 会把 **重点** 的星号显示出来
+                                    MarkdownContent(m.content)
+                                    if (m.streaming) {
+                                        Text("正在生成…", fontSize = 10.sp, fontFamily = Mono, color = xc.green)
+                                    }
+                                    if (m.promptTokens > 0 || m.completionTokens > 0) {
                                         Text(
-                                            m.replyToContent,
-                                            fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
-                                            lineHeight = 14.sp, maxLines = 3,
-                                            overflow = TextOverflow.Ellipsis,
-                                            modifier = Modifier.padding(top = 2.dp)
+                                            "↑${m.promptTokens} ↓${m.completionTokens}",
+                                            fontSize = 8.sp, fontFamily = Mono, color = xc.faint,
+                                            modifier = Modifier.padding(top = 3.dp)
                                         )
                                     }
-                                    Spacer(Modifier.height(6.dp))
                                 }
-                                // 群成员的输出几乎必然带 Markdown,裸 Text 会把 **重点** 的星号显示出来
-                                MarkdownContent(m.content)
                             }
+                            // 消息操作:复制 / 引用 / 重发
+                            Row(
+                                Modifier.padding(top = 2.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    if (menuFor == m.id) "⋯" else "···",
+                                    fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                    modifier = Modifier.clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { menuFor = if (menuFor == m.id) null else m.id }
+                                )
+                                if (menuFor == m.id) {
+                                    Text("复制", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                        modifier = Modifier.clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) { copyMessage(m) })
+                                    Text("引用", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                        modifier = Modifier.clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) { quoteMessage(m) })
+                                    Text("重发", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                        modifier = Modifier.clickable(
+                                            indication = null,
+                                            interactionSource = remember { MutableInteractionSource() }
+                                        ) { resendMessage(m) })
+                                }
+                            }
+                        }
+                        if (isMine) {
+                            Spacer(Modifier.width(6.dp))
+                            UserAvatar(
+                                size = 34.dp,
+                                contentDescription = "我",
+                                modifier = Modifier.padding(top = 14.dp)
+                            )
                         }
                     }
                 }
             }
-            if (busy) {
+            val summarizing = app.groupRoomSummarizing(roomId)
+            if (busy || summarizing) {
                 item {
-                    Text(
-                        if (speaking.isNotBlank()) "$speaking 正在输入…" else "…",
-                        fontSize = 11.sp, fontFamily = Mono, color = xc.faint,
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    )
+                    Column(Modifier.padding(vertical = 6.dp)) {
+                        if (summarizing) {
+                            Text("正在总结房间历史…", fontSize = 10.sp, fontFamily = Mono, color = xc.yellow)
+                        }
+                        if (busy) {
+                            Text(
+                                if (speaking.isNotBlank()) "$speaking 正在输入…" else "…",
+                                fontSize = 11.sp, fontFamily = Mono, color = xc.faint
+                            )
+                        }
+                        val estimate = app.groupRoomContextEstimateText(roomId)
+                        if (estimate.isNotBlank()) {
+                            Text(estimate, fontSize = 9.sp, fontFamily = Mono, color = xc.faint)
+                        }
+                    }
                 }
             }
         }
@@ -384,6 +541,69 @@ private fun GroupRoomChatScreen(
                         Text("@${mem.displayName}", fontSize = 12.sp, fontFamily = Mono, color = xc.ink)
                     }
                 }
+            }
+        }
+
+        // 房间内工具确认卡:成员工作会话在等批准时,不必切去工作台。
+        app.groupRoomConfirm(roomId)?.let { c ->
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(xc.bgElevated)
+                    .border(1.dp, xc.border, RoundedCornerShape(12.dp))
+                    .padding(10.dp)
+            ) {
+                Text(
+                    "等待确认 · ${c.memberName} · ${c.toolName}",
+                    fontSize = 11.sp, fontFamily = Mono, color = xc.yellow
+                )
+                Text(
+                    c.preview.take(220),
+                    fontSize = 9.sp, fontFamily = Mono, color = xc.faint, lineHeight = 13.sp,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+                Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text("允许一次", fontSize = 11.sp, fontFamily = Mono, color = xc.green,
+                        modifier = Modifier.clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            app.resolveGroupConfirm(c.sessionId, com.xincode.security.ToolConfirmResult.ALLOW_ONCE)
+                        })
+                    Text("始终允许", fontSize = 11.sp, fontFamily = Mono, color = xc.green,
+                        modifier = Modifier.clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            app.resolveGroupConfirm(c.sessionId, com.xincode.security.ToolConfirmResult.ALWAYS_ALLOW)
+                        })
+                    Text("拒绝", fontSize = 11.sp, fontFamily = Mono, color = xc.red,
+                        modifier = Modifier.clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            app.resolveGroupConfirm(c.sessionId, com.xincode.security.ToolConfirmResult.DENY)
+                        })
+                }
+            }
+        }
+
+        // 待发送的引用:显示在输入框上方,可取消。
+        quoteTarget?.let { qt ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "引用 ${qt.sender.ifBlank { "我" }}: ${qt.content.take(48)}",
+                    fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                    modifier = Modifier.weight(1f)
+                )
+                Text("✕", fontSize = 12.sp, fontFamily = Mono, color = xc.red,
+                    modifier = Modifier.clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { quoteTarget = null })
             }
         }
 
@@ -429,6 +649,8 @@ private fun GroupRoomChatScreen(
                     cursorColor = xc.ink, focusedTextColor = xc.ink, unfocusedTextColor = xc.ink,
                     focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
                 ),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(onSend = { send() }),
                 textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = Mono)
             )
             // 跑着的时候变成停止 —— 连锁一旦滚起来,能随时叫停比什么都重要
@@ -537,6 +759,46 @@ private fun GroupRoomChatScreen(
                                 database.groupRoomDao().updateRoom(r.copy(fullAccess = it, updatedAt = System.currentTimeMillis()))
                             } }
                         }
+
+                        Spacer(Modifier.height(12.dp))
+                        ToggleRow(
+                            "滚动总结",
+                            "每隔 N 轮把「旧总结 + 新消息」合并成新总结,历史投影只保留总结 + 游标后的原文;关掉则退回一次性压缩。",
+                            r.summaryEnabled, xc
+                        ) {
+                            scope.launch { withContext(Dispatchers.IO) {
+                                database.groupRoomDao().updateRoom(r.copy(summaryEnabled = it, updatedAt = System.currentTimeMillis()))
+                            } }
+                        }
+                        if (r.summaryEnabled) {
+                            Text(
+                                "总结频率:每 ${r.summaryEveryTurns} 轮用户发言",
+                                fontSize = 11.sp, fontFamily = Mono, color = xc.ink,
+                                modifier = Modifier.padding(top = 6.dp)
+                            )
+                            Row {
+                                listOf(10, 20, 50).forEach { n ->
+                                    Text(
+                                        "$n", fontSize = 11.sp, fontFamily = Mono,
+                                        color = if (r.summaryEveryTurns == n) xc.green else xc.sub,
+                                        modifier = Modifier
+                                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                                scope.launch { withContext(Dispatchers.IO) {
+                                                    database.groupRoomDao().updateRoom(
+                                                        r.copy(summaryEveryTurns = n, updatedAt = System.currentTimeMillis())
+                                                    )
+                                                } }
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            Text(
+                                "总结模型(空 = 跟随活跃配置):${r.summaryModel.ifBlank { "默认" }}",
+                                fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                     }
                 }
             },
@@ -587,7 +849,10 @@ private fun GroupRoomChatScreen(
                             }
                             Text(
                                 buildString {
-                                    append(if (mem.model.isBlank()) "模型:跟随活跃配置" else "模型:${mem.model}")
+                                    val cfgName = providerConfigs.firstOrNull { it.id == mem.providerConfigId }?.name
+                                        ?: providerConfigs.firstOrNull { it.isActive }?.name
+                                    append(cfgName?.let { "配置商:$it · " } ?: "")
+                                    append(if (mem.model.isBlank()) "模型:跟随配置默认" else "模型:${mem.model}")
                                     if (mem.workSessionId > 0) append("  ·  有独立工作会话")
                                 },
                                 fontSize = 9.sp, fontFamily = Mono, color = xc.faint
@@ -814,6 +1079,7 @@ private suspend fun deleteRoomAndWorkSessions(
     }
     dao.deleteMembersOf(room.id)
     dao.deleteMessagesOf(room.id)
+    dao.deleteSummary(room.id)
     dao.deleteRoom(room)
 }
 
@@ -843,7 +1109,10 @@ private fun MemberModelPicker(
     var status by remember { mutableStateOf("") }
     var manualId by remember { mutableStateOf("") }
 
+    // Keep the model controls usable while following active, and recover gracefully if the
+    // previously selected provider was deleted.
     val cfg = configs.firstOrNull { it.id == pickedConfig }
+        ?: configs.firstOrNull { it.isActive }
 
     // 配置里【已启用】的模型。这是之前唯一的来源,也是「只显示一个模型」的原因:
     // 用户没在供应商页勾选多个时,这里就只有一个,而这个列表并不代表供应商真正提供了什么。
@@ -899,7 +1168,7 @@ private fun MemberModelPicker(
                     }
                 }
 
-                if (pickedConfig != 0L) {
+                if (cfg != null) {
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("模型", fontSize = 11.sp, fontFamily = Mono, color = xc.sub,
@@ -963,8 +1232,9 @@ private fun MemberModelPicker(
             TextButton(onClick = {
                 scope.launch {
                     withContext(Dispatchers.IO) {
+                        val providerId = pickedConfig.takeIf { id -> id == 0L || configs.any { it.id == id } } ?: 0L
                         database.groupRoomDao().updateMember(
-                            member.copy(providerConfigId = pickedConfig, model = pickedModel)
+                            member.copy(providerConfigId = providerId, model = pickedModel)
                         )
                     }
                     onClose()
@@ -1013,4 +1283,65 @@ private fun SimpleField(value: String, onChange: (String) -> Unit, hint: String,
         ),
         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = Mono)
     )
+}
+
+/** 工作区变更卡:显示成员这轮改动了哪些文件(A/M/D),不进普通气泡。 */
+@Composable
+private fun GroupDiffCard(m: GroupMessageEntity, xc: XinColors) {
+    val lines = m.content.lineSequence().toList()
+    val title = lines.firstOrNull() ?: "工作区变更"
+    val entries = lines.drop(1)
+    Column(
+        Modifier.fillMaxWidth(0.92f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(xc.bgElevated)
+            .border(1.dp, xc.border, RoundedCornerShape(12.dp))
+            .padding(10.dp)
+    ) {
+        Text(title, fontSize = 11.sp, fontFamily = Mono, color = xc.yellow, fontWeight = FontWeight.Bold)
+        entries.forEach { line ->
+            val op = line.take(1)
+            val path = line.drop(2)
+            Text(
+                path,
+                fontSize = 10.sp, fontFamily = Mono,
+                color = when (op) {
+                    "A" -> xc.green
+                    "M" -> xc.yellow
+                    "D" -> xc.red
+                    else -> xc.sub
+                },
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+/** 工具事件卡:调用参数/退出码与输出,点击展开,不进普通气泡。 */
+@Composable
+private fun GroupToolCard(m: GroupMessageEntity, xc: XinColors) {
+    var expanded by remember(m.id) { mutableStateOf(false) }
+    val firstLine = m.content.lineSequence().firstOrNull().orEmpty()
+    Column(
+        Modifier.fillMaxWidth(0.92f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(xc.bgElevated)
+            .border(1.dp, xc.border, RoundedCornerShape(12.dp))
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                expanded = !expanded
+            }
+            .padding(10.dp)
+    ) {
+        Text(
+            if (m.kind == "toolcall") "工具调用 · $firstLine" else "工具结果 · $firstLine",
+            fontSize = 10.sp, fontFamily = Mono, color = xc.green, fontWeight = FontWeight.Bold
+        )
+        Text(
+            m.content.lineSequence().drop(1).joinToString("\n"),
+            fontSize = 9.sp, fontFamily = Mono, color = xc.faint, lineHeight = 13.sp,
+            maxLines = if (expanded) Int.MAX_VALUE else 3,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 3.dp)
+        )
+    }
 }

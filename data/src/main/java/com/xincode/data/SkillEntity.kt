@@ -22,6 +22,14 @@ data class SkillEntity(
      * "agent"(后台复盘分身自建,可改)。后台复盘只能改 user/agent、不能动 bundled。
      */
     val source: String = "user",
+    /**
+     * 技能生命周期:useCount/lastUsedAt 由 invoke_skill 每次调用时更新;
+     * state ∈ active/stale/archived,由 SkillCurator 按闲置时长推进,pinned 永不清理。
+     */
+    val useCount: Int = 0,
+    val lastUsedAt: Long = 0,
+    val state: String = "active",
+    val pinned: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
 )

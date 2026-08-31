@@ -40,13 +40,16 @@ class GetMemoryByTitleTool(
         val title = params["title"]?.trim().orEmpty()
         if (title.isBlank()) return ToolResult.Error("缺少 title 参数")
 
-        val memory = runCatching { database.memoryDao().getByTitle(title) }
+        val scopeId = com.xincode.tools.WorkspaceContext.projectId
+        val memory = runCatching { database.memoryDao().getByTitleAndProject(title, scopeId) }
             .getOrElse { return ToolResult.Error("读取记忆失败: ${it.message}") }
 
         if (memory == null) {
             // 直接说"没找到"会让模型反复猜标题。给它检索出来的近似项,
             // 它就知道下一步该用哪个标题或者干脆改用 recall_memory。
-            val near = runCatching { database.memoryDao().search(title, limit = 5) }
+            val near = runCatching {
+                database.memoryDao().searchByProject(title, scopeId, limit = 5)
+            }
                 .getOrDefault(emptyList())
             return if (near.isEmpty()) {
                 ToolResult.Error("没有标题为「$title」的记忆。可以用 recall_memory 按内容检索。")

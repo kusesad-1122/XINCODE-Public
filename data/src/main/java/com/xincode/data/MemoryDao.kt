@@ -30,6 +30,25 @@ abstract class MemoryDao {
     @Query("SELECT * FROM memories WHERE title = :title LIMIT 1")
     abstract suspend fun getByTitle(title: String): MemoryEntity?
 
+    /** Exact title lookup constrained to the current memory scope. */
+    @Query("SELECT * FROM memories WHERE title = :title AND projectId = :projectId LIMIT 1")
+    abstract suspend fun getByTitleAndProject(title: String, projectId: Long): MemoryEntity?
+
+    @Query("SELECT * FROM memories WHERE sourceMessageId = :messageId LIMIT 1")
+    abstract suspend fun getBySourceMessageId(messageId: Long): MemoryEntity?
+
+    /** Move only traceable automatic memories when repairing an old group work session. */
+    @Query(
+        "UPDATE OR IGNORE memories SET projectId = :projectId " +
+            "WHERE projectId = 0 AND sourceMessageId IN " +
+            "(SELECT id FROM messages WHERE sessionId = :sessionId)"
+    )
+    abstract suspend fun rehomeBySourceSession(sessionId: Long, projectId: Long)
+
+    /** 一次按需召回命中后累计次数,用于判断记忆的真实价值。 */
+    @Query("UPDATE memories SET recallCount = :count, lastRecalledAt = :ts WHERE id = :id")
+    abstract suspend fun bumpRecall(id: Long, count: Int, ts: Long)
+
     @Query("SELECT COUNT(*) FROM memories")
     abstract suspend fun count(): Int
 

@@ -23,6 +23,8 @@ data class SessionEntity(
     val updatedAt: Long = System.currentTimeMillis(),
     val systemPromptOverride: String? = null,
     val currentModelId: String? = null,
+    /** 对话专属供应商配置 id;null = 跟随全局活跃配置。与 [currentModelId] 一起构成「本对话的模型覆盖」。 */
+    val modelProviderConfigId: Long? = null,
     val currentEffortLevel: String? = null,
     val thinkingEnabled: Boolean? = null,
     /** P2: SHA-256(systemPrompt + toolsJson) — for cache stability drift detection. */

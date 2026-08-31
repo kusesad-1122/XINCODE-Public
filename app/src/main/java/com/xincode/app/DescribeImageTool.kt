@@ -4,6 +4,7 @@ import android.util.Base64
 import com.xincode.core.Tool
 import com.xincode.core.ToolResult
 import com.xincode.data.AppDatabase
+import com.xincode.provider.ResponsesProtocol
 import com.xincode.security.KeystoreProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -69,6 +70,7 @@ class DescribeImageTool(
         val baseUrl = resolved.baseUrl
         val apiKey = resolved.apiKey
         val model = resolved.model.ifBlank { "gpt-4o-mini" }
+        val responses = resolved.apiPathType == "responses"
 
         // 请求体:远程 URL 直接进 JSON;本地文件【流式】编码,不整张读进内存。
         //
@@ -83,29 +85,49 @@ class DescribeImageTool(
         }
 
         val requestBody: okhttp3.RequestBody = if (localFile == null) {
-            JSONObject().apply {
-                put("model", model)
-                put("messages", JSONArray().put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", JSONArray()
-                        .put(JSONObject().put("type", "text").put("text", question))
-                        .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", image))))
-                }))
-                put("stream", false)
-            }.toString().toRequestBody(JSON)
+            if (responses) {
+                val content = JSONArray()
+                    .put(JSONObject().put("type", "input_text").put("text", question))
+                    .put(JSONObject().put("type", "input_image").put("image_url", image))
+                ResponsesProtocol.buildRequest(
+                    model = model,
+                    messages = listOf(JSONObject().put("role", "user").put("content", content))
+                ).toString().toRequestBody(JSON)
+            } else {
+                JSONObject().apply {
+                    put("model", model)
+                    put("messages", JSONArray().put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", JSONArray()
+                            .put(JSONObject().put("type", "text").put("text", question))
+                            .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", image))))
+                    }))
+                    put("stream", false)
+                }.toString().toRequestBody(JSON)
+            }
         } else {
             val mime = when (localFile.extension.lowercase()) {
                 "png" -> "image/png"; "webp" -> "image/webp"; "gif" -> "image/gif"; else -> "image/jpeg"
             }
             // 手写 JSON 的前后缀,中间那段 base64 由 writeTo 流式补上。
             // 字符串一律用 JSONObject.quote 转义,避免 question 里的引号/换行破坏 JSON。
-            val prefix = buildString {
-                append("{\"model\":").append(JSONObject.quote(model))
-                append(",\"messages\":[{\"role\":\"user\",\"content\":[")
-                append("{\"type\":\"text\",\"text\":").append(JSONObject.quote(question)).append("},")
-                append("{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:").append(mime).append(";base64,")
+            val prefix = if (responses) {
+                buildString {
+                    append("{\"model\":").append(JSONObject.quote(model))
+                    append(",\"input\":[{\"role\":\"user\",\"content\":[")
+                    append("{\"type\":\"input_text\",\"text\":").append(JSONObject.quote(question)).append("},")
+                    append("{\"type\":\"input_image\",\"image_url\":\"data:").append(mime).append(";base64,")
+                }
+            } else {
+                buildString {
+                    append("{\"model\":").append(JSONObject.quote(model))
+                    append(",\"messages\":[{\"role\":\"user\",\"content\":[")
+                    append("{\"type\":\"text\",\"text\":").append(JSONObject.quote(question)).append("},")
+                    append("{\"type\":\"image_url\",\"image_url\":{\"url\":\"data:").append(mime).append(";base64,")
+                }
             }
-            val suffix = "\"}}]}],\"stream\":false}"
+            val suffix = if (responses) "\"}]}],\"stream\":false}"
+            else "\"}}]}],\"stream\":false}"
             object : okhttp3.RequestBody() {
                 override fun contentType() = JSON
                 /** 精确算出长度,避免退化成 chunked 传输(部分网关不接受)。 */
@@ -138,16 +160,21 @@ class DescribeImageTool(
         }
 
         return@withContext try {
+            val endpoint = if (responses) ResponsesProtocol.endpoint(baseUrl)
+            else "${baseUrl.trimEnd('/')}/v1/chat/completions"
             val req = Request.Builder()
-                .url("${baseUrl.trimEnd('/')}/v1/chat/completions")
+                .url(endpoint)
                 .addHeader("Authorization", "Bearer $apiKey")
                 .addHeader("Content-Type", "application/json")
+                .applyExtraHeaders(resolved.extraHeadersJson)
                 .post(requestBody)
                 .build()
             http.newCall(req).execute().use { resp ->
                 val respBody = resp.body?.string() ?: ""
                 if (!resp.isSuccessful) return@use ToolResult.Error("视觉副模型 HTTP ${resp.code}: ${respBody.take(200)}")
-                val text = JSONObject(respBody).optJSONArray("choices")?.optJSONObject(0)
+                val json = JSONObject(respBody)
+                val text = if (responses) ResponsesProtocol.extractResponse(json).content
+                else json.optJSONArray("choices")?.optJSONObject(0)
                     ?.optJSONObject("message")?.optString("content").orEmpty()
                 if (text.isBlank()) ToolResult.Error("视觉副模型无有效返回")
                 else ToolResult.Success(text.trim())
@@ -155,5 +182,20 @@ class DescribeImageTool(
         } catch (e: Exception) {
             ToolResult.Error("describe_image 失败: ${e.message}")
         }
+    }
+
+    private fun Request.Builder.applyExtraHeaders(value: String): Request.Builder {
+        if (value.isBlank()) return this
+        try {
+            val headers = JSONObject(value)
+            val keys = headers.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                if (key.isNotBlank() && !headers.isNull(key)) header(key, headers.optString(key))
+            }
+        } catch (_: Exception) {
+            // Optional headers are best-effort.
+        }
+        return this
     }
 }

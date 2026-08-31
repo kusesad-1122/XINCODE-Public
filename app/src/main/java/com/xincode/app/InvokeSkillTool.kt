@@ -3,6 +3,7 @@ package com.xincode.app
 import com.xincode.core.Tool
 import com.xincode.core.ToolResult
 import com.xincode.data.AppDatabase
+import com.xincode.data.SkillEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -14,6 +15,12 @@ import org.json.JSONObject
  * from Room and returns it, so the model can follow the skill's instructions.
  */
 class InvokeSkillTool(private val database: AppDatabase) : Tool {
+
+    /**
+     * 技能被命中后回调(已在工具内累计 useCount/lastUsedAt)。
+     * XincodeApplication 用它触发「用后自改进」;复盘分身的注册表不挂,避免递归。
+     */
+    var onSkillUsed: (suspend (SkillEntity) -> Unit)? = null
 
     override val name = "invoke_skill"
 
@@ -56,6 +63,10 @@ class InvokeSkillTool(private val database: AppDatabase) : Tool {
             appendLine()
             append(skill.content)
         }
+
+        // 用量生命周期:命中即累计 + 复活,供 curator 与自改进使用。
+        database.skillDao().incrementUsage(skill.id, System.currentTimeMillis())
+        onSkillUsed?.invoke(skill)
 
         ToolResult.Success(output)
     }
