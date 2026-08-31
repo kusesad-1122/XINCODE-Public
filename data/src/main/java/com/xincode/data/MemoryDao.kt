@@ -54,10 +54,18 @@ abstract class MemoryDao {
      * @param query space-separated keywords or FTS5 expression.
      * @param limit max results.
      */
+    private fun sanitizeFts(q: String): String {
+        // 仅保留字母数字空格与引号，其余 FTS4 保留字 *-:()ORAND 转为空格，避免 SQLiteException
+        var s = q.replace("\"", "\"\"")
+        s = s.replace(Regex("""[*\-:()]+"""), " ")
+        s = s.replace(Regex("""\b(OR|AND|NOT)\b""", RegexOption.IGNORE_CASE), " ")
+        s = s.replace(Regex("""\s+"""), " ").trim()
+        return s.ifBlank { "\"\"" }
+    }
+
     suspend fun search(query: String, limit: Int = 20): List<MemoryEntity> {
         if (query.isBlank()) return getAll().take(limit)
-        // Escape double-quotes in user input for FTS4 safety
-        val sanitized = query.replace("\"", "\"\"")
+        val sanitized = sanitizeFts(query)
         val sql = """
             SELECT memories.* FROM memories
             JOIN memories_fts ON memories.id = memories_fts.rowid
@@ -65,13 +73,13 @@ abstract class MemoryDao {
             ORDER BY memories.updatedAt DESC
             LIMIT ?
         """.trimIndent()
-        return rawFtsSearch(SimpleSQLiteQuery(sql, arrayOf(sanitized, limit)))
+        return try { rawFtsSearch(SimpleSQLiteQuery(sql, arrayOf(sanitized, limit))) } catch (_: Exception) { emptyList() }
     }
 
     /** 项目隔离的 FTS 检索:只在指定项目(0=全局)内匹配。 */
     suspend fun searchByProject(query: String, projectId: Long, limit: Int = 20): List<MemoryEntity> {
         if (query.isBlank()) return getAllByProject(projectId).take(limit)
-        val sanitized = query.replace("\"", "\"\"")
+        val sanitized = sanitizeFts(query)
         val sql = """
             SELECT memories.* FROM memories
             JOIN memories_fts ON memories.id = memories_fts.rowid
@@ -79,6 +87,6 @@ abstract class MemoryDao {
             ORDER BY memories.updatedAt DESC
             LIMIT ?
         """.trimIndent()
-        return rawFtsSearch(SimpleSQLiteQuery(sql, arrayOf(sanitized, projectId, limit)))
+        return try { rawFtsSearch(SimpleSQLiteQuery(sql, arrayOf(sanitized, projectId, limit))) } catch (_: Exception) { emptyList() }
     }
 }

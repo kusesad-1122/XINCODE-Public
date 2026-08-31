@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
  * A skill is a reusable prompt instruction + optional script reference.
  * Stored as markdown in [content]. The model reads skill content when invoked.
  */
-@Entity(tableName = "skills")
+@Entity(tableName = "skills", indices = [androidx.room.Index(value = ["name"], unique = true)])
 data class SkillEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

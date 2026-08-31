@@ -266,9 +266,16 @@ class AgentCore(
                 is AgentState.Error -> "Error"
                 is AgentState.Interrupted -> "Interrupted"
             }
+            val iter = when (val s = _state.value) {
+                is AgentState.Thinking -> s.iteration
+                is AgentState.CallingTool -> s.iteration
+                is AgentState.Executing -> s.iteration
+                is AgentState.WaitingConfirm -> s.iteration
+                else -> 0
+            }
             dao.upsert(StateCursorEntity(
                 sessionId = sessionId,
-                iteration = (_state.value as? AgentState.Thinking)?.iteration ?: 0,
+                iteration = iter,
                 state = stateStr,
                 messagesJson = msgsJson,
                 pendingToolCallJson = pendingToolCallJson,

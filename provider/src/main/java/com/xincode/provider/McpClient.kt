@@ -35,10 +35,10 @@ class McpClient(
         private val JSON_MEDIA_TYPE = "application/json".toMediaType()
     }
 
-    private var nextId = 1
+    private val nextId = java.util.concurrent.atomic.AtomicInteger(1)
     private var initialized = false
 
-    /** gap-23 Streamable-HTTP 持久会话:initialize 返回的 Mcp-Session-Id,后续请求回传。 */
+    /** gap-23 Streamable-HTTP 持久会话:initialize 返回�?Mcp-Session-Id,后续请求回传�?*/
     @Volatile
     private var mcpSessionId: String? = null
 
@@ -52,7 +52,7 @@ class McpClient(
             // Step 1: initialize request
             val initPayload = JSONObject().apply {
                 put("jsonrpc", JSONRPC_VERSION)
-                put("id", nextId++)
+                put("id", nextId.getAndIncrement())
                 put("method", "initialize")
                 put("params", JSONObject().apply {
                     put("protocolVersion", "2024-11-05")
@@ -101,7 +101,7 @@ class McpClient(
         withTimeout(CALL_TIMEOUT_MS) {
             val payload = JSONObject().apply {
                 put("jsonrpc", JSONRPC_VERSION)
-                put("id", nextId++)
+                put("id", nextId.getAndIncrement())
                 put("method", "tools/list")
                 put("params", JSONObject())
             }
@@ -142,7 +142,7 @@ class McpClient(
         withTimeout(CALL_TIMEOUT_MS) {
             val payload = JSONObject().apply {
                 put("jsonrpc", JSONRPC_VERSION)
-                put("id", nextId++)
+                put("id", nextId.getAndIncrement())
                 put("method", "tools/call")
                 put("params", JSONObject().apply {
                     put("name", toolName)
@@ -199,12 +199,14 @@ class McpClient(
             .build()
 
         val response = okHttpClient.newCall(request).execute()
-        // gap-23:捕获服务端下发的会话 ID(streamable-http 持久会话)。
-        response.header("Mcp-Session-Id")?.let { if (it.isNotBlank()) mcpSessionId = it }
-        val responseBody = response.body?.string() ?: throw McpException("MCP: empty response body")
-
-        // MCP servers may return SSE or plain JSON
-        return parseResponse(responseBody)
+        try {
+            // gap-23:捕获服务端下发的会话 ID(streamable-http 持久会话)
+            response.header("Mcp-Session-Id")?.let { if (it.isNotBlank()) mcpSessionId = it }
+            val responseBody = response.body?.string() ?: throw McpException("MCP: empty response body")
+            return parseResponse(responseBody)
+        } finally {
+            response.close()
+        }
     }
 
     /** Send a notification (fire-and-forget, no response expected). */

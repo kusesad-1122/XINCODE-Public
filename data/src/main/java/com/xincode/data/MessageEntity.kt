@@ -1,9 +1,10 @@
 package com.xincode.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "messages")
+@Entity(tableName = "messages", indices = [Index(value = ["sessionId"])])
 data class MessageEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

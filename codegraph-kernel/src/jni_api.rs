@@ -91,13 +91,13 @@ fn buffers_to_json(out: &crate::buffers::EmitOut) -> String {
         s.push_str(&format!(
             "{{\"kind\":\"{}\",\"startLine\":{},\"endLine\":{},\"name\":\"{}\",\"qualifiedName\":\"{}\",\"id\":\"{}\",\"signature\":\"{}\",\"returnType\":\"{}\"}}",
             kind_name(NODE_KINDS, row[b]),
-            read_u32(row, b + 4),      // start_line(kind+visibility+flags 共 4 字节在前)
+            read_u32(row, b + 4),      // start_line
             read_u32(row, b + 8),      // end_line
-            esc(&read_str(arena, row, b + 16)),   // name
-            esc(&read_str(arena, row, b + 24)),   // qualified_name
-            esc(&read_str(arena, row, b + 32)),   // id
-            esc(&read_str(arena, row, b + 48)),   // signature
-            esc(&read_str(arena, row, b + 72)),   // return_type
+            esc(&read_str(arena, row, b + 20)),   // name (20=1+1+2+4+4+4+4)
+            esc(&read_str(arena, row, b + 28)),   // qualified_name
+            esc(&read_str(arena, row, b + 36)),   // id
+            esc(&read_str(arena, row, b + 52)),   // signature
+            esc(&read_str(arena, row, b + 76)),   // return_type
         ));
     }
 

@@ -58,9 +58,13 @@ object EnvCatalog {
             EnvTool("sshd", "OpenSSH 服务器", "用于反向隧道挂载本地文件系统",
                 "command -v sshd", "apt-get install -y openssh-server")
         )),
-        EnvCategory("Java 环境", "Java 开发环境", required = false, tools = listOf(
-            EnvTool("jdk17", "OpenJDK 17", "Java 17 开发环境",
-                "command -v java", "apt-get install -y openjdk-17-jdk-headless"),
+        EnvCategory("Java 环境", "Java 11/17 双版本 + Gradle", required = false, tools = listOf(
+            EnvTool("jdk11", "OpenJDK 11", "Java 11 (兼容旧版 Gradle/AGP)",
+                "test -d /usr/lib/jvm/java-11-openjdk-arm64 && /usr/lib/jvm/java-11-openjdk-arm64/bin/java -version >/dev/null 2>&1",
+                "apt-get install -y openjdk-11-jdk-headless && update-alternatives --set java /usr/lib/jvm/java-11-openjdk-arm64/bin/java 2>/dev/null || true"),
+            EnvTool("jdk17", "OpenJDK 17", "Java 17 开发环境 (默认)",
+                "test -d /usr/lib/jvm/java-17-openjdk-arm64 && /usr/lib/jvm/java-17-openjdk-arm64/bin/java -version >/dev/null 2>&1",
+                "apt-get install -y openjdk-17-jdk-headless && update-alternatives --set java /usr/lib/jvm/java-17-openjdk-arm64/bin/java 2>/dev/null || true"),
             EnvTool("gradle", "Gradle", "现代化的构建自动化工具",
                 "command -v gradle", "apt-get install -y gradle")
         )),
@@ -97,6 +101,49 @@ object EnvCatalog {
     )
 
     val allTools: List<EnvTool> get() = categories.flatMap { it.tools }
+}
+
+object JdkManager {
+    const val JDK11_HOME = "/usr/lib/jvm/java-11-openjdk-arm64"
+    const val JDK17_HOME = "/usr/lib/jvm/java-17-openjdk-arm64"
+
+    data class JdkInfo(val version: String, val home: String, val installed: Boolean, val active: Boolean)
+
+    suspend fun list(): List<JdkInfo> {
+        if (!LinuxEnvironment.isReady()) return emptyList()
+        val activeHome = getActiveHome()
+        return listOf(
+            check("11", JDK11_HOME, activeHome),
+            check("17", JDK17_HOME, activeHome)
+        )
+    }
+
+    private suspend fun check(ver: String, home: String, activeHome: String): JdkInfo {
+        val installed = try { LinuxEnvironment.runInEnv("test -d $home && test -x $home/bin/java").exitCode == 0 } catch (_: Exception) { false }
+        return JdkInfo(ver, home, installed, home == activeHome && installed)
+    }
+
+    suspend fun getActiveHome(): String = try {
+        val r = LinuxEnvironment.runInEnv("readlink -f \$(readlink -f /etc/alternatives/java 2>/dev/null || command -v java) 2>/dev/null | sed 's|/bin/java||'")
+        r.stdout.trim().takeIf { it.isNotBlank() } ?: ""
+    } catch (_: Exception) { "" }
+
+    suspend fun getActiveVersion(): String = try {
+        val r = LinuxEnvironment.runInEnv("java -version 2>&1 | head -n1")
+        Regex("\"([^\"]+)\"").find(r.stdout)?.groupValues?.get(1)?.substringBefore(".") ?: r.stdout.trim()
+    } catch (_: Exception) { "" }
+
+    suspend fun switchTo(version: String): Boolean {
+        val home = when (version) { "11" -> JDK11_HOME; "17" -> JDK17_HOME; else -> return false }
+        return try {
+            val cmd = "update-alternatives --set java $home/bin/java 2>/dev/null; " +
+                "update-alternatives --set javac $home/bin/javac 2>/dev/null; " +
+                "echo \"export JAVA_HOME=$home\" > /etc/profile.d/jdk.sh; echo \"export PATH=\\\$JAVA_HOME/bin:\\\$PATH\" >> /etc/profile.d/jdk.sh; " +
+                "export JAVA_HOME=$home; java -version"
+            val r = LinuxEnvironment.runInEnvStreaming(cmd) { LinuxEnvironment.outputSink?.invoke(it) }
+            r.exitCode == 0
+        } catch (_: Exception) { false }
+    }
 }
 
 /** 安装引擎:在内置 Ubuntu 环境(root chroot)内检测/安装,状态经 UI 反馈。 */

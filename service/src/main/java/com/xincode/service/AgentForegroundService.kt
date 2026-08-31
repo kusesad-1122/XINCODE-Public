@@ -50,6 +50,7 @@ class AgentForegroundService : Service() {
 
             // Intent to open the app when notification is tapped
             val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                ?: Intent().apply { setClassName(context.packageName, "com.xincode.app.MainActivity") }
             val pendingIntent = PendingIntent.getActivity(
                 context, 0, launchIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE

@@ -1,5 +1,7 @@
 package com.xincode.app
 
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -25,25 +27,52 @@ class TerminalState {
 
     private val maxLines = 4000
 
-    @Synchronized
-    fun appendChunk(s: String) {
-        if (s.isEmpty()) { lines.add(""); return }
-        for (line in s.split('\n')) lines.add(line)
-        while (lines.size > maxLines) lines.removeAt(0)
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private fun addLinesOnMain(list: List<String>) {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            list.forEach { lines.add(it) }
+            trimExcess()
+        } else {
+            mainHandler.post {
+                list.forEach { lines.add(it) }
+                trimExcess()
+            }
+        }
     }
 
-    fun clear() { lines.clear() }
+    private fun trimExcess() {
+        if (lines.size > maxLines) {
+            val excess = lines.size - maxLines
+            repeat(excess) { if (lines.isNotEmpty()) lines.removeAt(0) }
+        }
+    }
+
+    fun appendChunk(s: String) {
+        if (s.isEmpty()) {
+            addLinesOnMain(listOf(""))
+            return
+        }
+        val parts = s.split('\n')
+        addLinesOnMain(parts)
+    }
+
+    fun clear() {
+        if (Looper.myLooper() == Looper.getMainLooper()) lines.clear()
+        else mainHandler.post { lines.clear() }
+    }
 
     /** 执行一条命令:环境就绪→在 Ubuntu 内,否则→root shell。输出流式上屏。 */
     suspend fun run(cmd: String) {
         val c = cmd.trim()
         if (c.isEmpty()) return
-        running = true
+        // running 必须在主线程变更（Compose state 约束）
+        withContext(Dispatchers.Main) { running = true }
         appendChunk("$ $c")
         try {
             val res = withContext(Dispatchers.IO) {
                 if (LinuxEnvironment.isReady())
-                    LinuxEnvironment.runInEnvStreaming(c) { appendChunk(it) }
+                    LinuxEnvironment.runInEnvStreaming(c, { appendChunk(it) }, scope = "terminal")
                 else
                     RootShellManager.executeStreaming(c) { appendChunk(it) }
             }
@@ -51,7 +80,7 @@ class TerminalState {
         } catch (e: Exception) {
             appendChunk("[错误] ${e.message}")
         } finally {
-            running = false
+            withContext(Dispatchers.Main) { running = false }
         }
     }
 }

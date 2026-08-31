@@ -57,7 +57,8 @@ class JudgeService(
             val yes = votes.filter { it.achieved }
             val no = votes.filter { !it.achieved }
             val achieved = yes.size > no.size
-            val winners = if (achieved) yes else no
+            // 平票时不误用败方均值，以全体均值兜底
+            val winners = if (achieved) yes else if (no.size > yes.size) no else votes
             val rep = winners.maxByOrNull { it.confidence } ?: votes.first()
             JudgeResult(
                 achieved = achieved,
@@ -104,7 +105,7 @@ class JudgeService(
                 .build()
 
             val response = httpClient.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
+            val responseBody = try { response.body?.string() ?: "" } finally { response.close() }
 
             Log.d(TAG, "← ${response.code} ${responseBody.take(300)}")
 

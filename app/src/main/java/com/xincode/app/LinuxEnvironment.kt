@@ -75,6 +75,14 @@ object LinuxEnvironment {
     @Volatile
     var outputSink: ((String) -> Unit)? = null
 
+    /** 自定义环境变量(由 EnvVarManager 注入，作用于终端与构建)。 */
+    @Volatile
+    var customEnvVars: List<com.xincode.app.ide.EnvVar> = emptyList()
+
+    /** 供调用方覆盖的 env 前缀提供器(优先级高于 customEnvVars，例如按 scope 过滤)。 */
+    @Volatile
+    var customEnvProvider: (() -> String)? = null
+
     private fun log(line: String) {
         Log.i(TAG, line)
         setupLog = (setupLog + line + "\n").takeLast(4000)
@@ -112,7 +120,7 @@ object LinuxEnvironment {
             }
             if (force) {
                 log("重新部署:清理旧环境…")
-                RootShellManager.execute("for m in dev/pts dev proc sys; do umount \"${dir.absolutePath}/\$m\" 2>/dev/null; done; rm -rf '${dir.absolutePath}'/*")
+                RootShellManager.execute("for m in dev/pts dev proc sys sdcard storage data; do umount \"${dir.absolutePath}/\$m\" 2>/dev/null; done; rm -rf '${dir.absolutePath}'/*")
                 File(dir, ".xincode_ready").delete()
             }
             val tarball = File(context.filesDir, "ubuntu-base.tar.gz")
@@ -236,27 +244,73 @@ object LinuxEnvironment {
         try { RootShellManager.execute(script) } catch (_: Exception) {}
     }
 
-    /** 构造 chroot 执行脚本(幂等绑定挂载 /dev /proc /sys /dev/pts 后进入环境跑 cmd)。 */
-    private fun buildChrootScript(r: String, cmd: String): String = buildString {
+    /** 构造 chroot 执行脚本(幂等绑定挂载 /dev /proc /sys /dev/pts + 宿主存储 后进入环境跑 cmd)。 */
+    private fun buildChrootScript(r: String, cmd: String, scope: String? = null): String = buildString {
         append("R='").append(r).append("'; ")
+        // 基础伪文件系统
         append("for m in dev proc sys dev/pts; do mkdir -p \"\$R/\$m\" 2>/dev/null; ")
         append("mountpoint -q \"\$R/\$m\" 2>/dev/null || mount --bind \"/\$m\" \"\$R/\$m\" 2>/dev/null; done; ")
-        append("chroot \"\$R\" /usr/bin/env -i ")
-        append("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin ")
-        append("HOME=/root TERM=xterm DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 ")
-        append("/bin/bash -lc ").append(shellQuote(cmd))
+        // 宿主存储透传：让 chroot 内可访问项目目录（/sdcard /storage /data）
+        // 不逐一硬编码子路径，整块 bind，失败静默（部分ROM无/sdcard）
+        append("for m in sdcard storage data; do if [ -e \"/\$m\" ]; then mkdir -p \"\$R/\$m\" 2>/dev/null; mountpoint -q \"\$R/\$m\" 2>/dev/null || mount --bind \"/\$m\" \"\$R/\$m\" 2>/dev/null; fi; done; ")
+        val customPrefix = when {
+            scope != null -> envPrefixForScope(scope)
+            customEnvProvider != null -> customEnvProvider?.invoke() ?: ""
+            customEnvVars.isNotEmpty() -> customEnvVars.joinToString(" ") { "${it.key}=${shellQuote(it.value)}" }
+            else -> ""
+        }
+        val envAssignments = buildString {
+            append("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin ")
+            append("HOME=/root TERM=xterm DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 ")
+            if (customPrefix.isNotBlank()) append(customPrefix).append(" ")
+        }
+        append("chroot \"\$R\" /usr/bin/env -i ").append(envAssignments)
+        // scope 非空时 env -i 已注入过滤后变量，不再二次 export；否则按原逻辑 export all
+        val wrapped = if (scope != null) cmd else wrapWithCustomEnv(cmd)
+        append("/bin/bash -lc ").append(shellQuote(wrapped))
     }
 
-    /** 在环境内执行命令(root chroot),阻塞返回汇总。 */
-    suspend fun runInEnv(cmd: String): ExecResult = withContext(Dispatchers.IO) {
-        val dir = rootfsDir ?: return@withContext ExecResult("", "环境未初始化", 1, 0L, false)
-        RootShellManager.execute(buildChrootScript(dir.absolutePath, cmd))
+    private fun wrapWithCustomEnv(cmd: String): String {
+        // 若调用方通过 customEnvProvider 提供了按 scope 过滤的 env 前缀（env -i 已注入），则不再在 bash 内重复 export，避免 all/terminal/build 作用域泄漏
+        if (customEnvProvider != null) return cmd
+        if (customEnvVars.isEmpty()) return cmd
+        val exports = customEnvVars.joinToString("; ") { "export ${it.key}=${shellQuote(it.value)}" }
+        return if (exports.isBlank()) cmd else "$exports; $cmd"
     }
 
-    /** 在环境内【流式】执行命令,输出逐行回调 [onLine](可视终端/部署进度用)。 */
-    suspend fun runInEnvStreaming(cmd: String, onLine: (String) -> Unit): ExecResult = withContext(Dispatchers.IO) {
+    /** 按 scope 过滤获取 env 前缀，供调用方临时设置 customEnvProvider 使用（all/terminal/build） */
+    fun envPrefixForScope(scope: String?): String {
+        if (customEnvVars.isEmpty()) return ""
+        val filtered = if (scope == null) customEnvVars else customEnvVars.filter { it.scope == "all" || it.scope == scope }
+        if (filtered.isEmpty()) return ""
+        return filtered.joinToString(" ") { "${it.key}=${shellQuote(it.value)}" }
+    }
+
+    /** 在指定 scope 下执行（自动处理 provider 的设置/还原，避免泄漏）- 已废弃，保留兼容但存在并发竞态，建议直接用 runInEnv(scope) */
+    @Deprecated("改用 runInEnv(cmd, scope) 以避免全局竞争")
+    suspend fun <T> withScopeEnv(scope: String?, block: suspend () -> T): T {
+        val prev = customEnvProvider
+        return try {
+            if (scope != null && customEnvVars.isNotEmpty()) {
+                val prefix = envPrefixForScope(scope)
+                customEnvProvider = { prefix }
+            }
+            block()
+        } finally {
+            customEnvProvider = prev
+        }
+    }
+
+    /** 在环境内执行命令(root chroot),阻塞返回汇总。scope 用于 env 作用域过滤（terminal/build/null=all） */
+    suspend fun runInEnv(cmd: String, scope: String? = null): ExecResult = withContext(Dispatchers.IO) {
         val dir = rootfsDir ?: return@withContext ExecResult("", "环境未初始化", 1, 0L, false)
-        RootShellManager.executeStreaming(buildChrootScript(dir.absolutePath, cmd), onLine)
+        RootShellManager.execute(buildChrootScript(dir.absolutePath, cmd, scope))
+    }
+
+    /** 在环境内【流式】执行命令,输出逐行回调 [onLine](可视终端/部署进度用)。scope 用于 env 作用域过滤 */
+    suspend fun runInEnvStreaming(cmd: String, onLine: (String) -> Unit, scope: String? = null): ExecResult = withContext(Dispatchers.IO) {
+        val dir = rootfsDir ?: return@withContext ExecResult("", "环境未初始化", 1, 0L, false)
+        RootShellManager.executeStreaming(buildChrootScript(dir.absolutePath, cmd, scope), onLine)
     }
 
     /** 卸载/清空环境(释放空间)。 */
@@ -264,7 +318,7 @@ object LinuxEnvironment {
         val dir = rootfsDir ?: return@withContext true
         val r = dir.absolutePath
         // 先尝试卸载挂载点,避免误删宿主 /dev 等。
-        RootShellManager.execute("for m in dev/pts dev proc sys; do umount \"$r/\$m\" 2>/dev/null; done; rm -rf '$r'")
+        RootShellManager.execute("for m in dev/pts dev proc sys sdcard storage data; do umount \"$r/\$m\" 2>/dev/null; done; rm -rf '$r'")
         state = State.NOT_SETUP
         setupLog = ""
         true

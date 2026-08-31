@@ -24,10 +24,12 @@ class ProjectsRepository(private val database: AppDatabase) {
     }
 
     suspend fun deleteProject(id: Long) {
-        // Move all sessions in this project to ungrouped first
-        sessionDao.ungroupAllInProject(id)
-        val project = projectDao.getById(id) ?: return
-        projectDao.delete(project)
+        database.inTransaction {
+            // Move all sessions in this project to ungrouped first
+            sessionDao.ungroupAllInProject(id)
+            val project = projectDao.getById(id) ?: return@inTransaction
+            projectDao.delete(project)
+        }
     }
 
     suspend fun toggleExpanded(id: Long) {

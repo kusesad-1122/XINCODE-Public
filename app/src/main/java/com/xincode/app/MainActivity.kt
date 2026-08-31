@@ -353,6 +353,7 @@ class MainActivity : ComponentActivity() {
                         onNavigateToProfiles = { currentPage = "profiles" },
                         onNavigateToSubAgents = { currentPage = "sub_agents" },
                         onNavigateToEnvConfig = { currentPage = "env_config" },
+                        onNavigateToIdeDashboard = { currentPage = "ide_dashboard" },
                         onNavigateToAbout = { currentPage = "about" },
                         darkMode = app.darkMode,
                         onUpdateDarkMode = { app.updateDarkMode(it) },
@@ -533,6 +534,74 @@ class MainActivity : ComponentActivity() {
                             } else null
                         )
                     }
+                    "ide_dashboard" -> com.xincode.app.ide.IdeDashboardScreen(
+                        onBack = { currentPage = "settings" },
+                        onNavigate = { id ->
+                            currentPage = when (id) {
+                                "gradle" -> "ide_gradle"
+                                "sdk" -> "ide_sdk"
+                                "envvar" -> "ide_envvar"
+                                "jdk" -> "ide_jdk"
+                                "lsp" -> "ide_lsp"
+                                "designer" -> "ide_designer"
+                                "translator" -> "ide_translator"
+                                "assets" -> "ide_assets"
+                                "plugin" -> "ide_plugin"
+                                "git" -> "ide_git"
+                                "terminal" -> "terminal"
+                                "log" -> "logs"
+                                else -> "ide_dashboard"
+                            }
+                            if (id == "terminal") terminalOrigin = "ide_dashboard"
+                        }
+                    )
+                    "ide_jdk" -> com.xincode.app.ide.JdkManagerScreen(
+                        onBack = { currentPage = "ide_dashboard" },
+                        onOpenTerminal = { terminalOrigin = "ide_jdk"; currentPage = "terminal" }
+                    )
+                    "ide_gradle" -> com.xincode.app.ide.GradleScreen(
+                        database = app.database,
+                        workspaceRoot = app.workspaceRootGlobal,
+                        onBack = { currentPage = "ide_dashboard" },
+                        onOpenTerminal = { terminalOrigin = "ide_gradle"; currentPage = "terminal" }
+                    )
+                    "ide_sdk" -> com.xincode.app.ide.SdkManagerScreen(
+                        onBack = { currentPage = "ide_dashboard" },
+                        onOpenTerminal = { terminalOrigin = "ide_sdk"; currentPage = "terminal" }
+                    )
+                    "ide_envvar" -> com.xincode.app.ide.EnvVarScreen(
+                        database = app.database,
+                        onBack = { currentPage = "ide_dashboard" }
+                    )
+                    "ide_lsp" -> com.xincode.app.ide.LanguageServerScreen(
+                        database = app.database,
+                        onBack = { currentPage = "ide_dashboard" },
+                        onOpenTerminal = { terminalOrigin = "ide_lsp"; currentPage = "terminal" }
+                    )
+                    "ide_designer" -> com.xincode.app.ide.designer.UiDesignerScreen(
+                        database = app.database,
+                        workspaceRoot = app.workspaceRootGlobal,
+                        onBack = { currentPage = "ide_dashboard" }
+                    )
+                    "ide_translator" -> com.xincode.app.ide.StringTranslatorScreen(
+                        database = app.database,
+                        workspaceRoot = app.workspaceRootGlobal,
+                        onBack = { currentPage = "ide_dashboard" }
+                    )
+                    "ide_assets" -> com.xincode.app.ide.AssetStudioScreen(
+                        workspaceRoot = app.workspaceRootGlobal,
+                        onBack = { currentPage = "ide_dashboard" }
+                    )
+                    "ide_plugin" -> com.xincode.app.ide.PluginCreatorScreen(
+                        workspaceRoot = app.workspaceRootGlobal,
+                        onBack = { currentPage = "ide_dashboard" }
+                    )
+                    "ide_git" -> com.xincode.app.ide.GitIntegrationScreen(
+                        database = app.database,
+                        workspaceRoot = app.workspaceRootGlobal,
+                        onBack = { currentPage = "ide_dashboard" },
+                        onOpenTerminal = { terminalOrigin = "ide_git"; currentPage = "terminal" }
+                    )
                 }
                 }
                 }
@@ -552,7 +621,8 @@ private fun parentPageOf(page: String): String = when (page) {
     "settings" -> "chat"
     "supplier", "model_market", "git_config", "audit", "memory_storage", "skills", "mcp", "curated_memory",
     "cron_jobs", "aux_models", "function_models", "sub_agents", "env_config", "context_compress", "about",
-    "lan_devices", "logs", "usage_stats", "kanban", "group_rooms", "profiles", "code_index" -> "settings"
+    "lan_devices", "logs", "usage_stats", "kanban", "group_rooms", "profiles", "code_index", "ide_dashboard" -> "settings"
+    "ide_gradle", "ide_sdk", "ide_envvar", "ide_jdk", "ide_lsp", "ide_designer", "ide_translator", "ide_assets", "ide_plugin", "ide_git" -> "ide_dashboard"
     "replay" -> "workflow"
     "identity_edit" -> "identity_list"
     "identity_list" -> "settings"

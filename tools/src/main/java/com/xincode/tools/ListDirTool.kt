@@ -39,6 +39,7 @@ class ListDirTool : Tool {
         val path = params["path"] ?: return@withContext ToolResult.Error("缺少 path 参数")
         val safePath = PathResolver.resolve(path)
             ?: return@withContext ToolResult.Error("无法解析路径: $path")
+        SelfProtect.refuse(safePath)?.let { return@withContext ToolResult.Error(it) }
 
         val dir = File(safePath)
         if (!dir.exists()) return@withContext ToolResult.Error("目录不存在: $path")

@@ -15,6 +15,7 @@ object HttpCacheProvider {
     private var cache: Cache? = null
 
     /** Initialize with application cache directory. Call once from XincodeApplication.onCreate(). */
+    @Synchronized
     fun init(cacheDir: File) {
         if (cache != null) return
         val dir = File(cacheDir, CACHE_DIR)

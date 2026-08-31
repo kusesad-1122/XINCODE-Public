@@ -35,13 +35,15 @@ class EnvExecTool(private val terminal: TerminalState) : Tool {
         if (!LinuxEnvironment.isReady()) {
             return ToolResult.Error("Linux 环境尚未部署,请先到 设置→环境配置 部署环境")
         }
+        // 自保：chroot 已 bind /data，env_exec 同受 SelfProtect 约束
+        com.xincode.tools.SelfProtect.refuseCommand(cmd)?.let { return ToolResult.Error(it) }
         terminal.appendChunk("$ [AI] $cmd")
         val out = StringBuilder()
-        val res = LinuxEnvironment.runInEnvStreaming(cmd) { line ->
+        val res = LinuxEnvironment.runInEnvStreaming(cmd, { line ->
             terminal.appendChunk(line)
             out.append(line).append('\n')
             if (out.length > 12000) out.delete(0, out.length - 8000)
-        }
+        }, scope = "terminal")
         terminal.appendChunk("[exit ${res.exitCode}]")
         val text = out.toString().trim().ifBlank { "(无输出)" }
         return if (res.exitCode == 0) ToolResult.Success(text)

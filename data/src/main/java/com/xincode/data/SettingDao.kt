@@ -22,11 +22,17 @@ interface SettingDao {
         set(SettingEntity(key, value))
     }
 
-    /** 按前缀取一批(多 Profile 的克隆/导出用)。 */
-    @Query("SELECT * FROM settings WHERE `key` LIKE :prefix || '%'")
+    /** 按前缀取一批(多 Profile 的克隆/导出用)。ESCAPE 处理 % _ 通配符。 */
+    @Query("SELECT * FROM settings WHERE `key` LIKE :prefix || '%' ESCAPE '\\'")
     suspend fun getByPrefix(prefix: String): List<SettingEntity>
 
     /** 按前缀删一批(删除 Profile 时清掉它名下所有键)。 */
-    @Query("DELETE FROM settings WHERE `key` LIKE :prefix || '%'")
+    @Query("DELETE FROM settings WHERE `key` LIKE :prefix || '%' ESCAPE '\\'")
     suspend fun deleteByPrefix(prefix: String)
+
+    /** 调用前将 prefix 中的 % _ \ 转义为 \% \_ \\，避免误删。 */
+    private fun escapeLike(s: String): String = s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+    suspend fun getByPrefixEscaped(prefix: String): List<SettingEntity> = getByPrefix(escapeLike(prefix))
+    suspend fun deleteByPrefixEscaped(prefix: String) { deleteByPrefix(escapeLike(prefix)) }
 }

@@ -66,16 +66,18 @@ class OpenAiClient(
         val supportsToolCall: Boolean = true
     )
 
-    /** gap-08:把 provider 配置里的 extra_headers(JSON 对象)verbatim 注入请求(可覆盖默认头)。 */
+    /** gap-08:把 provider 配置里的 extra_headers 注入请求（禁止覆盖鉴权头）。 */
     private fun Request.Builder.applyExtraHeaders(extraHeadersJson: String): Request.Builder {
         if (extraHeadersJson.isBlank()) return this
+        val blocked = setOf("authorization", "content-type", "content-length", "host")
         try {
             val obj = JSONObject(extraHeadersJson)
             val keys = obj.keys()
             while (keys.hasNext()) {
                 val k = keys.next()
+                if (k.lowercase() in blocked) continue
                 val v = obj.optString(k, "")
-                if (k.isNotBlank()) this.header(k, v) // header() 覆盖同名默认头
+                if (k.isNotBlank()) this.header(k, v)
             }
         } catch (_: Exception) { /* 非法 JSON 忽略,不影响请求 */ }
         return this
@@ -91,7 +93,7 @@ class OpenAiClient(
      * 无脑拼 "/v1/chat/completions" 会产出 /v1/v1/... 或 /v4/v1/...,直接 404/400。
      */
     private fun hasVersionSegment(base: String): Boolean =
-        Regex("/v\\d+[a-zA-Z0-9]*$").containsMatchIn(base)
+        Regex("/v\\d[^/]*").containsMatchIn(base)
 
     private fun trimBase(baseUrl: String): String = baseUrl.trim().trimEnd('/')
 

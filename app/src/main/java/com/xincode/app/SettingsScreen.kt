@@ -73,6 +73,7 @@ fun SettingsScreen(
     onNavigateToProfiles: () -> Unit = {},        // 多配置环境
     onNavigateToSubAgents: () -> Unit = {},       // 子智能体
     onNavigateToEnvConfig: () -> Unit = {},       // 环境配置(内置开发环境/工具安装)
+    onNavigateToIdeDashboard: () -> Unit = {},    // IDE 面板(Gradle/SDK/环境变量/LSP/UI设计等)
     onNavigateToAbout: () -> Unit = {}            // 关于页(版本/检查更新/项目地址/许可)
 ) {
     val xc = LocalXinColors.current
@@ -231,6 +232,7 @@ fun SettingsScreen(
                 onDismiss = { showWorkspaceDialog = false }
             )
         }
+        SettingRow("开发工具 IDE", "Gradle·JDK 11/17·SDK/NDK·环境变量·语言服务器·UI设计师·翻译·Asset·插件·Git") { onNavigateToIdeDashboard() }
         SettingRow("环境配置", "安装 Node/Python/uv/SSH/JDK/Gradle/Rust/Go 等开发环境") { onNavigateToEnvConfig() }
         SettingRow("配置环境", "多套独立配置(工作/私用各一套),可克隆与导出导入") { onNavigateToProfiles() }
         SettingRow("功能模型配置", "上下文总结/后台复盘/子智能体/Goal 裁判等各自指定模型") { onNavigateToFunctionModels() }

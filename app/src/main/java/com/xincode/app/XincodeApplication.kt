@@ -337,6 +337,14 @@ override fun onCreate() {
         LinuxEnvironment.init(this)
         // 部署/安装的流式输出汇聚到可视终端。
         LinuxEnvironment.outputSink = { terminalState.appendChunk(it) }
+        // 加载自定义环境变量(构建/终端注入)
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                val json = database.settingDao().get(com.xincode.app.ide.EnvVarManager.KEY) ?: ""
+                val vars = com.xincode.app.ide.EnvVarManager.fromJson(json)
+                LinuxEnvironment.customEnvVars = vars
+            } catch (_: Exception) {}
+        }
 
         // ---- libsu root shell (replaces PersistentRootShell) ----
         RootShellManager.init()

@@ -14,7 +14,7 @@ class ToolRegistry {
     private val tools = mutableMapOf<String, Tool>()
 
     // Hermes-③ check_fn TTL 缓存:避免每次 buildToolsJson 都真跑 isAvailable()(可能读设置/探网)。
-    private val availabilityCache = mutableMapOf<String, Pair<Long, Boolean>>()
+    private val availabilityCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Boolean>>()
     private val availabilityTtlMs = 30_000L
 
     /**

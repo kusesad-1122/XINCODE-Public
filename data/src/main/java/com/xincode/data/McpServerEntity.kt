@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
  * Room entity representing a connected MCP (Model Context Protocol) server.
  * Stores the URL, optional auth header, and connection state.
  */
-@Entity(tableName = "mcp_servers")
+@Entity(tableName = "mcp_servers", indices = [androidx.room.Index(value = ["url"], unique = true)])
 data class McpServerEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,

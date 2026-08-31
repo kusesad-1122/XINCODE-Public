@@ -36,6 +36,7 @@ class GlobTool : Tool {
             ?: return@withContext ToolResult.Error("缺少 pattern 参数")
         val baseRaw = params["path"]?.takeIf { it.isNotBlank() } ?: PathResolver.WORKSPACE_ROOT
         val base = PathResolver.resolve(baseRaw) ?: return@withContext ToolResult.Error("路径不在工作区内: $baseRaw")
+        SelfProtect.refuse(base)?.let { return@withContext ToolResult.Error(it) }
         val baseDir = File(base)
         if (!baseDir.exists()) return@withContext ToolResult.Error("路径不存在: $baseRaw")
 

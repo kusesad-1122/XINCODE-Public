@@ -15,5 +15,7 @@ enum class Capability(val label: String) {
     MAGISK("Magisk"),          // magisk, su modules
     KERNEL("内核"),             // insmod, sysctl, mount
     SENSOR("传感器"),           // sensor access
+    TERMINAL("终端"),           // env_exec / Ubuntu chroot
+    BUILD("构建"),              // gradle / sdkmanager / apt
     UNKNOWN("未知")             // catch-all
 }

@@ -47,11 +47,13 @@ class FileReadTool : Tool {
         val path = params["path"] ?: return@withContext ToolResult.Error("缺少 path 参数")
         val safePath = PathResolver.resolve(path)
             ?: return@withContext ToolResult.Error("无法解析路径: $path")
+        SelfProtect.refuse(safePath)?.let { return@withContext ToolResult.Error(it) }
 
         val file = File(safePath)
         if (!file.exists()) return@withContext ToolResult.Error("文件不存在: $path")
         if (!file.isFile) return@withContext ToolResult.Error("不是文件: $path")
         if (!file.canRead()) return@withContext ToolResult.Error("无读取权限: $path")
+        if (file.length() > 10L * 1024 * 1024) return@withContext ToolResult.Error("文件过大(>10MB)，请用 grep 分段读取: $path")
 
         try {
             val startLine = params["startLine"]?.toIntOrNull() ?: 1

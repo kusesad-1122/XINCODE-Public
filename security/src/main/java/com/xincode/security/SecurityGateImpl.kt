@@ -109,6 +109,11 @@ class SecurityGateImpl(
             "file_write" -> GateCommand(toolName, toolArgs, Capability.FS, Reversibility.REVERSIBLE, "文件写入可回滚")
             "file_edit", "multi_edit" -> GateCommand(toolName, toolArgs, Capability.FS, Reversibility.REVERSIBLE, "文件局部编辑可回滚")
             "list_dir", "grep", "glob" -> GateCommand(toolName, toolArgs, Capability.FS, Reversibility.REVERSIBLE, "只读文件/目录操作，可逆")
+            "delete_file" -> GateCommand(toolName, toolArgs, Capability.FS, Reversibility.IRREVERSIBLE, "文件删除不可逆")
+            "make_directory" -> GateCommand(toolName, toolArgs, Capability.FS, Reversibility.REVERSIBLE, "目录创建可逆")
+            "download_file" -> GateCommand(toolName, toolArgs, Capability.NET, Reversibility.REVERSIBLE, "网络下载")
+            "env_exec" -> classifyShellCommand(toolName, toolArgs).copy(capability = Capability.TERMINAL)
+            "code_exec" -> GateCommand(toolName, toolArgs, Capability.SYSTEM, Reversibility.REVERSIBLE, "代码执行")
             else -> GateCommand(toolName, toolArgs, Capability.UNKNOWN, Reversibility.IRREVERSIBLE, "未知工具类型，默认不可逆")
         }
     }
@@ -119,8 +124,8 @@ class SecurityGateImpl(
 
         // ===== FATAL_BANNED =====
 
-        // 1. System partition writes
-        val systemPaths = listOf("/system", "/system_ext", "/vendor", "/product", "/odm", "/boot", "/recovery")
+        // 1. System partition writes + App 私有数据（bind 后 /data 直通）
+        val systemPaths = listOf("/system", "/system_ext", "/vendor", "/product", "/odm", "/boot", "/recovery", "/data/user/0/com.xincode.app", "/data/data/com.xincode.app")
         val destructiveOps = listOf("rm", "mv", "cp", "dd", "mount -o rw", "chmod", "chown", "touch", "mkdir", "rmdir", "ln -sf")
         for (path in systemPaths) {
             for (op in destructiveOps) {
@@ -278,7 +283,7 @@ class SecurityGateImpl(
         sb.appendLine("工具: ${cmd.toolName}")
         sb.appendLine("参数: ${cmd.toolArgs}")
         when (cmd.toolName) {
-            "shell_exec", "su_exec" -> {
+            "shell_exec", "su_exec", "env_exec" -> {
                 val cmdText = try { JSONObject(cmd.toolArgs).optString("command", cmd.toolArgs) } catch (_: Exception) { cmd.toolArgs }
                 sb.appendLine("命令: $cmdText")
                 if (cmd.toolName == "su_exec") {
@@ -286,11 +291,13 @@ class SecurityGateImpl(
                     if (stdin.isNotBlank()) sb.appendLine("stdin: $stdin")
                     sb.appendLine("⚠ 此命令以 root 身份执行，请确认命令正确且不会造成不可逆损失")
                 }
+                if (cmd.toolName == "env_exec") sb.appendLine("⚠ Ubuntu chroot 内执行，已透传 /sdcard /storage /data")
             }
-            "file_write" -> {
+            "file_write", "delete_file", "make_directory", "download_file" -> {
                 val path = try { JSONObject(cmd.toolArgs).optString("path", "?") } catch (_: Exception) { "?" }
-                sb.appendLine("目标文件: $path")
-                sb.appendLine("⚠ 将覆写现有文件内容")
+                sb.appendLine("目标: $path")
+                if (cmd.toolName == "delete_file") sb.appendLine("⚠ 将删除文件/目录")
+                else if (cmd.toolName == "file_write") sb.appendLine("⚠ 将覆写现有文件内容")
             }
         }
         return sb.toString()
@@ -373,6 +380,8 @@ class SecurityGateImpl(
         command.contains("mount") || command.contains("insmod") -> Capability.KERNEL
         command.contains("pm ") || command.contains("am ") -> Capability.APP
         command.contains("settings") || command.contains("setprop") -> Capability.SYSTEM
+        command.contains("gradle") || command.contains("sdkmanager") || command.contains("apt-get") || command.contains("apt ") -> Capability.BUILD
+        command.contains("chroot") || command.contains("env -i") -> Capability.TERMINAL
         else -> Capability.FS
     }
 }
