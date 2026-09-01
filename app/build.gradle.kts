@@ -20,8 +20,8 @@ android {
         applicationId = "com.xincode.app"
         minSdk = 28
         targetSdk = 34
-        versionCode = 122          // 1.0 → 100;之后每次 +0.01 版本对应 +1(1.01→101…)
-        versionName = "1.22"
+        versionCode = 112          // 公开社区版本从 1.11 升级到整合大版本 1.12。
+        versionName = "1.12"
     }
 
     // 只有在 keystore.properties 真实存在时才建 release 签名配置。
