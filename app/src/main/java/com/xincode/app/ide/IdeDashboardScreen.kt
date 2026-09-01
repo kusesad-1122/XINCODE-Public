@@ -31,12 +31,6 @@ fun IdeDashboardScreen(
 ) {
     val xc = LocalXinColors.current
     val groups = listOf(
-        "构建与环境" to listOf(
-            IdeEntry("gradle", "Gradle 支持", "Wrapper / 任务 / 依赖 · JDK 11/17 切换", "G"),
-            IdeEntry("sdk", "SDK & NDK 管理器", "sdkmanager 终端管理 · 平台/构建工具/NDK", "S"),
-            IdeEntry("envvar", "环境变量", "自定义构建与终端变量 · 自动注入", "E"),
-            IdeEntry("jdk", "JDK 管理", "OpenJDK 11 / 17 双版本 · JAVA_HOME", "J"),
-        ),
         "代码与语言" to listOf(
             IdeEntry("lsp", "语言服务器", "Java / Kotlin / XML · 诊断补全", "L"),
             IdeEntry("git", "Git 集成", "状态/提交/分支/日志 · 终端 git", "G"),
@@ -54,7 +48,7 @@ fun IdeDashboardScreen(
     )
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        XinPageHeader(title = "IDE", subtitle = "Gradle·SDK·环境变量·LSP·UI设计·翻译·Asset·插件·Git", onBack = onBack, modifier = Modifier.padding(horizontal = 12.dp))
+        XinPageHeader(title = "IDE", subtitle = "LSP·UI设计·翻译·Asset·插件·Git · 构建与环境请前往 环境配置", onBack = onBack, modifier = Modifier.padding(horizontal = 12.dp))
         LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)) {
             groups.forEach { (groupTitle, entries) ->
                 item {
@@ -89,7 +83,7 @@ fun IdeDashboardScreen(
             }
             item {
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFF0F1117)).padding(12.dp)) {
-                    Text("IDE 模块已补齐：Gradle/双JDK/环境变量/SDK·NDK/日志/三语言服务器/UI设计全套(含充气器/资源解析/拖放/可视化编辑/小部件/翻译/Asset)/插件创建器/Git。所有能力经终端+AI代理联动，环境变量自动注入构建与终端。", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF6B7089), lineHeight = 13.sp)
+                    Text("IDE 专注代码与设计：三语言服务器/UI设计全套(含充气器/资源解析/拖放/可视化编辑/小部件/翻译/Asset)/插件创建器/Git/日志。构建与环境变量(Gradle/JDK/SDK/环境变量)已统一收归 环境配置 → 构建与环境变量 融合卡，入口唯一，返回路径按来源回退。", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF6B7089), lineHeight = 13.sp)
                 }
             }
         }

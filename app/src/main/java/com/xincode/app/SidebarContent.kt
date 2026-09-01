@@ -14,8 +14,12 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
+import androidx.compose.material.icons.outlined.Build
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Star
@@ -77,6 +81,9 @@ fun SidebarContent(
     onCreateIdentity: () -> Unit,
     onNavigateToIdentityList: () -> Unit,
     onNavigateToSettings: () -> Unit,
+    onNavigateToIde: () -> Unit = {},
+    onNavigateToMcp: () -> Unit = {},
+    onNavigateToSkills: () -> Unit = {},
     onClose: () -> Unit,
     onSearchMessages: suspend (String) -> List<SearchHit> = { emptyList() },
     // ---- Goal/Work 模式 ----
@@ -340,6 +347,20 @@ fun SidebarContent(
                     onConvToggleStar = { id, starred -> onSetSessionStarred(id, starred) },
                     onConvMoveToProject = { id -> moveTarget = id }
                 )
+            }
+
+            // DEVELOPER - 1.22: IDE/MCP/Skills 唯一入口，原设置页同名入口已移除
+            item(key = "header_developer") {
+                SectionHeaderRow("DEVELOPER")
+            }
+            item(key = "dev_ide") {
+                DeveloperRow(label = "IDE", desc = "代码·构建·设计", icon = Icons.Outlined.Code) { onNavigateToIde(); onClose() }
+            }
+            item(key = "dev_mcp") {
+                DeveloperRow(label = "MCP", desc = "外部工具协议", icon = Icons.Outlined.Extension) { onNavigateToMcp(); onClose() }
+            }
+            item(key = "dev_skills") {
+                DeveloperRow(label = "Skills", desc = "可复用提示词", icon = Icons.Outlined.Lightbulb) { onNavigateToSkills(); onClose() }
             }
 
             // IDENTITY
@@ -705,6 +726,25 @@ private fun ProjectHeaderRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun DeveloperRow(label: String, desc: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    val xc = LocalXinColors.current
+    Row(
+        modifier = Modifier.fillMaxWidth().height(38.dp)
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+            .padding(start = 20.dp, end = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, null, Modifier.size(14.dp), tint = xc.sub)
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = xc.ink, fontFamily = FontFamily.Serif)
+            Text(desc, fontSize = 10.sp, color = xc.faint, fontFamily = FontFamily.Serif, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text("›", fontSize = 14.sp, color = xc.faint, fontFamily = FontFamily.Serif)
     }
 }
 

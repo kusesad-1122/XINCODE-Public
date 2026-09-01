@@ -361,6 +361,8 @@ override fun onCreate() {
 
         // 内置 Linux 环境(root+chroot Ubuntu):定位私有目录,若已部署则标记就绪。
         LinuxEnvironment.init(this)
+        // 1.22: 终端已接管 Shizuku/ADB 分级，需 context 判定
+        terminalState.attachContext(this)
         // 部署/安装的流式输出汇聚到可视终端。
         LinuxEnvironment.outputSink = { terminalState.appendChunk(it) }
         // 加载自定义环境变量(构建/终端注入)

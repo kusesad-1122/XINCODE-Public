@@ -7,7 +7,8 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import com.xincode.app.root.RootShellManager
+import android.content.Context
+import com.xincode.app.privilege.PrivilegedExecutor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -18,8 +19,11 @@ import kotlinx.coroutines.withContext
  *  - AI 通过 env_exec 工具在环境里跑的命令(让用户看到 AI 在操作什么)。
  */
 class TerminalState {
+    private var appContext: Context? = null
+    fun attachContext(ctx: Context) { appContext = ctx.applicationContext }
+
     val lines: SnapshotStateList<String> = mutableStateListOf(
-        "XINCODE 终端 — 已就绪时命令在内置 Ubuntu 环境(chroot)执行,否则在 root shell。",
+        "XINCODE 终端 — 已就绪时命令在内置 Ubuntu 环境(chroot)执行,否则按 Root>Shizuku>普通 自动降级。",
         ""
     )
     var running by mutableStateOf(false)
@@ -62,7 +66,7 @@ class TerminalState {
         else mainHandler.post { lines.clear() }
     }
 
-    /** 执行一条命令:环境就绪→在 Ubuntu 内,否则→root shell。输出流式上屏。 */
+    /** 执行一条命令:环境就绪→在 Ubuntu 内,否则→ Root>Shizuku>普通 自动降级。输出流式上屏。 */
     suspend fun run(cmd: String) {
         val c = cmd.trim()
         if (c.isEmpty()) return
@@ -74,7 +78,7 @@ class TerminalState {
                 if (LinuxEnvironment.isReady())
                     LinuxEnvironment.runInEnvStreaming(c, scope = "terminal") { appendChunk(it) }
                 else
-                    RootShellManager.executeStreaming(c) { appendChunk(it) }
+                    PrivilegedExecutor.executeStreaming(c, { appendChunk(it) }, appContext)
             }
             appendChunk("[exit ${res.exitCode}]")
         } catch (e: Exception) {

@@ -62,15 +62,17 @@ class MainActivity : ComponentActivity() {
         setContent {
             XinTheme(dark = app.darkMode) {
             var currentPage by remember { mutableStateOf("chat") }
-            // 终端页可从「对话页顶栏」或「环境配置页」进入;记录来源,退出时精确回到来处(修返回逻辑 bug)。
+            // 终端页可从「对话页顶栏」或「环境配置页」进�?记录来源,退出时精确回到来处(修返回逻辑 bug)�?
             var terminalOrigin by remember { mutableStateOf("chat") }
+            // 1.22: IDE 子页与构建环境变量的来源回退 (env_config <-> ide_xxx)
+            var ideOrigin by remember { mutableStateOf("settings") }
             var rootDiagResult by remember { mutableStateOf<RootDiagnosticResult?>(null) }
             var editingIdentityId by remember { mutableStateOf<Long?>(null) }
             val drawerState = rememberDrawerState(DrawerValue.Closed)
             val drawerScope = rememberCoroutineScope()
 
-            // 数据库开不起来被自动重建过:必须告诉用户,不能让数据「无声消失」。
-            // 只在本次进程内提示一次,消掉后不再打扰。
+            // 数据库开不起来被自动重建�?必须告诉用户,不能让数据「无声消失」�?
+            // 只在本次进程内提示一�?消掉后不再打扰�?
             var dbRecovery by remember {
                 mutableStateOf(com.xincode.data.AppDatabase.lastRecoveredFailure)
             }
@@ -82,33 +84,33 @@ class MainActivity : ComponentActivity() {
                     text = {
                         Text(
                             buildString {
-                                append("上次的数据文件打不开,应用已新建了一个空数据库,否则会一直闪退。\n\n")
+                                append("上次的数据文件打不开,应用已新建了一个空数据�?否则会一直闪退。\n\n")
                                 if (backup != null) {
-                                    append("旧数据没有删除,已改名保留在应用私有目录:\n$backup\n\n")
-                                    append("如果里面有重要内容,先别卸载应用 —— 卸载会连备份一起清掉。")
+                                    append("旧数据没有删�?已改名保留在应用私有目录:\n$backup\n\n")
+                                    append("如果里面有重要内�?先别卸载应用 —�?卸载会连备份一起清掉�?)
                                 } else {
-                                    append("旧数据文件已损坏且无法保留。")
+                                    append("旧数据文件已损坏且无法保留�?)
                                 }
-                                // 「打不开」和「数据坏了」是两回事,用户看到的报错完全一样,
-                                // 但只有前者有救。权限类失败一律是外部改动造成的 —— 最常见的是
-                                // 让 AI 用 root 去动应用私有目录 —— 说清楚,用户下次才知道怎么避开。
+                                // 「打不开」和「数据坏了」是两回�?用户看到的报错完全一�?
+                                // 但只有前者有救。权限类失败一律是外部改动造成�?—�?最常见的是
+                                // �?AI �?root 去动应用私有目录 —�?说清�?用户下次才知道怎么避开�?
                                 if (dbRecovery?.contains("Permission denied") == true ||
                                     dbRecovery?.contains("not readable") == true
                                 ) {
-                                    append("\n\n这是权限被改动造成的,数据本身没坏。")
-                                    append("通常是让 AI 用 root 动了应用私有目录 ")
-                                    append("(/data/data/com.xincode.app)。")
-                                    append("本版本已禁止 AI 改这个目录,升级后不会再出现。")
+                                    append("\n\n这是权限被改动造成�?数据本身没坏�?)
+                                    append("通常是让 AI �?root 动了应用私有目录 ")
+                                    append("(/data/data/com.xincode.app)�?)
+                                    append("本版本已禁止 AI 改这个目�?升级后不会再出现�?)
                                 }
                                 append("\n\n原因:$dbRecovery")
                             }
                         )
                     },
-                    confirmButton = { TextButton(onClick = { dbRecovery = null }) { Text("知道了") } }
+                    confirmButton = { TextButton(onClick = { dbRecovery = null }) { Text("知道�?) } }
                 )
             }
 
-            // 启动时静默检查更新:失败/限流/已最新一律安静跳过,只有真有新版才弹窗。
+            // 启动时静默检查更�?失败/限流/已最新一律安静跳�?只有真有新版才弹窗�?
             var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
             LaunchedEffect(Unit) {
                 updateInfo = UpdateChecker.check(
@@ -131,6 +133,47 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
+            // 1.22: 启动后自检未部署环境时弹窗提示�?天免打扰），普通用户无Root仍可使用Git/文件�?
+            var showEnvDeployPrompt by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                withContext(Dispatchers.IO) {
+                    try {
+                        val state = LinuxEnvironment.state
+                        if (state == LinuxEnvironment.State.NOT_SETUP) {
+                            val snoozeStr = app.database.settingDao().get("env_deploy_snooze")
+                            val snooze = snoozeStr?.toLongOrNull() ?: 0L
+                            val now = System.currentTimeMillis()
+                            val sevenDays = 7 * 24 * 60 * 60 * 1000L
+                            if (now - snooze > sevenDays) {
+                                withContext(Dispatchers.Main) { showEnvDeployPrompt = true }
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+            if (showEnvDeployPrompt) {
+                AlertDialog(
+                    onDismissRequest = { showEnvDeployPrompt = false },
+                    title = { Text("环境未部�?, color = LocalXinColors.current.ink) },
+                    text = { Text("检测到内置 Linux 环境尚未部署。普通用户无 Root 仍可使用 Git/文件等功能，但构建类能力（Gradle/JDK/SDK）需要先部署环境。是否前往部署�?, fontSize = 13.sp, color = LocalXinColors.current.sub) },
+                    confirmButton = {
+                        TextButton(onClick = { showEnvDeployPrompt = false; currentPage = "env_config" }) { Text("去部�?, color = LocalXinColors.current.green) }
+                    },
+                    dismissButton = {
+                        Row {
+                            TextButton(onClick = {
+                                drawerScope.launch(Dispatchers.IO) {
+                                    app.database.settingDao().put("env_deploy_snooze", System.currentTimeMillis().toString())
+                                }
+                                showEnvDeployPrompt = false
+                            }) { Text("7天内不再提示", color = LocalXinColors.current.sub) }
+                            TextButton(onClick = { showEnvDeployPrompt = false }) { Text("稍后", color = LocalXinColors.current.sub) }
+                        }
+                    },
+                    containerColor = LocalXinColors.current.bg
+                )
+            }
+
             // Collect sessions from Room
             val sessions by app.sessionListFlow.collectAsState(initial = emptyList())
             val currentSessionId = app.currentSessionId
@@ -143,8 +186,8 @@ class MainActivity : ComponentActivity() {
             // 从侧栏直接点进某个房间时带上 id,群聊页据此跳过列表直接开那间
             var openRoomId by remember { mutableStateOf<Long?>(null) }
             val allIdentities by app.identityListFlow.collectAsState(initial = emptyList())
-            // 群聊专用的角色卡不进主对话列表 —— 它们写的是团队里的一个位置,
-            // 单独拿来跟你对话没有意义,混在一起只会把真正能用的卡淹掉。
+            // 群聊专用的角色卡不进主对话列�?—�?它们写的是团队里的一个位�?
+            // 单独拿来跟你对话没有意义,混在一起只会把真正能用的卡淹掉�?
             val identities = remember(allIdentities) {
                 allIdentities.filter { it.scope != IdentityEntity.SCOPE_GROUP }
             }
@@ -155,16 +198,20 @@ class MainActivity : ComponentActivity() {
                 sessions.filter { it.projectId != null }.groupBy { it.projectId!! }
             }
 
-            // 侧滑/返回:抽屉开→关;子页→回上一页;聊天页→连续两次(2s 内)才退出应用。
+            // 侧滑/返回:抽屉开→关;子页→回上一�?聊天页→连续两次(2s �?才退出应用�?
             var lastBackMs by remember { mutableStateOf(0L) }
             BackHandler(enabled = drawerState.isOpen) { drawerScope.launch { drawerState.close() } }
             BackHandler(enabled = !drawerState.isOpen && currentPage != "chat") {
-                currentPage = if (currentPage == "terminal") terminalOrigin else parentPageOf(currentPage)
+                currentPage = when {
+                    currentPage == "terminal" -> terminalOrigin
+                    currentPage.startsWith("ide_") -> ideOrigin
+                    else -> parentPageOf(currentPage)
+                }
             }
             BackHandler(enabled = !drawerState.isOpen && currentPage == "chat") {
                 val now = System.currentTimeMillis()
                 if (now - lastBackMs < 2000) this@MainActivity.finish()
-                else { lastBackMs = now; Toast.makeText(this@MainActivity, "再滑一次返回退出", Toast.LENGTH_SHORT).show() }
+                else { lastBackMs = now; Toast.makeText(this@MainActivity, "再滑一次返回退�?, Toast.LENGTH_SHORT).show() }
             }
 
             ModalNavigationDrawer(
@@ -200,6 +247,9 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onNavigateToSettings = { currentPage = "settings" },
+                        onNavigateToIde = { currentPage = "ide_dashboard" },
+                        onNavigateToMcp = { currentPage = "mcp" },
+                        onNavigateToSkills = { currentPage = "skills" },
                         onClose = { drawerScope.launch { drawerState.close() } },
                         onCreateProject = { name -> app.createProject(name) },
                         onCreateNewInProject = { projectId ->
@@ -270,8 +320,8 @@ class MainActivity : ComponentActivity() {
                             ?.name
                             ?: "默认助手"
                         val conversationTitle = currentSession?.title
-                            ?.takeUnless { it == "新对话" }
-                            ?: "新聊天"
+                            ?.takeUnless { it == "新对�? }
+                            ?: "新聊�?
                         val skillNames = remember { mutableStateOf<List<String>>(emptyList()) }
                         val mcpNames = remember { mutableStateOf<List<String>>(emptyList()) }
                         LaunchedEffect(Unit) {
@@ -300,7 +350,7 @@ class MainActivity : ComponentActivity() {
                             onStopGoal = { app.stopGoal(app.currentSessionId) },
                             powerMode = app.currentPowerMode,
                             onSwitchModel = { modelId ->
-                                // 只改当前对话的模型,且保留当前会话已经选择的供应商。
+                                // 只改当前对话的模�?且保留当前会话已经选择的供应商�?
                                 val override = ModelSelection.quickSwitch(
                                     currentSession ?: SessionEntity(id = app.currentSessionId),
                                     active,
@@ -491,7 +541,7 @@ class MainActivity : ComponentActivity() {
                     "group_rooms" -> GroupRoomsScreen(database = app.database, keystore = app.keystore,
                         initialRoomId = openRoomId,
                         onConsumedInitialRoom = { openRoomId = null },
-                        // 成员工作台现在是群聊【内嵌】的一层,不再跳出到主对话页
+                        // 成员工作台现在是群聊【内嵌】的一�?不再跳出到主对话�?
                         onBack = { openRoomId = null; currentPage = "chat" })
                     "profiles" -> ProfilesScreen(database = app.database, onBack = { currentPage = "settings" })
                     "function_models" -> FunctionModelsScreen(
@@ -510,7 +560,17 @@ class MainActivity : ComponentActivity() {
                     "about" -> AboutScreen(app = app, onBack = { currentPage = "settings" })
                     "env_config" -> EnvConfigScreen(
                         onBack = { currentPage = "settings" },
-                        onOpenTerminal = { terminalOrigin = "env_config"; currentPage = "terminal" }
+                        onOpenTerminal = { terminalOrigin = "env_config"; currentPage = "terminal" },
+                        onNavigateBuild = { id ->
+                            ideOrigin = "env_config"
+                            currentPage = when (id) {
+                                "gradle" -> "ide_gradle"
+                                "jdk" -> "ide_jdk"
+                                "sdk" -> "ide_sdk"
+                                "envvar" -> "ide_envvar"
+                                else -> "env_config"
+                            }
+                        }
                     )
                     "agent_scene" -> AgentSceneScreen(
                         scene = app.subAgentScene,
@@ -569,69 +629,74 @@ class MainActivity : ComponentActivity() {
                     "ide_dashboard" -> com.xincode.app.ide.IdeDashboardScreen(
                         onBack = { currentPage = "settings" },
                         onNavigate = { id ->
-                            currentPage = when (id) {
-                                "gradle" -> "ide_gradle"
-                                "sdk" -> "ide_sdk"
-                                "envvar" -> "ide_envvar"
-                                "jdk" -> "ide_jdk"
-                                "lsp" -> "ide_lsp"
-                                "designer" -> "ide_designer"
-                                "translator" -> "ide_translator"
-                                "assets" -> "ide_assets"
-                                "plugin" -> "ide_plugin"
-                                "git" -> "ide_git"
-                                "terminal" -> "terminal"
-                                "log" -> "logs"
-                                else -> "ide_dashboard"
+                            // 1.22: IDE 子页与构建环境变量按来源回退，终端特殊处�?
+                            if (id == "terminal") {
+                                terminalOrigin = "ide_dashboard"
+                                currentPage = "terminal"
+                            } else {
+                                ideOrigin = "ide_dashboard"
+                                currentPage = when (id) {
+                                    "gradle" -> "ide_gradle"
+                                    "sdk" -> "ide_sdk"
+                                    "envvar" -> "ide_envvar"
+                                    "jdk" -> "ide_jdk"
+                                    "lsp" -> "ide_lsp"
+                                    "designer" -> "ide_designer"
+                                    "translator" -> "ide_translator"
+                                    "assets" -> "ide_assets"
+                                    "plugin" -> "ide_plugin"
+                                    "git" -> "ide_git"
+                                    "log" -> "logs"
+                                    else -> "ide_dashboard"
+                                }
                             }
-                            if (id == "terminal") terminalOrigin = "ide_dashboard"
                         }
                     )
                     "ide_jdk" -> com.xincode.app.ide.JdkManagerScreen(
-                        onBack = { currentPage = "ide_dashboard" },
+                        onBack = { currentPage = ideOrigin },
                         onOpenTerminal = { terminalOrigin = "ide_jdk"; currentPage = "terminal" }
                     )
                     "ide_gradle" -> com.xincode.app.ide.GradleScreen(
                         database = app.database,
                         workspaceRoot = app.workspaceRootGlobal,
-                        onBack = { currentPage = "ide_dashboard" },
+                        onBack = { currentPage = ideOrigin },
                         onOpenTerminal = { terminalOrigin = "ide_gradle"; currentPage = "terminal" }
                     )
                     "ide_sdk" -> com.xincode.app.ide.SdkManagerScreen(
-                        onBack = { currentPage = "ide_dashboard" },
+                        onBack = { currentPage = ideOrigin },
                         onOpenTerminal = { terminalOrigin = "ide_sdk"; currentPage = "terminal" }
                     )
                     "ide_envvar" -> com.xincode.app.ide.EnvVarScreen(
                         database = app.database,
-                        onBack = { currentPage = "ide_dashboard" }
+                        onBack = { currentPage = ideOrigin }
                     )
                     "ide_lsp" -> com.xincode.app.ide.LanguageServerScreen(
                         database = app.database,
-                        onBack = { currentPage = "ide_dashboard" },
+                        onBack = { currentPage = ideOrigin },
                         onOpenTerminal = { terminalOrigin = "ide_lsp"; currentPage = "terminal" }
                     )
                     "ide_designer" -> com.xincode.app.ide.designer.UiDesignerScreen(
                         database = app.database,
                         workspaceRoot = app.workspaceRootGlobal,
-                        onBack = { currentPage = "ide_dashboard" }
+                        onBack = { currentPage = ideOrigin }
                     )
                     "ide_translator" -> com.xincode.app.ide.StringTranslatorScreen(
                         database = app.database,
                         workspaceRoot = app.workspaceRootGlobal,
-                        onBack = { currentPage = "ide_dashboard" }
+                        onBack = { currentPage = ideOrigin }
                     )
                     "ide_assets" -> com.xincode.app.ide.AssetStudioScreen(
                         workspaceRoot = app.workspaceRootGlobal,
-                        onBack = { currentPage = "ide_dashboard" }
+                        onBack = { currentPage = ideOrigin }
                     )
                     "ide_plugin" -> com.xincode.app.ide.PluginCreatorScreen(
                         workspaceRoot = app.workspaceRootGlobal,
-                        onBack = { currentPage = "ide_dashboard" }
+                        onBack = { currentPage = ideOrigin }
                     )
                     "ide_git" -> com.xincode.app.ide.GitIntegrationScreen(
                         database = app.database,
                         workspaceRoot = app.workspaceRootGlobal,
-                        onBack = { currentPage = "ide_dashboard" },
+                        onBack = { currentPage = ideOrigin },
                         onOpenTerminal = { terminalOrigin = "ide_git"; currentPage = "terminal" }
                     )
                 }
@@ -648,7 +713,7 @@ class MainActivity : ComponentActivity() {
         if (::voiceInputHelper.isInitialized) voiceInputHelper.reset()
     }
 }
-/** 各子页返回时的「上一页」映射:设置类子页回设置,其余回聊天。 */
+/** 各子页返回时的「上一页」映�?设置类子页回设置,其余回聊天�?*/
 private fun parentPageOf(page: String): String = when (page) {
     "settings" -> "chat"
     "supplier", "model_market", "git_config", "audit", "memory_storage", "skills", "mcp", "curated_memory",

@@ -36,7 +36,11 @@ private enum class InstallState { IDLE, INSTALLING, OK, FAIL }
  * 收起展开/开始配置(经 root shell 自适应包管理器并行? 顺序安装)。
  */
 @Composable
-fun EnvConfigScreen(onBack: () -> Unit, onOpenTerminal: () -> Unit = {}) {
+fun EnvConfigScreen(
+    onBack: () -> Unit,
+    onOpenTerminal: () -> Unit = {},
+    onNavigateBuild: (String) -> Unit = {}
+) {
     val xc = LocalXinColors.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -112,6 +116,9 @@ fun EnvConfigScreen(onBack: () -> Unit, onOpenTerminal: () -> Unit = {}) {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             item(key = "__env_status__") { EnvStatusCard(xc, onDeploy = { deployEnv() }, onOpenTerminal = onOpenTerminal) }
+            item(key = "__build_env__") {
+                BuildEnvCard(xc, onNavigate = onNavigateBuild)
+            }
             items(categories, key = { it.title }) { cat ->
                 CategoryCard(
                     cat = cat, xc = xc,
@@ -270,6 +277,61 @@ private fun EnvStatusCard(xc: XinColors, onDeploy: () -> Unit, onOpenTerminal: (
             Text(LinuxEnvironment.setupLog.trim().takeLast(400), fontSize = 10.sp, fontFamily = Mono,
                 color = xc.faint, lineHeight = 14.sp)
         }
+    }
+}
+
+/** 1.22 融合卡：构建与环境变量 — Gradle/JDK/SDK/环境变量 统一入口，按来源回退 */
+@Composable
+private fun BuildEnvCard(xc: XinColors, onNavigate: (String) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .background(xc.bgElevated).border(1.dp, xc.border, RoundedCornerShape(14.dp)).padding(14.dp)
+    ) {
+        Text("构建与环境变量", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = Mono, color = xc.ink)
+        Text("Gradle / JDK / SDK / 环境变量 统一在此跳转，IDE 仅保留代码与设计能力", fontSize = 11.sp, fontFamily = Mono, color = xc.sub, modifier = Modifier.padding(top = 4.dp))
+        Spacer(Modifier.height(12.dp))
+        val items = listOf(
+            Triple("gradle", "Gradle", "G"),
+            Triple("jdk", "JDK", "J"),
+            Triple("sdk", "SDK/NDK", "S"),
+            Triple("envvar", "环境变量", "E")
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items.chunked(2).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    row.forEach { (id, title, icon) ->
+                        Box(
+                            Modifier.weight(1f).height(68.dp).clip(RoundedCornerShape(12.dp))
+                                .background(xc.bg).border(1.dp, xc.border, RoundedCornerShape(12.dp))
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNavigate(id) }
+                                .padding(10.dp)
+                        ) {
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(xc.green.copy(0.15f)), contentAlignment = Alignment.Center) {
+                                        Text(icon, fontSize = 11.sp, fontFamily = Mono, color = xc.green)
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(title, fontSize = 12.sp, fontFamily = Mono, color = xc.ink)
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    when (id) {
+                                        "gradle" -> "Wrapper/任务/依赖"
+                                        "jdk" -> "OpenJDK 11/17"
+                                        "sdk" -> "平台/构建工具/NDK"
+                                        else -> "构建与终端注入"
+                                    }, fontSize = 10.sp, fontFamily = Mono, color = xc.sub, maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("普通用户无 Root 仍可使用 Git/文件等，仅构建类能力需环境", fontSize = 10.sp, fontFamily = Mono, color = xc.faint, lineHeight = 12.sp)
     }
 }
 
