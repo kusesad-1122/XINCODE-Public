@@ -1,6 +1,7 @@
 package com.xincode.app
 
 import android.util.Base64
+import android.util.Log
 import com.xincode.core.Tool
 import com.xincode.core.ToolResult
 import com.xincode.data.AppDatabase
@@ -93,24 +94,41 @@ class TranscribeAudioTool(
         }
     }
 
+    companion object {
+        private const val TAG = "TranscribeAudio"
+    }
+
     private suspend fun resolveEndpoint(): Triple<String, String, String>? {
         // 优先「模型委托」页配的转写副模型(aux_transcribe_*)。
         val auxKeyEnc = database.settingDao().get("aux_transcribe_api_key")
         if (!auxKeyEnc.isNullOrBlank()) {
             val base = database.settingDao().get("aux_transcribe_base_url").orEmpty().ifBlank { "https://api.openai.com" }
             val model = database.settingDao().get("aux_transcribe_model").orEmpty().ifBlank { "whisper-1" }
-            val key = try { keystore.decrypt(Base64.decode(auxKeyEnc, Base64.NO_WRAP)) } catch (_: Exception) { auxKeyEnc }
-            return Triple(base, key, model)
+            try {
+                return Triple(base, keystore.decrypt(Base64.decode(auxKeyEnc, Base64.NO_WRAP)), model)
+            } catch (e: Exception) {
+                // 与 AuxModels 同例:解密失败说明密文已损坏,绝不能把密文原文当 key 发出去。
+                // 打日志后继续尝试下一个来源,而不是直接失败。
+                Log.w(TAG, "aux_transcribe key decrypt failed, try next source: ${e.message}")
+            }
         }
         val sttKeyEnc = database.settingDao().get("stt_api_key")
         if (!sttKeyEnc.isNullOrBlank()) {
             val base = database.settingDao().get("stt_base_url").orEmpty().ifBlank { "https://api.openai.com" }
             val model = database.settingDao().get("stt_model").orEmpty().ifBlank { "whisper-1" }
-            val key = try { keystore.decrypt(Base64.decode(sttKeyEnc, Base64.NO_WRAP)) } catch (_: Exception) { sttKeyEnc }
-            return Triple(base, key, model)
+            try {
+                return Triple(base, keystore.decrypt(Base64.decode(sttKeyEnc, Base64.NO_WRAP)), model)
+            } catch (e: Exception) {
+                Log.w(TAG, "stt key decrypt failed, try next source: ${e.message}")
+            }
         }
         val cfg = database.providerConfigDao().getActive() ?: return null
-        val key = try { keystore.decrypt(Base64.decode(cfg.apiKeyEnc, Base64.NO_WRAP)) } catch (_: Exception) { "" }
+        val key = try {
+            keystore.decrypt(Base64.decode(cfg.apiKeyEnc, Base64.NO_WRAP))
+        } catch (e: Exception) {
+            Log.w(TAG, "active provider key decrypt failed, treat as unconfigured: ${e.message}")
+            return null
+        }
         return Triple(cfg.baseUrl, key, "whisper-1")
     }
 

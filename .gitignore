@@ -24,3 +24,6 @@ keystore.properties
 # 提交进去的话每次重编都是一个新的 34MB blob,仓库体积会失控。
 app/src/main/jniLibs/
 codegraph-kernel/target/
+
+# AgentTeams 团队状态目录(本地调度过程文件,不进仓库)。
+.agent-teams/
