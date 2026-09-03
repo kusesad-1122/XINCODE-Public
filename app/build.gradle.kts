@@ -21,8 +21,8 @@ android {
         applicationId = "com.xincode.app"
         minSdk = 28
         targetSdk = 34
-        versionCode = 122          // 1.13-1.22 的 prepare 只记了日志没升码,此处一次性对齐到 1.22。
-        versionName = "1.22"
+        versionCode = 122          // 以 1.12 名义发布:versionName 回 1.12,versionCode 保持 122 不回退(已装 1.22 的设备不会看到降级)。
+        versionName = "1.12"
     }
 
     // 只有在 keystore.properties 真实存在时才建 release 签名配置。
