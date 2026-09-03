@@ -2,21 +2,7 @@
 
 ## [1.12]
 
-本次更新将 1.13–1.22 开发线上的全部功能与修复统一纳入 1.12 发布。APK 版本为 `versionName 1.12`、`versionCode 122`（versionCode 不回退：之前装过 1.22 的设备不会看到降级）。
-
-### 版本历程（1.13–1.22 内容已折叠进本版，不再单独发版）
-
-- 1.13：群聊成员并行回复，回复携带引用上下文。
-- 1.14：群聊引用块堆叠在回复气泡内部展示。
-- 1.15：记忆每轮召回、技能生命周期、使用驱动自改进与后台复盘策展人；群聊流式回复、滚动总结、run 保序、房间内确认与 diff 卡。
-- 1.16：上下文窗口与压缩阈值支持按对话独立覆盖；修复流式 null 字段吐出字面量 `null`；支持单对话内切换供应商与模型。
-- 1.17：修复 `env_exec` / `shell_exec` 挂起无返回；群聊头像贴边、气泡加宽。
-- 1.18：图片发送改用系统 Photo Picker，经应用私有目录按需处理，不要求额外存储权限。
-- 1.19：无独立内容，该版本号被跳过。
-- 1.20：全模型路径切换到 OpenAI Responses API（流式事件、函数工具回环、结构化输出）；群聊房间隔离与模型供应商同步。
-- 1.21：补齐手机端 IDE 全链路与 P0/P1 审计修复；流式通道按轮重建，修复 reasoning 重复与输出截断；AppDatabase 升至 v46；EnvExecTool 超时与 scope、JudgeService blocked headers 修复。
-- 1.22（开发线编号，已并入本版）：侧边栏 DEVELOPER 分组，IDE / MCP / Skills 收敛为唯一入口；页面返回按来源回退；执行分级降级 `Root > Shizuku > 普通`；设置页分组可折叠、权限分级卡可一键请求 Shizuku 授权。
-- 审计修复：供应商 Hub 双页 `showHeader` 签名对齐、侧栏 GOAL 空转接线、keystore 缺键中文明示；密钥解密失败不再把密文当 Key 发送（含转写三路 key）；移除 destructive-migration 防静默删库；FTS 失败降级 LIKE 并提示；GoalRunner 忙态/竞态收敛；Responses 流式丢事件计数上报；MCP stdio 加超时；SelfProtect 路径规范化；Cron KEEP 改 UPDATE；设置页群聊入口去重；supplier 路由改走 SupplierHub。
+APK 版本为 `versionName 1.12`、`versionCode 122`。
 
 ### Agent 核心与模型能力
 
@@ -56,6 +42,7 @@
 - 完善敏感操作确认、权限模式、审计日志、输出有界截断与超时控制，修复 Shell stdout/stderr 管道死锁、无限等待和进程组残留。
 - 修复数据库迁移、索引、重复键、Room 校验、Compose 状态线程、模型供应商路径及 Judge 平票等稳定性问题。
 - 修复群聊中的 `null` 文本、内部引用标签、工具协议标记与异常控制符泄漏。
+- 供应商 Hub 页面签名对齐、侧栏 GOAL 入口接线、keystore 缺键中文明示；密钥解密失败不再把密文当 Key 发送；移除静默删库逻辑，FTS 损坏时降级 LIKE 并提示；GoalRunner 忙态与竞态收敛；流式丢事件计数上报；MCP 连接调用加超时；路径规范化防绕过；定时任务改期生效；设置页入口去重。
 
 ### 对话体验与界面
 
