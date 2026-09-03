@@ -153,7 +153,7 @@ abstract class MemoryDao {
         sql += " ORDER BY updatedAt DESC LIMIT ?"
         args += limit
         return try {
-            rawFtsSearch(SimpleSQLiteQuery(sql, args.toArray()))
+            rawFtsSearch(SimpleSQLiteQuery(sql, args.toTypedArray()))
         } catch (e: Exception) {
             Log.w(TAG, "LIKE fallback also failed: ${e.message}")
             emptyList()
