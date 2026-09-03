@@ -1,6 +1,7 @@
 package com.xincode.app
 
 import android.util.Base64
+import android.util.Log
 import com.xincode.data.AppDatabase
 import com.xincode.security.KeystoreProvider
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +23,8 @@ import java.util.concurrent.TimeUnit
  * 通用文本委托走 [chat](OpenAI 兼容 /v1/chat/completions);视觉/语音有各自的媒体工具(describe_image / transcribe_audio)。
  */
 object AuxModels {
+    private const val TAG = "AuxModels"
+
     data class Task(val key: String, val label: String, val hint: String, val defaultModel: String)
 
     /** 可配置的委托任务清单(UI 与工具共用)。 */
@@ -59,7 +62,14 @@ object AuxModels {
             ?.ifBlank { TASKS.firstOrNull { it.key == key }?.defaultModel ?: "" } ?: ""
         val apiPathType = db.settingDao().get(Profiles.key(p, "aux_${key}_api_path_type"))
             ?.trim()?.ifBlank { "openai" } ?: "openai"
-        val apiKey = try { keystore.decrypt(Base64.decode(keyEnc, Base64.NO_WRAP)) } catch (_: Exception) { keyEnc }
+        val apiKey = try {
+            keystore.decrypt(Base64.decode(keyEnc, Base64.NO_WRAP))
+        } catch (e: Exception) {
+            // 解密失败说明存的密文已损坏(如 keystore 轮转/备份恢复)。
+            // 绝不能把【密文原文】当明文 key 发出去:那一定 401,还把密文泄露到对端日志。
+            Log.w(TAG, "aux task=$key api_key decrypt failed, treat as unconfigured: ${e.message}")
+            return null
+        }
         return Resolved(baseUrl, apiKey, model, apiPathType)
     }
 
@@ -75,7 +85,10 @@ object AuxModels {
         val model = db.settingDao().get(Profiles.key(p, "fn_${key}_model"))?.trim()?.ifBlank { null } ?: cfg.model
         val apiKey = try {
             keystore.decrypt(Base64.decode(cfg.apiKeyEnc, Base64.NO_WRAP))
-        } catch (_: Exception) { return null }
+        } catch (e: Exception) {
+            Log.w(TAG, "aux task=$key fn config id=$id decrypt failed, treat as unconfigured: ${e.message}")
+            return null
+        }
         return Resolved(cfg.baseUrl, apiKey, model, cfg.apiPathType, cfg.extraHeadersJson)
     }
 

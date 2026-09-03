@@ -38,7 +38,7 @@ object CronScheduler {
             .setConstraints(Constraints.Builder().build())
             .build()
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, req
+            WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, req
         )
     }
 }

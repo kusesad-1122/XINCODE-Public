@@ -198,7 +198,8 @@ fun ModelMarketScreen(
     keystore: KeystoreProvider,
     openAiClient: com.xincode.provider.OpenAiClient,
     onBack: () -> Unit,
-    onConfigChanged: () -> Unit = {}
+    onConfigChanged: () -> Unit = {},
+    showHeader: Boolean = true
 ) {
     val xc = LocalXinColors.current
     val ctx = LocalContext.current
@@ -211,12 +212,14 @@ fun ModelMarketScreen(
     }
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
-        XinPageHeader(
-            title = "模型与供应商",
-            subtitle = "免费额度、订阅套餐和按量付费",
-            onBack = onBack,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
+        if (showHeader) {
+            XinPageHeader(
+                title = "模型与供应商",
+                subtitle = "免费额度、订阅套餐和按量付费",
+                onBack = onBack,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+        }
         toast?.let {
             Text(it, fontSize = 11.sp, fontFamily = Mono, color = xc.green, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
         }

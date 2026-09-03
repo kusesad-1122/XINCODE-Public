@@ -1,5 +1,6 @@
 package com.xincode.data
 
+import android.util.Log
 import androidx.room.*
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
@@ -12,6 +13,10 @@ import androidx.sqlite.db.SupportSQLiteQuery
  */
 @Dao
 abstract class MemoryDao {
+
+    companion object {
+        private const val TAG = "MemoryDao"
+    }
 
     /** Upsert memory. On conflict (same title) → replace (dedup). */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -92,7 +97,14 @@ abstract class MemoryDao {
             ORDER BY memories.updatedAt DESC
             LIMIT ?
         """.trimIndent()
-        return try { rawFtsSearch(SimpleSQLiteQuery(sql, arrayOf(sanitized, limit))) } catch (_: Exception) { emptyList() }
+        return try {
+            rawFtsSearch(SimpleSQLiteQuery(sql, arrayOf(sanitized, limit)))
+        } catch (e: Exception) {
+            // FTS 表缺失/损坏(OEM ROM 无 FTS4、旧库升级失败)时静默返回空会让召回“假装没记忆”。
+            // 降级为 LIKE 模糊匹配并打日志,调用方和用户能从日志/结果数感知到降级。
+            Log.w(TAG, "FTS search failed, fallback to LIKE: ${e.message}")
+            likeFallback(sanitized, projectId = null, limit)
+        }
     }
 
     /** 项目隔离的 FTS 检索:只在指定项目(0=全局)内匹配。 */
@@ -106,6 +118,45 @@ abstract class MemoryDao {
             ORDER BY memories.updatedAt DESC
             LIMIT ?
         """.trimIndent()
-        return try { rawFtsSearch(SimpleSQLiteQuery(sql, arrayOf(sanitized, projectId, limit))) } catch (_: Exception) { emptyList() }
+        return try {
+            rawFtsSearch(SimpleSQLiteQuery(sql, arrayOf(sanitized, projectId, limit)))
+        } catch (e: Exception) {
+            Log.w(TAG, "FTS searchByProject failed, fallback to LIKE: ${e.message}")
+            likeFallback(sanitized, projectId = projectId, limit)
+        }
+    }
+
+    /**
+     * FTS 不可用时的降级检索:LIKE 按 token 做 OR 模糊匹配。
+     * 结果按 updatedAt 倒序,语义与 FTS 路径保持一致(只是无相关度排序)。
+     */
+    private suspend fun likeFallback(sanitized: String, projectId: Long?, limit: Int): List<MemoryEntity> {
+        val tokens = sanitized.split(" ")
+            .map { it.trim('"').trim() }
+            .map { it.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") }
+            .filter { it.length >= 2 }
+            .take(6)
+        if (tokens.isEmpty()) {
+            return if (projectId == null) getAll().take(limit) else getAllByProject(projectId).take(limit)
+        }
+        val where = tokens.joinToString(" OR ") { "(title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')" }
+        val args = mutableListOf<Any>()
+        tokens.forEach { t ->
+            val pat = "%$t%"
+            args += pat; args += pat; args += pat
+        }
+        var sql = "SELECT * FROM memories WHERE ($where)"
+        if (projectId != null) {
+            sql += " AND projectId = ?"
+            args += projectId
+        }
+        sql += " ORDER BY updatedAt DESC LIMIT ?"
+        args += limit
+        return try {
+            rawFtsSearch(SimpleSQLiteQuery(sql, args.toArray()))
+        } catch (e: Exception) {
+            Log.w(TAG, "LIKE fallback also failed: ${e.message}")
+            emptyList()
+        }
     }
 }

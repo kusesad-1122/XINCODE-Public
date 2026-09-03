@@ -100,7 +100,8 @@ fun SupplierConfigScreen(
     keystore: KeystoreProvider,
     openAiClient: OpenAiClient,
     onBack: () -> Unit,
-    onConfigChanged: () -> Unit = {}
+    onConfigChanged: () -> Unit = {},
+    showHeader: Boolean = true
 ) {
     val configDao = database.providerConfigDao()
     val scope = rememberCoroutineScope()
@@ -310,14 +311,16 @@ fun SupplierConfigScreen(
     LaunchedEffect(Unit) { loadConfigs() }
 
     Column(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp)) {
-        XinPageHeader(
-            title = "供应商配置",
-            subtitle = "管理 API、密钥和可用模型",
-            onBack = onBack
-        ) {
-            XinHeaderAction(label = "新建", onClick = { startNew() })
+        if (showHeader) {
+            XinPageHeader(
+                title = "供应商配置",
+                subtitle = "管理 API、密钥和可用模型",
+                onBack = onBack
+            ) {
+                XinHeaderAction(label = "新建", onClick = { startNew() })
+            }
+            Spacer(Modifier.height(12.dp))
         }
-        Spacer(Modifier.height(12.dp))
 
         // Config list
         if (savedConfigs.isEmpty()) {

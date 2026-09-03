@@ -55,6 +55,10 @@ class GoalRunner(
     private val _judgeLog = MutableStateFlow<List<JudgeEvent>>(emptyList())
     val judgeLog: StateFlow<List<JudgeEvent>> = _judgeLog.asStateFlow()
 
+    /** run()/stop()/finally 三方都会读写 currentJob,必须串行化,否则忙时判断与 NPE 竞态。 */
+    private val runLock = Any()
+
+    @Volatile
     private var currentJob: Job? = null
 
     /**
@@ -74,36 +78,53 @@ class GoalRunner(
         thinkingEnabled: Boolean = false,
         thinkingLevel: Int = 2
     ): Job {
-        if (_state.value.isRunning) {
-            Log.w(TAG, "GoalRunner busy, ignoring")
-            return Job()
-        }
-
-        _judgeLog.value = emptyList()
-        _state.value = GoalState.Running(goal, 0, maxRounds, "初始化...")
-
-        currentJob = scope.launch {
-            try {
-                withTimeout(timeoutMs) {
-                    runGoalLoop(this, goal, maxRounds, thinkingEnabled, thinkingLevel)
-                }
-            } catch (e: TimeoutCancellationException) {
-                _state.value = GoalState.Failed(goal, 0, "总超时 ($timeoutMs)")
-            } catch (e: CancellationException) {
-                _state.value = GoalState.Failed(goal, 0, "用户中断")
-            } catch (e: Exception) {
-                Log.e(TAG, "Goal loop exception: ${e.message}", e)
-                _state.value = GoalState.Error(goal, e.message ?: "未知错误")
-            } finally {
-                currentJob = null
+        synchronized(runLock) {
+            // 双重门:state 说跑着,或 job 还活着,都算忙。
+            // 只看 isRunning 不够:上一轮 finally 把 state 置终态与 currentJob=null
+            // 不是原子的,stop() 恰好卡在中间时会误判为空闲而重入。
+            val active = currentJob?.isActive == true
+            if (_state.value.isRunning || active) {
+                Log.w(TAG, "GoalRunner busy, ignoring")
+                // 必须返回【已完成】的 Job:裸 Job() 是 Active 永不结束,
+                // 调用方 join() 会永远挂住。
+                return Job().apply { complete() }
             }
+
+            _judgeLog.value = emptyList()
+            _state.value = GoalState.Running(goal, 0, maxRounds, "初始化...")
+
+            val job = scope.launch {
+                try {
+                    withTimeout(timeoutMs) {
+                        runGoalLoop(this, goal, maxRounds, thinkingEnabled, thinkingLevel)
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    _state.value = GoalState.Failed(goal, 0, "总超时 ($timeoutMs)")
+                } catch (e: CancellationException) {
+                    _state.value = GoalState.Failed(goal, 0, "用户中断")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Goal loop exception: ${e.message}", e)
+                    _state.value = GoalState.Error(goal, e.message ?: "未知错误")
+                } finally {
+                    // 只清自己的引用:stop() 后立刻 run() 会产生新 job,
+                    // 老协程的 finally 不能把新 job 的引用抹掉。
+                    synchronized(runLock) {
+                        if (currentJob === coroutineContext[Job]) currentJob = null
+                    }
+                }
+            }
+            currentJob = job
+            return job
         }
-        return currentJob!!
     }
 
     fun stop() {
-        currentJob?.cancel()
-        currentJob = null
+        val toCancel: Job?
+        synchronized(runLock) {
+            toCancel = currentJob
+            currentJob = null
+        }
+        toCancel?.cancel()
         val current = _state.value
         if (current is GoalState.Running) {
             _state.value = GoalState.Failed(current.goal, current.round, "用户中断")

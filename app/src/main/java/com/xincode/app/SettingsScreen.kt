@@ -289,7 +289,7 @@ fun SettingsScreen(
                 SettingRow("模型委托", "视觉/推理/翻译/转写各配一个副模型(另填 URL 与 Key)", icon = Icons.Outlined.Extension) { onNavigateToAuxModels() }
                 SettingRow("子智能体", "主脑指挥的专职子智能体(各管各的技能),可自建", icon = Icons.Outlined.Folder) { onNavigateToSubAgents() }
                 SettingRow("局域网设备", "发现同一 Wi-Fi 下其它开着 XINCODE 的设备", icon = Icons.Outlined.Extension) { onNavigateToLanDevices() }
-                SettingRow("群聊房间", "多个智能体同处一室,@名字 点谁谁答", icon = Icons.Outlined.Folder) { onNavigateToGroupRooms() }
+                // 群聊房间入口归侧边栏(与 GOAL/IDE 同层);设置页不再重复,避免双入口分流。
                 SettingRow("看板", "跨会话的长期待办,可把 AI 的计划一键导入", icon = Icons.Outlined.Build) { onNavigateToKanban() }
                 SettingRow("用量分析", "30 天趋势、模型分布、缓存命中率与成本估算", icon = Icons.Outlined.Storage) { onNavigateToUsageStats() }
                 SettingRow("日志", "崩溃与运行日志,按级别/关键词过滤,可复制反馈", icon = Icons.Outlined.BugReport) { onNavigateToLogs() }

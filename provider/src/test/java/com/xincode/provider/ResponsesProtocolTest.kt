@@ -177,4 +177,24 @@ class ResponsesProtocolTest {
         assertEquals(4L, result.usage?.getLong("prompt_tokens"))
         assertTrue(result.errorMessage == null)
     }
+
+    @Test
+    fun droppedEventsAreCountedAndReported() {
+        // 未知事件类型与坏 JSON 必须被计数并回调(排障可见),SSE 帧头/注释不计。
+        val dropped = mutableListOf<String>()
+        val parser = ResponsesStreamParser(onDropped = dropped::add)
+        parser.accept("data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}")
+        parser.accept("data: {\"type\":\"response.unknown_future_event\",\"foo\":1}")
+        parser.accept("data: {not json")
+        parser.accept(": keep-alive comment")
+        parser.accept("event: message")
+
+        val result = parser.result()
+
+        assertEquals("ok", result.content)
+        assertEquals(2, parser.droppedEvents)
+        assertEquals(2, dropped.size)
+        assertTrue(dropped[0].startsWith("unknown-type:"))
+        assertTrue(dropped[1].startsWith("bad-json:"))
+    }
 }

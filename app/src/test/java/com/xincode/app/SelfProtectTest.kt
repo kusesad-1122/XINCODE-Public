@@ -74,6 +74,28 @@ class SelfProtectTest {
     }
 
     @Test
+    fun commandTraversalIsNormalizedAndRefused() {
+        // 命令里的 files/../databases 压平后还是 databases,不能靠字面 contains 蒙混过关。
+        assertNotNull(SelfProtect.refuseCommand("rm -rf $pkgDir/files/../databases/xincode.db"))
+        assertNotNull(SelfProtect.refuseCommand("cat $pkgDir/./shared_prefs/x.xml"))
+    }
+
+    @Test
+    fun commandSeparatorVariantsAreRefused() {
+        // 反斜杠与双斜杠写法规范化后同样命中,不分平台。
+        assertNotNull(SelfProtect.refuseCommand("rm -rf $pkgDir\\databases\\xincode.db"))
+        assertNotNull(SelfProtect.refuseCommand("rm -rf \"$pkgDir//databases//xincode.db\""))
+    }
+
+    @Test
+    fun protectedPathSeparatorVariantsStayProtected() {
+        assertTrue(SelfProtect.isProtected("$pkgDir\\databases\\xincode.db"))
+        assertTrue(SelfProtect.isProtected("$pkgDir//databases//xincode.db"))
+        // 分隔符写法变了也不许误伤正常区。
+        assertFalse(SelfProtect.isProtected("$pkgDir\\files\\ubuntu\\bin\\sh"))
+    }
+
+    @Test
     fun guardIsInertUntilAppDirIsInjected() {
         // 没注入路径时必须【完全不拦】—— 空字符串前缀会匹配到所有绝对路径,
         // 那样单测和任何没走 Application 初始化的入口都会被莫名其妙地拒。

@@ -30,4 +30,10 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
+// Room exportSchema=true 的落盘位置:每次编译更新 data/schemas 下的版本快照,
+// 审计/升级前先 diff 它,防止“实体改了但迁移没跟上”导致老用户启动即崩。
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android { testOptions { unitTests.isReturnDefaultValues = true } }

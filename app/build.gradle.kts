@@ -1,5 +1,6 @@
 import java.util.Properties
 import java.io.FileInputStream
+import org.gradle.api.GradleException
 
 plugins {
     id("com.android.application")
@@ -20,8 +21,8 @@ android {
         applicationId = "com.xincode.app"
         minSdk = 28
         targetSdk = 34
-        versionCode = 112          // 公开社区版本从 1.11 升级到整合大版本 1.12。
-        versionName = "1.12"
+        versionCode = 122          // 1.13-1.22 的 prepare 只记了日志没升码,此处一次性对齐到 1.22。
+        versionName = "1.22"
     }
 
     // 只有在 keystore.properties 真实存在时才建 release 签名配置。
@@ -34,10 +35,18 @@ android {
                 // 而 keystore.properties 与 .jks 都放在【仓库根】(CI 的 Decode keystore 步骤也写在根),
                 // 用 file() 会去找 app/xincode-release.jks 从而报 "Keystore file not found"。
                 // rootProject.file() 以仓库根为基准;若给的是绝对路径也能正确处理。
-                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
-                storePassword = keystoreProperties.getProperty("storePassword")
-                keyAlias = keystoreProperties.getProperty("keyAlias")
-                keyPassword = keystoreProperties.getProperty("keyPassword")
+                val storeFileProp = keystoreProperties.getProperty("storeFile")
+                    ?: throw GradleException("keystore.properties 缺少 storeFile:请检查 CI Decode keystore 步骤是否写出完整四项(storeFile/storePassword/keyAlias/keyPassword)")
+                val storePasswordProp = keystoreProperties.getProperty("storePassword")
+                    ?: throw GradleException("keystore.properties 缺少 storePassword:请检查 CI Decode keystore 步骤是否写出完整四项")
+                val keyAliasProp = keystoreProperties.getProperty("keyAlias")
+                    ?: throw GradleException("keystore.properties 缺少 keyAlias:请检查 CI Decode keystore 步骤是否写出完整四项")
+                val keyPasswordProp = keystoreProperties.getProperty("keyPassword")
+                    ?: throw GradleException("keystore.properties 缺少 keyPassword:请检查 CI Decode keystore 步骤是否写出完整四项")
+                storeFile = rootProject.file(storeFileProp)
+                storePassword = storePasswordProp
+                keyAlias = keyAliasProp
+                keyPassword = keyPasswordProp
             }
         }
     }

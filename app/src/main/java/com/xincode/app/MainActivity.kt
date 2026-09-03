@@ -249,6 +249,7 @@ class MainActivity : ComponentActivity() {
                         },
                         onNavigateToSettings = { currentPage = "settings" },
                         onNavigateToIde = { currentPage = "ide_dashboard" },
+                        onNavigateToGoal = { currentPage = "goal" },
                         onNavigateToMcp = { currentPage = "mcp" },
                         onNavigateToSkills = { currentPage = "skills" },
                         onClose = { drawerScope.launch { drawerState.close() } },
@@ -480,7 +481,7 @@ class MainActivity : ComponentActivity() {
                         keystore = app.keystore,
                         onBack = { currentPage = "settings" }
                     )
-                    "supplier" -> SupplierConfigScreen(
+                    "supplier" -> SupplierHubScreen(
                         database = app.database,
                         keystore = app.keystore,
                         openAiClient = app.openAiClient,

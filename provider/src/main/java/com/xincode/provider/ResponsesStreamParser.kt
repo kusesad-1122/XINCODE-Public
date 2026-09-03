@@ -6,7 +6,8 @@ import java.util.TreeMap
 /** Aggregates one Responses API SSE stream into the same result shape as chat completions. */
 class ResponsesStreamParser(
     private val onText: (String) -> Unit = {},
-    private val onReasoning: (String) -> Unit = {}
+    private val onReasoning: (String) -> Unit = {},
+    private val onDropped: (String) -> Unit = {}
 ) {
     private enum class Terminal { NONE, COMPLETED, INCOMPLETE }
 
@@ -23,6 +24,9 @@ class ResponsesStreamParser(
     private var usage: JSONObject? = null
     private var terminal = Terminal.NONE
     private var errorMessage: String? = null
+    /** 丢弃的 SSE 事件数(JSON 解析失败 + 未知事件类型;SSE 帧头/注释不计)。 */
+    var droppedEvents: Int = 0
+        private set
 
     fun accept(rawLine: String) {
         val line = rawLine.trimStart()
@@ -37,6 +41,7 @@ class ResponsesStreamParser(
         val event = try {
             JSONObject(payload)
         } catch (_: Exception) {
+            drop("bad-json:" + payload.take(120))
             return
         }
         when (event.safeString("type")) {
@@ -101,6 +106,7 @@ class ResponsesStreamParser(
                     ?: eventError?.safeString("message")?.ifBlank { null }
                     ?: event.safeString("message").ifBlank { "Responses stream error" }
             }
+            else -> drop("unknown-type:" + event.safeString("type").take(80))
         }
     }
 
@@ -116,6 +122,11 @@ class ResponsesStreamParser(
         truncated = terminal == Terminal.NONE || terminal == Terminal.INCOMPLETE,
         errorMessage = errorMessage
     )
+
+    private fun drop(reason: String) {
+        droppedEvents++
+        try { onDropped(reason) } catch (_: Exception) {}
+    }
 
     private fun updateTool(acc: ToolAccumulator, item: JSONObject) {
         item.safeString("id").ifBlank { "" }.takeIf { it.isNotBlank() }?.let { acc.id = it }

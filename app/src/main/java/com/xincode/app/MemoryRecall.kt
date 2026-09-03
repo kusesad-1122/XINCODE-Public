@@ -1,5 +1,6 @@
 package com.xincode.app
 
+import android.util.Log
 import com.xincode.data.AppDatabase
 import com.xincode.data.MemoryEntity
 import com.xincode.data.MemoryExtractor
@@ -20,6 +21,8 @@ import kotlinx.coroutines.launch
  * 不是每次全量注入。
  */
 object MemoryRecall {
+
+    private const val TAG = "MemoryRecall"
 
     /** 一次注入最多几条记忆。 */
     private const val RECALL_LIMIT = 4
@@ -94,7 +97,12 @@ object MemoryRecall {
             dao.getAllByProject(projectId).take(CANDIDATE_LIMIT)
         } else {
             val hits = dao.searchByProject(keywords, projectId, CANDIDATE_LIMIT)
-            if (hits.isEmpty()) dao.getAllByProject(projectId).take(CANDIDATE_LIMIT) else hits
+            if (hits.isEmpty()) {
+                // FTS 无命中(含 FTS 损坏后 LIKE 降级仍无命中):回退最近记忆保证中文泛问也能命中,
+                // 并打日志让调用方可感知本次是降级路径(DAO 侧已记录 FTS 失败原因)。
+                Log.i(TAG, "recall fallback to recent: keywords='$keywords' no FTS/LIKE hit")
+                dao.getAllByProject(projectId).take(CANDIDATE_LIMIT)
+            } else hits
         }
         if (candidates.isEmpty()) return ""
 

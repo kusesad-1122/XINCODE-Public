@@ -27,6 +27,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /** 一条消息被回复时,回复要带上的引用上下文。 */
@@ -889,7 +890,8 @@ object GroupRoomEngine {
 
     private fun groupRunId(roomId: Long, memberName: String): String {
         val safe = memberName.replace(Regex("[^\\p{Alnum}_-]"), "_").take(24)
-        return "${roomId}-$safe-${System.currentTimeMillis()}"
+        // 同一毫秒内并发发言会撞 runId(消息按 runId 分组保序),缀 8 位随机串去重。
+        return "${roomId}-$safe-${System.currentTimeMillis()}-${UUID.randomUUID().toString().take(8)}"
     }
 
     /** 工作区快照:相对路径 → (字节数, 最后修改时间)。 */

@@ -481,7 +481,8 @@ class OpenAiClient(
                 onError(ApiError.from(IOException("Response body is null")))
                 return
             }
-            val parser = ResponsesStreamParser(onToken, onReasoning)
+            val parser = ResponsesStreamParser(onToken, onReasoning,
+                onDropped = { reason -> Log.w(TAG, "Responses SSE dropped event: $reason") })
             while (!source.exhausted()) {
                 parser.accept(source.readUtf8Line() ?: break)
             }
@@ -902,7 +903,8 @@ class OpenAiClient(
                 onError(ApiError.from(IOException("Response body is null"))); return
             }
 
-            val parser = ResponsesStreamParser(onToken, onReasoning)
+            val parser = ResponsesStreamParser(onToken, onReasoning,
+                onDropped = { reason -> Log.w(TAG, "Responses SSE dropped event: $reason") })
             while (!source.exhausted()) {
                 parser.accept(source.readUtf8Line() ?: break)
             }

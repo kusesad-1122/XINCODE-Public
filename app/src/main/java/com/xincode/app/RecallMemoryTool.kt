@@ -1,5 +1,6 @@
 package com.xincode.app
 
+import android.util.Log
 import com.xincode.core.Tool
 import com.xincode.core.ToolResult
 import com.xincode.data.AppDatabase
@@ -31,6 +32,10 @@ class RecallMemoryTool(
         "从会话历史沉淀的长期记忆中检索相关内容。用户问“上次说的...”、" +
             "“之前那个项目...”，或你需要之前对话的技术细节时使用。返回按相关度排序的记忆条目列表。"
 
+    companion object {
+        private const val TAG = "RecallMemory"
+    }
+
     override val parametersSchema: JSONObject = JSONObject().apply {
         put("type", "object")
         put("properties", JSONObject().apply {
@@ -57,7 +62,8 @@ class RecallMemoryTool(
         val ftsHits = try {
             memoryDao.searchByProject(query, pid, limit)
         } catch (e: Exception) {
-            return ToolResult.Error("recall_memory: FTS 检索失败: ${e.message}")
+            Log.w(TAG, "recall_memory FTS exception, fallback to recent: ${e.message}")
+            return ToolResult.Error("recall_memory: FTS 检索失败(已降级提示): ${e.message}")
         }
 
         // Best-effort vector rerank when the active provider supports embeddings.
@@ -83,6 +89,7 @@ class RecallMemoryTool(
         // 关键词/向量都没命中时,不要直接说"没记忆"——回退成【当前范围内最近的记忆】,
         // 这样面对"你还记得我们聊过啥"这类泛问,也能给出跨对话的大概记忆(普通对话互通/项目内隔离)。
         if (merged.isEmpty()) {
+            Log.i(TAG, "recall_memory no hit for '$query', fallback to recent in project $pid")
             val recent = try { memoryDao.getAllByProject(pid).take(limit) } catch (_: Exception) { emptyList() }
             if (recent.isEmpty()) return ToolResult.Success("(当前范围内还没有任何沉淀记忆) 查询: $query")
             val out = buildString {

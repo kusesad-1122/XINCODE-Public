@@ -61,10 +61,38 @@ object SelfProtect {
     fun isProtected(path: String): Boolean {
         val base = appDataDir
         if (base.isEmpty() || path.isBlank()) return false
-        val canonical = canonicalForPolicy(path)
+        val canonical = canonicalForPolicy(tidySeparators(path))
         return LOCKED.any { sub ->
             canonical == "$base/$sub" || canonical.startsWith("$base/$sub/")
         }
+    }
+
+    /**
+     * 输入级规范化:反斜杠→斜杠、多余斜杠合并。先做这一步,Windows 风格
+     * (`databases\\x.db`)与双斜杠写法在任何平台都被同一规则判定。
+     */
+    private fun tidySeparators(path: String): String =
+        path.replace('\\', '/').replace(Regex("/+"), "/")
+
+    /**
+     * 命令级规范化:去引号 + 分隔符整理 + 词法消解 `/./` 与 `/../`。
+     *
+     * 命令是整行文本,不能调文件 canonical(相对段无基准、引号管道会干扰),但
+     * `$dir/files/../databases/x.db` 这种字面绕法必须在匹配前压平,否则
+     * contains 精确匹配会被 `..` 段直接绕过。空格/引号保留在段内,不影响子串匹配。
+     */
+    private fun normalizeCommand(command: String): String {
+        val tidy = tidySeparators(command.replace("'", "").replace("\"", ""))
+        val absolute = tidy.startsWith('/')
+        val parts = ArrayDeque<String>()
+        tidy.split('/').forEach { part ->
+            when (part) {
+                "", "." -> Unit
+                ".." -> if (parts.isNotEmpty()) parts.removeLast()
+                else -> parts.addLast(part)
+            }
+        }
+        return (if (absolute) "/" else "") + parts.joinToString("/")
     }
 
     /** Keep Android path policy deterministic in JVM tests running on Windows too. */
@@ -105,12 +133,13 @@ object SelfProtect {
     fun refuseCommand(command: String): String? {
         val base = appDataDir
         if (base.isEmpty()) return null
+        val norm = normalizeCommand(command)
         // 同一个私有目录有两种写法,两种都要认:/data/user/0/<pkg> 与 /data/data/<pkg>
         val pkg = base.substringAfterLast('/')
         val prefixes = listOf(base, "/data/data/$pkg", "/data/user/0/$pkg")
         for (p in prefixes) {
             for (sub in LOCKED) {
-                if (command.contains("$p/$sub")) {
+                if (norm.contains("$p/$sub")) {
                     return "拒绝:这条命令要动 `$p/$sub` —— 那是 XINCODE 自己的运行时数据。" +
                         "动了它 App 下次就打不开数据库,用户数据会全部丢失。换个目录做这件事。"
                 }

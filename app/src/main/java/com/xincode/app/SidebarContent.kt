@@ -82,6 +82,7 @@ fun SidebarContent(
     onNavigateToIdentityList: () -> Unit,
     onNavigateToSettings: () -> Unit,
     onNavigateToIde: () -> Unit = {},
+    onNavigateToGoal: () -> Unit = {},
     onNavigateToMcp: () -> Unit = {},
     onNavigateToSkills: () -> Unit = {},
     onClose: () -> Unit,
@@ -155,6 +156,31 @@ fun SidebarContent(
         }
 
         Spacer(Modifier.height(12.dp))
+
+        // ── Primary navigation ──
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+        ) {
+            SidebarFeatureRow("GOAL 模式", "自主执行目标并跟踪任务", Icons.Outlined.Build) {
+                onNavigateToGoal(); onClose()
+            }
+            SidebarFeatureRow("群聊房间", "多个智能体协作讨论与执行", Icons.Outlined.FolderOpen) {
+                onOpenGroupRooms(); onClose()
+            }
+            SidebarFeatureRow("IDE", "代码、构建与设计工具", Icons.Outlined.Code) {
+                onNavigateToIde(); onClose()
+            }
+            SidebarFeatureRow("MCP", "连接外部工具与服务", Icons.Outlined.Extension) {
+                onNavigateToMcp(); onClose()
+            }
+            SidebarFeatureRow("Skills", "管理可复用的 Agent 技能", Icons.Outlined.Lightbulb) {
+                onNavigateToSkills(); onClose()
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
 
         // ── Search box ──
         LaunchedEffect(searchQuery) {
@@ -256,18 +282,7 @@ fun SidebarContent(
                 }
             }
 
-            // GOAL / WORK 模式(多任务并行,各自独立对话、后台跑、裁判验收)
-            item(key = "header_goal") {
-                SectionHeaderRow("GOAL 模式", onAddProject = { onCreateGoal(); onClose() })
-            }
-            if (goalSessions.isEmpty()) {
-                item(key = "goal_empty") {
-                    Text("＋ 新建目标任务:给它一个目标,自主完成后通知你",
-                        fontSize = 11.sp, color = Sub, fontFamily = FontFamily.Serif,
-                        modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 2.dp, bottom = 6.dp)
-                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onCreateGoal(); onClose() })
-                }
-            }
+            // Goal 预览：入口标题统一位于顶部。
             items(goalSessions, key = { "goal_${it.id}" }) { session ->
                 GoalRow(
                     session = session,
@@ -278,18 +293,7 @@ fun SidebarContent(
                 )
             }
 
-            // 群聊房间:多个智能体同处一室
-            item(key = "header_group") {
-                SectionHeaderRow("群聊房间", onAddProject = { onOpenGroupRooms(); onClose() })
-            }
-            if (groupRooms.isEmpty()) {
-                item(key = "group_empty") {
-                    Text("＋ 新建群聊:多个智能体同处一室,@ 谁谁回答",
-                        fontSize = 11.sp, color = Sub, fontFamily = FontFamily.Serif,
-                        modifier = Modifier.padding(start = 20.dp, end = 12.dp, top = 2.dp, bottom = 6.dp)
-                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onOpenGroupRooms(); onClose() })
-                }
-            }
+            // 群聊预览：入口标题统一位于顶部。
             items(groupRooms, key = { "room_${it.id}" }) { room ->
                 Row(
                     Modifier.fillMaxWidth()
@@ -347,20 +351,6 @@ fun SidebarContent(
                     onConvToggleStar = { id, starred -> onSetSessionStarred(id, starred) },
                     onConvMoveToProject = { id -> moveTarget = id }
                 )
-            }
-
-            // DEVELOPER - 1.22: IDE/MCP/Skills 唯一入口，原设置页同名入口已移除
-            item(key = "header_developer") {
-                SectionHeaderRow("DEVELOPER")
-            }
-            item(key = "dev_ide") {
-                DeveloperRow(label = "IDE", desc = "代码·构建·设计", icon = Icons.Outlined.Code) { onNavigateToIde(); onClose() }
-            }
-            item(key = "dev_mcp") {
-                DeveloperRow(label = "MCP", desc = "外部工具协议", icon = Icons.Outlined.Extension) { onNavigateToMcp(); onClose() }
-            }
-            item(key = "dev_skills") {
-                DeveloperRow(label = "Skills", desc = "可复用提示词", icon = Icons.Outlined.Lightbulb) { onNavigateToSkills(); onClose() }
             }
 
             // IDENTITY
@@ -730,21 +720,31 @@ private fun ProjectHeaderRow(
 }
 
 @Composable
-private fun DeveloperRow(label: String, desc: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+private fun SidebarFeatureRow(
+    label: String,
+    desc: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
     val xc = LocalXinColors.current
     Row(
-        modifier = Modifier.fillMaxWidth().height(38.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
-            .padding(start = 20.dp, end = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null, Modifier.size(14.dp), tint = xc.sub)
-        Spacer(Modifier.width(10.dp))
+        Icon(icon, label, Modifier.size(18.dp), tint = xc.sub)
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = xc.ink, fontFamily = FontFamily.Serif)
-            Text(desc, fontSize = 10.sp, color = xc.faint, fontFamily = FontFamily.Serif, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = xc.ink,
+                fontFamily = FontFamily.Serif, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(desc, fontSize = 11.sp, color = xc.faint, fontFamily = FontFamily.Serif,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 14.sp)
         }
-        Text("›", fontSize = 14.sp, color = xc.faint, fontFamily = FontFamily.Serif)
+        Text("›", fontSize = 18.sp, color = xc.faint, fontFamily = FontFamily.Serif,
+            modifier = Modifier.padding(start = 8.dp))
     }
 }
 

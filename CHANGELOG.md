@@ -1,5 +1,60 @@
 # 更新日志
 
+## [1.22]
+
+APK 版本为 `versionName 1.22`、`versionCode 122`（1.13–1.22 的 prepare 提交此前只记日志未升码，本次一次性对齐）。
+
+- 侧边栏新增 DEVELOPER 分组，IDE / MCP / Skills 收敛为唯一入口；环境配置新增“构建与环境变量”融合卡，IDE 只保留代码与设计。
+- 页面返回按来源回退；未部署内置环境时弹窗提示（7 天免打扰），无 Root 仍可用 Git 与文件能力。
+- 执行分级降级 `Root > Shizuku > 普通`，终端统一接管；设置页分组可折叠、行配图标，权限分级卡实时展示并可一键请求 Shizuku 授权。
+- 本次审计修复：供应商 Hub 双页 `showHeader` 签名对齐、侧栏 GOAL 空转接线、keystore 缺键中文明示；密钥解密失败不再把密文当 Key 发送；移除 destructive-migration 防静默删库；FTS 失败降级 LIKE 并提示；GoalRunner 忙态/竞态收敛；Responses 流式丢事件计数上报；MCP stdio 加超时；SelfProtect 路径规范化；Cron KEEP 改 UPDATE；设置页群聊入口去重；supplier 路由改走 SupplierHub。
+
+## [1.21]
+
+- 补齐手机端 IDE 全链路与 P0/P1 审计修复；流式通道按轮重建，修复 reasoning 重复与输出截断。
+- AppDatabase 升至 v46（补 GroupRoomSummaryEntity，修 ksp 失败）；EnvExecTool 超时与 scope、JudgeService blocked headers 修复。
+- 编译修复：runInEnvStreaming 尾 lambda 签名、AssetStudio DrawScope 遮蔽、StringTranslator return 作用域。
+
+## [1.20]
+
+- 全模型路径切换到 OpenAI Responses API（流式事件、函数工具回环、结构化输出）。
+- 群聊房间隔离与模型供应商同步（分支合入主线 PR #2 / #3）。
+
+## [1.19]
+
+- 无独立发布：该版本号被跳过，内容随 1.20 一起发布。
+
+## [1.18]
+
+- 图片发送改用系统 Photo Picker，经应用私有目录按需处理，不要求额外存储权限。
+
+## [1.17]
+
+- 修复 `env_exec` / `shell_exec` 挂起无返回；群聊头像贴边、气泡加宽。
+
+## [1.16]
+
+- 上下文窗口与压缩阈值支持按对话独立覆盖；修复流式 null 字段吐出字面量 `null`；支持单对话内切换供应商与模型。
+
+## [1.15]
+
+- 记忆：每轮召回、技能生命周期、使用驱动自改进与后台复盘策展人。
+- 群聊：流式回复、滚动总结、run 保序、房间内确认与 diff 卡。
+
+## [1.14]
+
+- 群聊引用块堆叠在回复气泡内部展示。
+
+## [1.13]
+
+- 群聊成员并行回复，回复携带引用上下文。
+
+## 版本标签说明
+
+- 历史标签只打到 `v1.12`；1.13–1.22 的 prepare 提交未逐个打 tag（其中 1.19 被跳过）。
+- 发版时在复核通过（t5 pass）的提交上打：`git tag -a v1.22 -m "XINCODE 1.22 (versionCode 122)" <sha>`，再 `git push origin v1.22`（CI 的 release job 以 `refs/tags/v*` 触发签名构建）。
+- 如需补历史标签，按各 `prepare v1.xx` 提交逐个打 lightweight tag 即可，命令模板：`git tag v1.xx <prepare-sha>`。
+
 ## [1.12]
 
 本次更新将后续版本的功能与修复统一纳入 1.12 发布。APK 版本为 `versionName 1.12`、`versionCode 112`。

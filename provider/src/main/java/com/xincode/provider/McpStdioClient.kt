@@ -3,6 +3,7 @@ package com.xincode.provider
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -22,7 +23,12 @@ class McpStdioClient(
     private val runAsRoot: Boolean = false
 ) : McpTransport {
 
-    companion object { private const val TAG = "McpStdio" }
+    companion object {
+        private const val TAG = "McpStdio"
+        // 与 McpClient 对齐:stdio 子进程 hang 住时不能无限等(阻塞 readLine 由超时兜底)。
+        private const val CONNECT_TIMEOUT_MS = 15_000L
+        private const val CALL_TIMEOUT_MS = 30_000L
+    }
 
     private var process: Process? = null
     private var writer: BufferedWriter? = null
@@ -79,6 +85,7 @@ class McpStdioClient(
     }
 
     override suspend fun initialize(): McpServerInfo = withContext(Dispatchers.IO) {
+      withTimeout(CONNECT_TIMEOUT_MS) {
         val init = JSONObject()
             .put("jsonrpc", "2.0").put("id", nextId++).put("method", "initialize")
             .put("params", JSONObject()
@@ -90,9 +97,11 @@ class McpStdioClient(
         notify(JSONObject().put("jsonrpc", "2.0").put("method", "notifications/initialized").put("params", JSONObject()))
         val si = resp.optJSONObject("result")?.optJSONObject("serverInfo")
         McpServerInfo(si?.optString("name") ?: "stdio", si?.optString("version") ?: "unknown")
+      }
     }
 
     override suspend fun listTools(): List<McpToolInfo> = withContext(Dispatchers.IO) {
+      withTimeout(CALL_TIMEOUT_MS) {
         val resp = rpc(JSONObject().put("jsonrpc", "2.0").put("id", nextId++).put("method", "tools/list").put("params", JSONObject()))
         resp.optJSONObject("error")?.let { throw McpException("stdio tools/list failed: ${it.optString("message")}") }
         val arr = resp.optJSONObject("result")?.optJSONArray("tools") ?: JSONArray()
@@ -104,9 +113,11 @@ class McpStdioClient(
                 inputSchema = t.optJSONObject("inputSchema") ?: JSONObject().put("type", "object")
             )
         }
+      }
     }
 
     override suspend fun callTool(toolName: String, arguments: JSONObject): String = withContext(Dispatchers.IO) {
+      withTimeout(CALL_TIMEOUT_MS) {
         val resp = rpc(JSONObject().put("jsonrpc", "2.0").put("id", nextId++).put("method", "tools/call")
             .put("params", JSONObject().put("name", toolName).put("arguments", arguments)))
         resp.optJSONObject("error")?.let { throw McpException("stdio tools/call ($toolName) failed: ${it.optString("message")}") }
@@ -122,6 +133,7 @@ class McpStdioClient(
                 if (i < content.length() - 1) append("\n")
             }
         }.ifEmpty { "(empty response)" }
+      }
     }
 
     override fun close() {
