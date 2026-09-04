@@ -78,23 +78,40 @@ fun AgentTurnBlock(
                 .weight(1f)
                 .padding(start = 4.dp, end = 4.dp)
         ) {
-            Text(
-                assistantName,
-                fontSize = 14.sp,
-                lineHeight = 20.sp,
-                fontFamily = XinUiFont,
-                color = xc.green
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "✦",
+                    fontSize = 13.sp,
+                    color = xc.green,
+                    modifier = Modifier.padding(end = 5.dp)
+                )
+                Text(
+                    assistantName,
+                    fontSize = 15.sp,
+                    lineHeight = 20.sp,
+                    fontFamily = XinSerifFont,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    color = xc.ink
+                )
+            }
 
             if (hasReasoning || toolCount > 0) {
-                Spacer(Modifier.height(18.dp))
-                Text(
-                    formatThinkingLabel(derivedThinkingDurationMs(group)),
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    fontFamily = XinUiFont,
-                    color = xc.green
-                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .androidx.compose.ui.draw.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                        .androidx.compose.foundation.background(xc.bgElevated)
+                        .androidx.compose.foundation.border(0.5.dp, xc.border, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        formatThinkingLabel(derivedThinkingDurationMs(group)),
+                        fontSize = 11.sp,
+                        fontFamily = XinUiFont,
+                        color = xc.sub
+                    )
+                }
             }
 
             assistant?.let { message ->

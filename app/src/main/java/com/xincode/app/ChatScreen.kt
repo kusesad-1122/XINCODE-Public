@@ -41,6 +41,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AddComment
 import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
@@ -609,10 +611,19 @@ fun ChatScreen(
         Box(Modifier.weight(1f).fillMaxWidth()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(vertical = 12.dp)
         ) {
+            if (turnGroups.isEmpty()) {
+                item(key = "claude_greeting_hero") {
+                    ClaudeGreetingHero(
+                        onSelectPrompt = { prompt ->
+                            chatState.input.value = prompt
+                        }
+                    )
+                }
+            }
             items(turnGroups, key = { it.key }) { group ->
                 val userMessage = group.userMessage
                 val assistantMessage = group.assistantMessage
@@ -879,10 +890,10 @@ fun ChatScreen(
                             val hasText = chatState.input.value.isNotBlank()
                             Box(
                                 modifier = Modifier
-                                    .size(48.dp)
+                                    .size(38.dp)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
                                     .background(
-                                        if (hasText || streaming) xc.green.copy(alpha = 0.22f) else xc.activeBg,
-                                        RoundedCornerShape(16.dp)
+                                        if (hasText || streaming) xc.green else xc.border
                                     )
                                     .clickable(
                                         enabled = hasText || streaming,
@@ -898,10 +909,10 @@ fun ChatScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = if (streaming && !hasText) Icons.Outlined.Close else Icons.Outlined.Send,
-                                    contentDescription = if (streaming && !hasText) "停止生成" else "发送消息",
-                                    tint = if (hasText || streaming) xc.ink else xc.faint,
-                                    modifier = Modifier.size(23.dp)
+                                    imageVector = if (streaming && !hasText) Icons.Outlined.Stop else Icons.Outlined.ArrowUpward,
+                                    contentDescription = if (streaming && !hasText) "停止" else "发送",
+                                    tint = if (hasText || streaming) Color.White else xc.faint,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
@@ -2186,11 +2197,20 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
         ReasoningFoldable(msg, isCurrentStreaming = isStreamingMessage)
 
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (!isUser && !isTool) {
+                Text(
+                    "✦",
+                    fontSize = 13.sp,
+                    color = xc.green,
+                    modifier = Modifier.padding(end = 5.dp)
+                )
+            }
             Text(
-                roleLabel,
-                fontSize = 10.sp,
-                fontFamily = JetBrainsMono,
-                color = roleColor
+                if (isUser) "you" else if (isTool) "❯ tool" else "XINCODE",
+                fontSize = if (!isUser && !isTool) 13.sp else 11.sp,
+                fontFamily = if (!isUser && !isTool) XinSerifFont else XinCodeFont,
+                fontWeight = if (!isUser && !isTool) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (!isUser && !isTool) xc.ink else roleColor
             )
             if (isError && onRetry != null) {
                 Spacer(Modifier.width(12.dp))
@@ -2202,26 +2222,30 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
                 ) {
                     Icon(Icons.Outlined.Refresh, "重试", tint = Sub, modifier = Modifier.size(11.dp))
                     Spacer(Modifier.width(3.dp))
-                    Text("重试", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
+                    Text("重试", fontSize = 10.sp, fontFamily = XinUiFont, color = Sub)
                 }
             }
         }
 
-        // 气泡。工具消息不套 —— 它是折叠的技术输出,套上反而像有人在说话。
-        // 宽度限到 88% 并留出对侧空白:占满整行的话左右之分就看不出来了。
-        val bubbleModifier = if (isTool) Modifier else Modifier
-            .fillMaxWidth(0.92f)
-            .wrapContentWidth(if (isUser) Alignment.End else Alignment.Start)
-            .clip(
-                RoundedCornerShape(
-                    topStart = 12.dp, topEnd = 12.dp,
-                    // 靠自己那一侧的下角收窄,气泡才有指向感
-                    bottomStart = if (isUser) 12.dp else 3.dp,
-                    bottomEnd = if (isUser) 3.dp else 12.dp
-                )
-            )
-            .background(if (isUser) xc.activeBg else xc.bgElevated)
-            .padding(horizontal = 10.dp, vertical = 8.dp)
+        // 气泡。Claude 风格核心：助手回复采用纯粹的通透阅读排版，不套生硬小方盒；用户消息为圆润卡片
+        val bubbleModifier = when {
+            isTool -> Modifier
+                .fillMaxWidth(0.95f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(xc.bgElevated)
+                .border(0.5.dp, xc.border, RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+            isUser -> Modifier
+                .fillMaxWidth(0.85f)
+                .wrapContentWidth(Alignment.End)
+                .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 4.dp))
+                .background(xc.bgElevated)
+                .border(0.8.dp, xc.border, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 4.dp))
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+            else -> Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 6.dp)
+        }
 
         Box(bubbleModifier) {
         // Content (Markdown for assistant, plain text for user/tool)
@@ -2526,13 +2550,15 @@ private fun UserMessageBubble(
             )
             Box(
                 modifier = Modifier
-                    .background(xc.activeBg, RoundedCornerShape(22.dp))
-                    .padding(horizontal = 18.dp, vertical = 14.dp)
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 4.dp))
+                    .background(xc.bgElevated)
+                    .border(0.8.dp, xc.border, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 4.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Text(
                     msg.content,
-                    fontSize = 17.sp,
-                    lineHeight = 25.sp,
+                    fontSize = 15.sp,
+                    lineHeight = 23.sp,
                     fontFamily = XinUiFont,
                     color = xc.ink
                 )
@@ -2597,3 +2623,105 @@ private fun UserMessageBubble(
         )
     }
 }
+
+@Composable
+private fun ClaudeGreetingHero(
+    onSelectPrompt: (String) -> Unit
+) {
+    val xc = LocalXinColors.current
+    val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
+    val greetingTime = when (hour) {
+        in 5..11 -> "早上好"
+        in 12..13 -> "中午好"
+        in 14..18 -> "下午好"
+        else -> "晚上好"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 24.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "✦",
+                fontSize = 15.sp,
+                color = xc.green,
+                modifier = Modifier.padding(end = 6.dp)
+            )
+            Text(
+                "$greetingTime · 探索者",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = XinUiFont,
+                color = xc.sub,
+                letterSpacing = 0.2.sp
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "今天想探索什么？",
+            fontSize = 30.sp,
+            lineHeight = 36.sp,
+            fontFamily = XinSerifFont,
+            fontWeight = FontWeight.SemiBold,
+            color = xc.ink,
+            letterSpacing = (-0.5).sp
+        )
+        Spacer(Modifier.height(20.dp))
+
+        // Claude 式 4 个灵动快捷胶囊卡片
+        val prompts = listOf(
+            "✦ 代码架构与演进" to "分析系统分层设计、识别模块解耦方向",
+            "⚡ 编写测试与深度重构" to "设计单元测试用例，重构复杂边界逻辑",
+            "◈ 扩展本地 MCP 工具" to "连接并调试 127.0.0.1 本地 MCP 服务",
+            "⟐ 复杂业务流与调用图" to "梳理核心功能状态机与调用关系链路"
+        )
+
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            prompts.forEach { (title, subtitle) ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(xc.bgElevated)
+                        .border(0.8.dp, xc.border, RoundedCornerShape(16.dp))
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) {
+                            onSelectPrompt(title.substringAfter(" ").trim())
+                        }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            title,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = XinUiFont,
+                            color = xc.ink
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            subtitle,
+                            fontSize = 11.sp,
+                            fontFamily = XinUiFont,
+                            color = xc.sub,
+                            lineHeight = 15.sp
+                        )
+                    }
+                    Text(
+                        "→",
+                        fontSize = 15.sp,
+                        color = xc.green,
+                        fontFamily = XinUiFont,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+

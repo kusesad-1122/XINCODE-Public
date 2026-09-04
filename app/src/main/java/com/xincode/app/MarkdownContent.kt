@@ -26,8 +26,8 @@ import com.xincode.app.R
 
 private val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
 
-/** 标题字号:一级最大,往下递减,到四级以后就不再缩了(再小和正文没区别)。 */
-private val HEADING_SIZES = listOf(19, 17, 15, 14, 13, 13)
+/** 标题字号:采用 Claude 典雅排版比例，一级标题大气舒展，逐级优雅缩进。 */
+private val HEADING_SIZES = listOf(21, 18, 16, 15, 14, 13)
 
 /**
  * 渲染 Markdown。
@@ -46,7 +46,7 @@ fun MarkdownContent(content: String, modifier: Modifier = Modifier) {
             when (block) {
                 is MarkdownBlock.TextSpan ->
                     if (block.content.isNotBlank()) {
-                        InlineText(block.content, 13.sp, xc.ink)
+                        InlineText(block.content, 14.5.sp, xc.ink)
                     }
 
                 is MarkdownBlock.CodeBlock -> InlineCodeBlock(block.language, block.content)
@@ -56,35 +56,37 @@ fun MarkdownContent(content: String, modifier: Modifier = Modifier) {
                     Text(
                         buildInline(block.content, xc),
                         fontSize = size.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         color = xc.ink,
-                        fontFamily = JetBrainsMono,
-                        lineHeight = (size + 7).sp,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 3.dp)
+                        fontFamily = XinSerifFont,
+                        lineHeight = (size + 8).sp,
+                        letterSpacing = (-0.3).sp,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                     )
                 }
 
                 is MarkdownBlock.ListItem -> Row(
-                    Modifier.padding(start = (block.indent * 14).dp, top = 1.dp, bottom = 1.dp)
+                    Modifier.padding(start = (block.indent * 14).dp, top = 2.dp, bottom = 2.dp)
                 ) {
                     Text(
                         block.marker,
-                        fontSize = 13.sp,
-                        color = xc.sub,
-                        fontFamily = JetBrainsMono,
-                        lineHeight = 20.sp,
+                        fontSize = 14.sp,
+                        color = xc.green,
+                        fontFamily = if (block.ordered) XinCodeFont else XinUiFont,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 22.sp,
                         // 固定宽度让多行列表项的续行对齐到文字而不是缩回符号下面
-                        modifier = Modifier.width(if (block.ordered) 22.dp else 14.dp)
+                        modifier = Modifier.width(if (block.ordered) 24.dp else 16.dp)
                     )
-                    InlineText(block.content, 13.sp, xc.ink)
+                    InlineText(block.content, 14.5.sp, xc.ink)
                 }
 
                 is MarkdownBlock.Quote -> Row(
-                    Modifier.padding(vertical = 3.dp).height(IntrinsicSize.Min)
+                    Modifier.padding(vertical = 6.dp).height(IntrinsicSize.Min)
                 ) {
-                    Box(Modifier.width(2.dp).fillMaxHeight().background(xc.border))
-                    Spacer(Modifier.width(8.dp))
-                    InlineText(block.content, 13.sp, xc.sub)
+                    Box(Modifier.width(3.dp).fillMaxHeight().background(xc.green.copy(alpha = 0.6f)))
+                    Spacer(Modifier.width(10.dp))
+                    InlineText(block.content, 14.sp, xc.sub)
                 }
 
                 is MarkdownBlock.Divider -> Box(
@@ -100,7 +102,7 @@ fun MarkdownContent(content: String, modifier: Modifier = Modifier) {
     }
 }
 
-/** 一段带行内样式的文字。链接可点。 */
+/** 一段带行内样式的文字。链接可点。正文全面切换为人文无衬线，字距行高对齐 Claude Desktop。 */
 @Composable
 private fun InlineText(
     text: String,
@@ -113,8 +115,8 @@ private fun InlineText(
         annotated,
         fontSize = size,
         color = color,
-        fontFamily = JetBrainsMono,
-        lineHeight = 20.sp
+        fontFamily = XinUiFont,
+        lineHeight = 22.sp
     )
 }
 
@@ -166,30 +168,30 @@ private fun MarkdownTable(table: MarkdownBlock.Table, xc: XinColors) {
         Modifier.fillMaxWidth().padding(vertical = 6.dp)
             .horizontalScroll(scroll)
     ) {
-        Row(Modifier.background(xc.bgElevated)) {
+        Row(Modifier.background(xc.bgElevated).border(0.5.dp, xc.border)) {
             table.header.forEach { cell ->
                 Text(
                     buildInline(cell, xc),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
                     color = xc.ink,
-                    fontFamily = JetBrainsMono,
-                    lineHeight = 16.sp,
-                    modifier = Modifier.width(colWidth).padding(6.dp)
+                    fontFamily = XinUiFont,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.width(colWidth).padding(8.dp)
                 )
             }
         }
         table.rows.forEach { row ->
-            Row {
+            Row(Modifier.border(0.5.dp, xc.border)) {
                 // 数据行可能比表头短,补空单元格,不然列会错位
                 for (idx in table.header.indices) {
                     Text(
                         buildInline(row.getOrElse(idx) { "" }, xc),
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                         color = xc.ink,
-                        fontFamily = JetBrainsMono,
-                        lineHeight = 16.sp,
-                        modifier = Modifier.width(colWidth).padding(6.dp)
+                        fontFamily = XinUiFont,
+                        lineHeight = 18.sp,
+                        modifier = Modifier.width(colWidth).padding(8.dp)
                     )
                 }
             }
