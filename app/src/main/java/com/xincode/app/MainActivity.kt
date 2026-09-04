@@ -265,6 +265,7 @@ class MainActivity : ComponentActivity() {
                         onNavigateToMcp = { featureOrigins = featureOrigins + ("mcp" to "chat"); currentPage = "mcp" },
                         onNavigateToSkills = { featureOrigins = featureOrigins + ("skills" to "chat"); currentPage = "skills" },
                         onNavigateToProjects = { featureOrigins = featureOrigins + ("projects" to "chat"); currentPage = "projects" },
+                        onNavigateToChats = { featureOrigins = featureOrigins + ("chats" to "chat"); currentPage = "chats" },
                         onClose = { drawerScope.launch { drawerState.close() } },
                         onCreateProject = { name -> app.createProject(name) },
                         onCreateNewInProject = { projectId ->
@@ -412,7 +413,15 @@ class MainActivity : ComponentActivity() {
                             permissionMode = app.permissionModeState,
                             onUpdatePermissionMode = { mode -> app.updatePermissionMode(mode) },
                             collabMode = app.collabModeEnabled,
-                            onSetCollabMode = { on -> app.setCollabMode(on) }
+                            onSetCollabMode = { on -> app.setCollabMode(on) },
+                            projects = projects,
+                            currentProjectId = currentSession?.projectId,
+                            onMoveSessionToProject = { sid, pid -> app.moveSessionToProject(sid, pid) },
+                            onRenameSession = { sid, title -> app.renameSession(sid, title) },
+                            onDeleteSession = { sid -> app.deleteSession(sid) },
+                            onTogglePin = { sid, star -> app.setSessionStarred(sid, star) },
+                            isStarred = currentSession?.isStarred ?: false,
+                            currentSessionId = app.currentSessionId
                         )
                         if (showConversationModelPicker) {
                             SessionModelPicker(
@@ -424,6 +433,26 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                    "chats" -> ChatsScreen(
+                        sessions = sessions,
+                        currentSessionId = app.currentSessionId,
+                        onBack = { currentPage = featureOrigins["chats"] ?: "chat" },
+                        onSelectSession = { id ->
+                            app.switchToSession(id)
+                            currentPage = "chat"
+                        },
+                        onNewChat = {
+                            val newId = app.createNewSession()
+                            app.switchToSession(newId)
+                            currentPage = "chat"
+                        },
+                        onDeleteSession = { id ->
+                            app.deleteSession(id)
+                        },
+                        onTogglePin = { id, starred ->
+                            app.setSessionStarred(id, starred)
+                        }
+                    )
                     "projects" -> ProjectsScreen(
                         projects = projects,
                         projectSessions = projectSessionsMap,

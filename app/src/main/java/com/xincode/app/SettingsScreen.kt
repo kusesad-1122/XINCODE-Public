@@ -54,6 +54,16 @@ import kotlinx.coroutines.launch
 // Palette now sourced from [LocalXinColors].
 private val JetBrainsMono = XinUiFont
 
+object SettingsStateHolder {
+    var scrollOffset = 0
+    val hiddenSections = mutableStateListOf<String>()
+    val clickCounts = mutableStateMapOf<String, Int>()
+
+    fun recordClick(key: String) {
+        clickCounts[key] = (clickCounts[key] ?: 0) + 1
+    }
+}
+
 /**
  * Settings main screen — 6 sections, collapsible with icons (1.22).
  */
@@ -114,8 +124,18 @@ fun SettingsScreen(
         "关于" to true
     ) }
     fun toggle(key: String) { expanded[key] = !(expanded[key] ?: true) }
+    val scrollState = rememberScrollState(SettingsStateHolder.scrollOffset)
+    DisposableEffect(scrollState) {
+        onDispose {
+            SettingsStateHolder.scrollOffset = scrollState.value
+        }
+    }
+
+    var searchQuery by remember { mutableStateOf("") }
+    var showHideDialog by remember { mutableStateOf(false) }
+
     Column(
-        Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)
+        Modifier.fillMaxSize().background(Bg).verticalScroll(scrollState).padding(16.dp)
     ) {
         XinPageHeader(
             title = "设置",
@@ -124,7 +144,81 @@ fun SettingsScreen(
         )
         Spacer(Modifier.height(8.dp))
 
+        // Search and Customize Row
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(xc.bgElevated)
+                    .border(0.8.dp, xc.border, RoundedCornerShape(16.dp)),
+                singleLine = true,
+                leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = xc.sub) },
+                trailingIcon = {
+                    if (searchQuery.isNotBlank()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "清除", tint = xc.sub)
+                        }
+                    }
+                },
+                placeholder = { Text("搜索设置项…", fontFamily = XinUiFont, fontSize = 14.sp, color = xc.faint) },
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = xc.green,
+                    focusedTextColor = xc.ink,
+                    unfocusedTextColor = xc.ink
+                ),
+                textStyle = androidx.compose.ui.text.TextStyle(fontFamily = XinUiFont, fontSize = 14.sp)
+            )
+            Spacer(Modifier.width(8.dp))
+            IconButton(
+                onClick = { showHideDialog = true },
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(xc.bgElevated)
+                    .border(0.8.dp, xc.border, RoundedCornerShape(16.dp))
+            ) {
+                Icon(Icons.Outlined.FilterList, contentDescription = "隐藏项设置", tint = xc.sub)
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // ── 常用置顶 ──
+        if (searchQuery.isBlank() && SettingsStateHolder.clickCounts.isNotEmpty()) {
+            val topEntries = SettingsStateHolder.clickCounts.entries.sortedByDescending { it.value }.take(3)
+            if (topEntries.isNotEmpty()) {
+                Text("★ 常用置顶", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = JetBrainsMono, color = xc.sub, modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp))
+                topEntries.forEach { entry ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 3.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(xc.bgElevated)
+                            .border(0.8.dp, xc.border, RoundedCornerShape(14.dp))
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(entry.key, fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink, modifier = Modifier.weight(1f))
+                        Text("使用 ${entry.value} 次", fontSize = 10.sp, color = xc.faint)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+
         // ── Section: 外观 ──
+        if (!SettingsStateHolder.hiddenSections.contains("外观") && (searchQuery.isBlank() || "暗色模式 回车发送 外观".contains(searchQuery.trim(), ignoreCase = true))) {
         SectionHeader(title = "外观", icon = Icons.Outlined.DarkMode, expanded = expanded["外观"] == true, onToggle = { toggle("外观") })
         AnimatedVisibility(visible = expanded["外观"] == true) {
             Column {
@@ -187,162 +281,219 @@ fun SettingsScreen(
                 }
             }
         }
+        }
 
         // ── Section: 账户与模型 ──
-        SectionDivider()
-        SectionHeader(title = "账户与模型", icon = Icons.Outlined.AccountCircle, expanded = expanded["账户与模型"] == true, onToggle = { toggle("账户与模型") })
-        AnimatedVisibility(visible = expanded["账户与模型"] == true) {
-            Column {
-                // 统一收敛为「模型与供应商」单一入口，内部通过双 Tab 切换「我的配置」与「供应商市场」，避免双重入口困惑
-                SettingRow("模型与供应商", "管理 API 密钥、切换默认模型与探索供应商市场", icon = Icons.Outlined.Settings) { onNavigateToSupplierConfig() }
+        if (!SettingsStateHolder.hiddenSections.contains("账户与模型") && (searchQuery.isBlank() || "模型与供应商 API 密钥 模型市场 账户与模型".contains(searchQuery.trim(), ignoreCase = true))) {
+            SectionDivider()
+            SectionHeader(title = "账户与模型", icon = Icons.Outlined.AccountCircle, expanded = expanded["账户与模型"] == true, onToggle = { toggle("账户与模型") })
+            AnimatedVisibility(visible = expanded["账户与模型"] == true) {
+                Column {
+                    // 统一收敛为「模型与供应商」单一入口，内部通过双 Tab 切换「我的配置」与「供应商市场」，避免双重入口困惑
+                    SettingRow("模型与供应商", "管理 API 密钥、切换默认模型与探索供应商市场", icon = Icons.Outlined.Settings) { onNavigateToSupplierConfig() }
+                }
             }
         }
 
         // ── Section: 权限与安全 ──
-        SectionDivider()
-        SectionHeader(title = "权限与安全", icon = Icons.Outlined.Security, expanded = expanded["权限与安全"] == true, onToggle = { toggle("权限与安全") })
-        AnimatedVisibility(visible = expanded["权限与安全"] == true) {
-            Column {
-                // 1.22: 权限分级卡实时展示并支持一键请求 Shizuku 授权
-                PrivilegeTierCard(context)
-                Spacer(Modifier.height(8.dp))
-                SettingRow("Root 状态", rootDetector?.status?.label ?: "检测中…", icon = Icons.Outlined.Terminal) { rootDetector?.recheck() }
-                // Root diagnostic button
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("运行诊断", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-                        modifier = Modifier
-                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onRootDiagnostic?.invoke() }
-                            .padding(vertical = 4.dp))
-                }
-                // Diagnostic result card
-                val diag = rootDiagnosticResult
-                if (diag != null) {
-                    Column(
-                        Modifier.fillMaxWidth()
-                            .background(xc.bgElevated, RoundedCornerShape(18.dp))
-                            .border(1.dp, Border, RoundedCornerShape(18.dp))
-                            .padding(12.dp)
+        if (!SettingsStateHolder.hiddenSections.contains("权限与安全") && (searchQuery.isBlank() || "权限与安全 Root 诊断 审计日志 Shizuku".contains(searchQuery.trim(), ignoreCase = true))) {
+            SectionDivider()
+            SectionHeader(title = "权限与安全", icon = Icons.Outlined.Security, expanded = expanded["权限与安全"] == true, onToggle = { toggle("权限与安全") })
+            AnimatedVisibility(visible = expanded["权限与安全"] == true) {
+                Column {
+                    // 1.22: 权限分级卡实时展示并支持一键请求 Shizuku 授权
+                    PrivilegeTierCard(context)
+                    Spacer(Modifier.height(8.dp))
+                    SettingRow("Root 状态", rootDetector?.status?.label ?: "检测中…", icon = Icons.Outlined.Terminal) { rootDetector?.recheck() }
+                    // Root diagnostic button
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("── Root 诊断报告 ──", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
-                        Spacer(Modifier.height(4.dp))
-                        diagRow("id", diag.id, Green)
-                        diagRow("whoami", diag.whoami, Green)
-                        diagRow("/sdcard", "${diag.lsSdcard.lines().size} 项", if (diag.lsSdcard.isNotBlank()) Green else Red)
-                        diagRow("/system", if (diag.catSystemBuild.isNotBlank()) "可读" else "不可读", if (diag.catSystemBuild.isNotBlank()) Green else Red)
-                        diagRow("/data/data", if (diag.lsDataData.isNotBlank()) "${diag.lsDataData.lines().size} 项" else "不可访问", if (diag.lsDataData.isNotBlank()) Green else Red)
-                        if (diag.errors.isNotEmpty()) {
-                            Spacer(Modifier.height(4.dp))
-                            diag.errors.forEach { err ->
-                                Text("✗ $err", fontSize = 9.sp, fontFamily = JetBrainsMono, color = Red)
-                            }
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        val conclusion = if (diag.errors.isEmpty()) "结论: Root 正常工作" else "结论: Root 异常"
-                        Text(conclusion, fontSize = 10.sp, fontFamily = JetBrainsMono, color = if (diag.errors.isEmpty()) Green else Red)
+                        Text("运行诊断", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
+                            modifier = Modifier
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onRootDiagnostic?.invoke() }
+                                .padding(vertical = 4.dp))
                     }
+                    // Diagnostic result card
+                    val diag = rootDiagnosticResult
+                    if (diag != null) {
+                        Column(
+                            Modifier.fillMaxWidth()
+                                .background(xc.bgElevated, RoundedCornerShape(18.dp))
+                                .border(1.dp, Border, RoundedCornerShape(18.dp))
+                                .padding(12.dp)
+                        ) {
+                            Text("── Root 诊断报告 ──", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
+                            Spacer(Modifier.height(4.dp))
+                            diagRow("id", diag.id, Green)
+                            diagRow("whoami", diag.whoami, Green)
+                            diagRow("/sdcard", "${diag.lsSdcard.lines().size} 项", if (diag.lsSdcard.isNotBlank()) Green else Red)
+                            diagRow("/system", if (diag.catSystemBuild.isNotBlank()) "可读" else "不可读", if (diag.catSystemBuild.isNotBlank()) Green else Red)
+                            diagRow("/data/data", if (diag.lsDataData.isNotBlank()) "${diag.lsDataData.lines().size} 项" else "不可访问", if (diag.lsDataData.isNotBlank()) Green else Red)
+                            if (diag.errors.isNotEmpty()) {
+                                Spacer(Modifier.height(4.dp))
+                                diag.errors.forEach { err ->
+                                    Text("✗ $err", fontSize = 9.sp, fontFamily = JetBrainsMono, color = Red)
+                                }
+                            }
+                            Spacer(Modifier.height(4.dp))
+                            val conclusion = if (diag.errors.isEmpty()) "结论: Root 正常工作" else "结论: Root 异常"
+                            Text(conclusion, fontSize = 10.sp, fontFamily = JetBrainsMono, color = if (diag.errors.isEmpty()) Green else Red)
+                        }
+                    }
+
+                    // 权限/计划模式已移到输入框内的「○聊天 / ◑计划 / ●全自动」三态开关,设置页不再重复。
+
+                    SettingRow("审计日志", "查看所有调用记录", icon = Icons.Outlined.BugReport) { onNavigateToAuditLog() }
                 }
-
-                // 权限/计划模式已移到输入框内的「○聊天 / ◑计划 / ●全自动」三态开关,设置页不再重复。
-
-                SettingRow("审计日志", "查看所有调用记录", icon = Icons.Outlined.BugReport) { onNavigateToAuditLog() }
             }
         }
 
         // ── Section: 数据 ──
-        SectionDivider()
-        SectionHeader(title = "数据", icon = Icons.Outlined.Storage, expanded = expanded["数据"] == true, onToggle = { toggle("数据") })
-        AnimatedVisibility(visible = expanded["数据"] == true) {
-            Column {
-                SettingRow("记忆与存储", "管理本地记忆数据", icon = Icons.Outlined.Storage) { onNavigateToMemoryStorage() }
-                SettingRow("上下文压缩", "自定义上下文长度、自动压缩阈值与总结规则", icon = Icons.Outlined.Memory) { onNavigateToContextCompress() }
-                SettingRow("精编记忆", "查看/编辑 agent 记住的你与近况", icon = Icons.Outlined.Lightbulb) { onNavigateToCuratedMemory() }
-                SettingRow("定时任务", "管理后台自动化 cron 任务", icon = Icons.Outlined.Build) { onNavigateToCron() }
+        if (!SettingsStateHolder.hiddenSections.contains("数据") && (searchQuery.isBlank() || "数据 记忆 存储 上下文压缩 精编记忆 定时任务 cron".contains(searchQuery.trim(), ignoreCase = true))) {
+            SectionDivider()
+            SectionHeader(title = "数据", icon = Icons.Outlined.Storage, expanded = expanded["数据"] == true, onToggle = { toggle("数据") })
+            AnimatedVisibility(visible = expanded["数据"] == true) {
+                Column {
+                    SettingRow("记忆与存储", "管理本地记忆数据", icon = Icons.Outlined.Storage) { onNavigateToMemoryStorage() }
+                    SettingRow("上下文压缩", "自定义上下文长度、自动压缩阈值与总结规则", icon = Icons.Outlined.Memory) { onNavigateToContextCompress() }
+                    SettingRow("精编记忆", "查看/编辑 agent 记住的你与近况", icon = Icons.Outlined.Lightbulb) { onNavigateToCuratedMemory() }
+                    SettingRow("定时任务", "管理后台自动化 cron 任务", icon = Icons.Outlined.Build) { onNavigateToCron() }
+                }
             }
         }
 
         // ── Section: Agent 工具 ──
-        SectionDivider()
-        var showSearchKeyDialog by remember { mutableStateOf(false) }
-        var showWorkspaceDialog by remember { mutableStateOf(false) }
-        SectionHeader(title = "Agent 工具", icon = Icons.Outlined.Build, expanded = expanded["Agent工具"] == true, onToggle = { toggle("Agent工具") })
-        AnimatedVisibility(visible = expanded["Agent工具"] == true) {
-            Column {
-                SettingRow(
-                    "全局工作区目录",
-                    workspaceRoot.ifBlank { com.xincode.tools.WorkspaceContext.defaultRoot + " (默认·免 Root)" },
-                    icon = Icons.Outlined.Storage
-                ) { showWorkspaceDialog = true }
-                if (showWorkspaceDialog) {
-                    DirectoryPickerDialog(
-                        initialPath = workspaceRoot,
-                        onConfirm = { onUpdateWorkspaceRoot(it); showWorkspaceDialog = false },
-                        onDismiss = { showWorkspaceDialog = false }
-                    )
-                }
-                // 1.22: 开发工具 IDE 已移至侧边栏 DEVELOPER，设置页不再重复
-                SettingRow("环境配置", "安装 Node/Python/uv/SSH/JDK/Gradle/Rust/Go 等开发环境", icon = Icons.Outlined.Build) { onNavigateToEnvConfig() }
-                SettingRow("配置环境", "多套独立配置(工作/私用各一套),可克隆与导出导入", icon = Icons.Outlined.Settings) { onNavigateToProfiles() }
-                SettingRow("功能模型配置", "上下文总结/后台复盘/子智能体/Goal 裁判等各自指定模型", icon = Icons.Outlined.Memory) { onNavigateToFunctionModels() }
-                SettingRow("模型委托", "视觉/推理/翻译/转写各配一个副模型(另填 URL 与 Key)", icon = Icons.Outlined.Extension) { onNavigateToAuxModels() }
-                SettingRow("子智能体", "主脑指挥的专职子智能体(各管各的技能),可自建", icon = Icons.Outlined.Folder) { onNavigateToSubAgents() }
-                SettingRow("局域网设备", "发现同一 Wi-Fi 下其它开着 XINCODE 的设备", icon = Icons.Outlined.Extension) { onNavigateToLanDevices() }
-                // 群聊房间入口归侧边栏(与 GOAL/IDE 同层);设置页不再重复,避免双入口分流。
-                SettingRow("看板", "跨会话的长期待办,可把 AI 的计划一键导入", icon = Icons.Outlined.Build) { onNavigateToKanban() }
-                SettingRow("用量分析", "30 天趋势、模型分布、缓存命中率与成本估算", icon = Icons.Outlined.Storage) { onNavigateToUsageStats() }
-                SettingRow("日志", "崩溃与运行日志,按级别/关键词过滤,可复制反馈", icon = Icons.Outlined.BugReport) { onNavigateToLogs() }
-                SettingRow("代码索引", "把工作区代码结构抽进本地索引,AI 查符号定义与调用关系不再靠读文件", icon = Icons.Outlined.Code) { onNavigateToCodeIndex() }
-                SettingRow("Git 接入", "OAuth 登录 GitHub + 远程/本地 MCP(免 root 也能用)", icon = Icons.Outlined.Code) { onNavigateToGit() }
-                SettingRow("搜索 API Key", if (searchApiKey.isNotBlank()) "••••••••••" else "未配置", icon = Icons.Outlined.Extension) { showSearchKeyDialog = true }
-                if (showSearchKeyDialog) {
-                    var tempKey by remember { mutableStateOf(searchApiKey) }
-                    AlertDialog(
-                        onDismissRequest = { showSearchKeyDialog = false },
-                        title = { Text("搜索 API Key", fontFamily = JetBrainsMono, color = Ink) },
-                        text = {
-                            Column {
-                                Text("输入 Tavily Search API Key", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub)
-                                Spacer(Modifier.height(8.dp))
-                                TextField(
-                                    value = tempKey,
-                                    onValueChange = { tempKey = it },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    placeholder = { Text("tavily-...", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = Color.Transparent,
-                                        unfocusedContainerColor = Color.Transparent,
-                                        cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink
-                                    ),
-                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontFamily = JetBrainsMono)
-                                )
-                            }
-                        },
-                        confirmButton = {
-                            TextButton(onClick = { onUpdateSearchApiKey(tempKey); showSearchKeyDialog = false }) {
-                                Text("保存", fontFamily = JetBrainsMono, color = Green)
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showSearchKeyDialog = false }) {
-                                Text("取消", fontFamily = JetBrainsMono, color = Sub)
-                            }
-                        },
-                        containerColor = Bg
-                    )
+        if (!SettingsStateHolder.hiddenSections.contains("Agent工具") && (searchQuery.isBlank() || "Agent工具 工作区 环境配置 配置环境 功能模型 模型委托 子智能体 看板 用量分析 日志 代码索引 Git 搜索 Key".contains(searchQuery.trim(), ignoreCase = true))) {
+            SectionDivider()
+            var showSearchKeyDialog by remember { mutableStateOf(false) }
+            var showWorkspaceDialog by remember { mutableStateOf(false) }
+            SectionHeader(title = "Agent 工具", icon = Icons.Outlined.Build, expanded = expanded["Agent工具"] == true, onToggle = { toggle("Agent工具") })
+            AnimatedVisibility(visible = expanded["Agent工具"] == true) {
+                Column {
+                    SettingRow(
+                        "全局工作区目录",
+                        workspaceRoot.ifBlank { com.xincode.tools.WorkspaceContext.defaultRoot + " (默认·免 Root)" },
+                        icon = Icons.Outlined.Storage
+                    ) { showWorkspaceDialog = true }
+                    if (showWorkspaceDialog) {
+                        DirectoryPickerDialog(
+                            initialPath = workspaceRoot,
+                            onConfirm = { onUpdateWorkspaceRoot(it); showWorkspaceDialog = false },
+                            onDismiss = { showWorkspaceDialog = false }
+                        )
+                    }
+                    // 1.22: 开发工具 IDE 已移至侧边栏 DEVELOPER，设置页不再重复
+                    SettingRow("环境配置", "安装 Node/Python/uv/SSH/JDK/Gradle/Rust/Go 等开发环境", icon = Icons.Outlined.Build) { onNavigateToEnvConfig() }
+                    SettingRow("配置环境", "多套独立配置(工作/私用各一套),可克隆与导出导入", icon = Icons.Outlined.Settings) { onNavigateToProfiles() }
+                    SettingRow("功能模型配置", "上下文总结/后台复盘/子智能体/Goal 裁判等各自指定模型", icon = Icons.Outlined.Memory) { onNavigateToFunctionModels() }
+                    SettingRow("模型委托", "视觉/推理/翻译/转写各配一个副模型(另填 URL 与 Key)", icon = Icons.Outlined.Extension) { onNavigateToAuxModels() }
+                    SettingRow("子智能体", "主脑指挥的专职子智能体(各管各的技能),可自建", icon = Icons.Outlined.Folder) { onNavigateToSubAgents() }
+                    SettingRow("局域网设备", "发现同一 Wi-Fi 下其它开着 XINCODE 的设备", icon = Icons.Outlined.Extension) { onNavigateToLanDevices() }
+                    // 群聊房间入口归侧边栏(与 GOAL/IDE 同层);设置页不再重复,避免双入口分流。
+                    SettingRow("看板", "跨会话的长期待办,可把 AI 的计划一键导入", icon = Icons.Outlined.Build) { onNavigateToKanban() }
+                    SettingRow("用量分析", "30 天趋势、模型分布、缓存命中率与成本估算", icon = Icons.Outlined.Storage) { onNavigateToUsageStats() }
+                    SettingRow("日志", "崩溃与运行日志,按级别/关键词过滤,可复制反馈", icon = Icons.Outlined.BugReport) { onNavigateToLogs() }
+                    SettingRow("代码索引", "把工作区代码结构抽进本地索引,AI 查符号定义与调用关系不再靠读文件", icon = Icons.Outlined.Code) { onNavigateToCodeIndex() }
+                    SettingRow("Git 接入", "OAuth 登录 GitHub + 远程/本地 MCP(免 root 也能用)", icon = Icons.Outlined.Code) { onNavigateToGit() }
+                    SettingRow("搜索 API Key", if (searchApiKey.isNotBlank()) "••••••••••" else "未配置", icon = Icons.Outlined.Extension) { showSearchKeyDialog = true }
+                    if (showSearchKeyDialog) {
+                        var tempKey by remember { mutableStateOf(searchApiKey) }
+                        AlertDialog(
+                            onDismissRequest = { showSearchKeyDialog = false },
+                            title = { Text("搜索 API Key", fontFamily = JetBrainsMono, color = Ink) },
+                            text = {
+                                Column {
+                                    Text("输入 Tavily Search API Key", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub)
+                                    Spacer(Modifier.height(8.dp))
+                                    TextField(
+                                        value = tempKey,
+                                        onValueChange = { tempKey = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        placeholder = { Text("tavily-...", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
+                                        colors = TextFieldDefaults.colors(
+                                            focusedContainerColor = Color.Transparent,
+                                            unfocusedContainerColor = Color.Transparent,
+                                            cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink
+                                        ),
+                                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontFamily = JetBrainsMono)
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { onUpdateSearchApiKey(tempKey); showSearchKeyDialog = false }) {
+                                    Text("保存", fontFamily = JetBrainsMono, color = Green)
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { showSearchKeyDialog = false }) {
+                                    Text("取消", fontFamily = JetBrainsMono, color = Sub)
+                                }
+                            },
+                            containerColor = Bg
+                        )
+                    }
                 }
             }
         }
 
         // ── Section: 关于 ──
-        SectionDivider()
-        SectionHeader(title = "关于", icon = Icons.Outlined.Settings, expanded = expanded["关于"] == true, onToggle = { toggle("关于") })
-        AnimatedVisibility(visible = expanded["关于"] == true) {
-            Column {
-                SettingRow("关于 XINCODE", "版本信息、检查更新、项目地址与开源许可", icon = Icons.Outlined.Settings) { onNavigateToAbout() }
+        if (!SettingsStateHolder.hiddenSections.contains("关于") && (searchQuery.isBlank() || "关于 版本 更新 开源许可".contains(searchQuery.trim(), ignoreCase = true))) {
+            SectionDivider()
+            SectionHeader(title = "关于", icon = Icons.Outlined.Settings, expanded = expanded["关于"] == true, onToggle = { toggle("关于") })
+            AnimatedVisibility(visible = expanded["关于"] == true) {
+                Column {
+                    SettingRow("关于 XINCODE", "版本信息、检查更新、项目地址与开源许可", icon = Icons.Outlined.Settings) { onNavigateToAbout() }
+                }
             }
         }
+    }
+
+    if (showHideDialog) {
+        val allSections = listOf("外观", "账户与模型", "权限与安全", "数据", "Agent工具", "关于")
+        AlertDialog(
+            onDismissRequest = { showHideDialog = false },
+            title = { Text("自定义隐藏设置项", fontFamily = XinSerifFont, color = Ink) },
+            text = {
+                Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    Text("取消勾选的区块将不在设置主界面展示，随时可恢复：", fontSize = 12.sp, color = Sub, fontFamily = XinUiFont)
+                    Spacer(Modifier.height(12.dp))
+                    allSections.forEach { sec ->
+                        val isHidden = SettingsStateHolder.hiddenSections.contains(sec)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    if (isHidden) SettingsStateHolder.hiddenSections.remove(sec)
+                                    else SettingsStateHolder.hiddenSections.add(sec)
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            androidx.compose.material3.Checkbox(
+                                checked = !isHidden,
+                                onCheckedChange = { check ->
+                                    if (!check) SettingsStateHolder.hiddenSections.add(sec)
+                                    else SettingsStateHolder.hiddenSections.remove(sec)
+                                },
+                                colors = androidx.compose.material3.CheckboxDefaults.colors(
+                                    checkedColor = Green,
+                                    checkmarkColor = Color.White
+                                )
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(sec, fontSize = 15.sp, fontFamily = XinUiFont, color = Ink)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showHideDialog = false }) { Text("完成", color = Green, fontFamily = XinUiFont) }
+            },
+            containerColor = xc.bgElevated
+        )
     }
 }
 
@@ -446,7 +597,10 @@ private fun SettingRow(label: String, value: String, icon: ImageVector? = null, 
             .background(xc.bgElevated, RoundedCornerShape(18.dp))
             .border(1.dp, xc.border, RoundedCornerShape(18.dp))
             .heightIn(min = 52.dp)
-            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                SettingsStateHolder.recordClick(label)
+                onClick()
+            }
             .padding(start = 16.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

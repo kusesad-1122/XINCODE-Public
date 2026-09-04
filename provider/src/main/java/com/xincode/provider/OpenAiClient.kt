@@ -986,8 +986,42 @@ class OpenAiClient(
                     idx++
                 }
                 "user" -> {
-                    out.put(JSONObject().put("role", "user")
-                        .put("content", JSONArray().put(textBlock(m.optString("content")))))
+                    val rawContent = m.opt("content")
+                    if (rawContent is JSONArray) {
+                        val blocks = JSONArray()
+                        for (k in 0 until rawContent.length()) {
+                            val part = rawContent.optJSONObject(k)
+                            if (part != null) {
+                                if (part.optString("type") == "image_url") {
+                                    val url = part.optJSONObject("image_url")?.optString("url", "").orEmpty()
+                                    if (url.startsWith("data:")) {
+                                        val comma = url.indexOf(',')
+                                        if (comma > 0) {
+                                            val meta = url.substring(5, comma)
+                                            val mime = meta.substringBefore(';')
+                                            val b64 = url.substring(comma + 1)
+                                            blocks.put(JSONObject().apply {
+                                                put("type", "image")
+                                                put("source", JSONObject().apply {
+                                                    put("type", "base64")
+                                                    put("media_type", mime)
+                                                    put("data", b64)
+                                                })
+                                            })
+                                        }
+                                    }
+                                } else {
+                                    blocks.put(textBlock(part.optString("text", "")))
+                                }
+                            } else if (rawContent.opt(k) is String) {
+                                blocks.put(textBlock(rawContent.getString(k)))
+                            }
+                        }
+                        out.put(JSONObject().put("role", "user").put("content", blocks))
+                    } else {
+                        out.put(JSONObject().put("role", "user")
+                            .put("content", JSONArray().put(textBlock(m.optString("content")))))
+                    }
                     idx++
                 }
                 "assistant" -> {

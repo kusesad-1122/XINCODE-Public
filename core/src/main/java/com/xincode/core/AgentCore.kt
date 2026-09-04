@@ -512,10 +512,10 @@ class AgentCore(
         fireHook("session_start")
         fireHook("user_prompt_submit", mapOf("prompt" to initialUserMessage))
 
-        // Add user message to history
+        // Add user message to history (supports direct multimodal images if present)
         messages.add(org.json.JSONObject().apply {
             put("role", "user")
-            put("content", initialUserMessage)
+            put("content", buildMultimodalUserContent(initialUserMessage))
         })
         checkpointCursor()  // user message persisted
 
@@ -1089,5 +1089,45 @@ onComplete = { result ->
                 })
             }
         }
+    }
+
+    /** Extracts image paths and produces a multimodal JSONArray (or plain string if no images). */
+    private fun buildMultimodalUserContent(text: String): Any {
+        val regex = Regex("""###\s*([^(]+)\(图片,路径:([^)]+)\)""")
+        val matches = regex.findAll(text).toList()
+        if (matches.isEmpty()) return text
+
+        val cleanText = text.replace(Regex("""\n*---\n附件:[\s\S]*?---\n*"""), "").trim()
+        val parts = org.json.JSONArray()
+        if (cleanText.isNotBlank()) {
+            parts.put(org.json.JSONObject().apply {
+                put("type", "text")
+                put("text", cleanText)
+            })
+        }
+        for (m in matches) {
+            val fileName = m.groupValues[1].trim()
+            val path = m.groupValues[2].trim()
+            val file = java.io.File(path)
+            if (file.exists() && file.length() in 1..(12 * 1024 * 1024)) {
+                try {
+                    val bytes = file.readBytes()
+                    val ext = fileName.substringAfterLast('.', "jpeg").lowercase()
+                    val mime = if (ext == "png") "image/png" else if (ext == "webp") "image/webp" else "image/jpeg"
+                    val b64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                    parts.put(org.json.JSONObject().apply {
+                        put("type", "image_url")
+                        put("image_url", org.json.JSONObject().apply {
+                            put("url", "data:$mime;base64,$b64")
+                        })
+                    })
+                } catch (_: Exception) {}
+            }
+            parts.put(org.json.JSONObject().apply {
+                put("type", "text")
+                put("text", "[用户附带图片: $fileName，本地路径: $path。若需深入分析也可调用 describe_image 工具]")
+            })
+        }
+        return if (parts.length() > 0) parts else text
     }
 }

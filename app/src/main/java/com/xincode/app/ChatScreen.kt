@@ -334,7 +334,15 @@ fun ChatScreen(
     goalLiveText: String = "",            // 实时状态小字(第 N 轮/裁判评估中…)
     goalRunning: Boolean = false,
     onStartGoal: (String) -> Unit = {},
-    onStopGoal: () -> Unit = {}
+    onStopGoal: () -> Unit = {},
+    projects: List<ProjectEntity> = emptyList(),
+    currentProjectId: Long? = null,
+    onMoveSessionToProject: (Long, Long?) -> Unit = { _, _ -> },
+    onRenameSession: (Long, String) -> Unit = { _, _ -> },
+    onDeleteSession: (Long) -> Unit = {},
+    onTogglePin: (Long, Boolean) -> Unit = { _, _ -> },
+    isStarred: Boolean = false,
+    currentSessionId: Long = 0L
 ) {
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
@@ -355,6 +363,13 @@ fun ChatScreen(
     var showMainMenu by remember { mutableStateOf(false) }
     var effortExpanded by remember { mutableStateOf(false) }
     var showTopMenu by remember { mutableStateOf(false) }
+    var showSelectModelSheet by remember { mutableStateOf(false) }
+    var showEffortSheet by remember { mutableStateOf(false) }
+    var showToolAccessSheet by remember { mutableStateOf(false) }
+    var showAddToProjectSheet by remember { mutableStateOf(false) }
+    var renameSessionDialog by remember { mutableStateOf(false) }
+    var renameSessionTitle by remember { mutableStateOf("") }
+    var toolAccessMode by remember { mutableStateOf("Always available") }
 
     val voiceState = voiceInputHelper?.state?.collectAsState()?.value ?: VoiceInputHelper.State.IDLE
     val voicePartialText = voiceInputHelper?.partialText?.collectAsState()?.value.orEmpty()
@@ -598,34 +613,40 @@ fun ChatScreen(
             } else {
                 Spacer(Modifier.weight(1f))
             }
-            ChatActionIcon(
-                icon = Icons.Outlined.Settings,
-                contentDescription = "会话设置",
-                onClick = { showTopMenu = true }
-            )
-            if (hasMessages) {
-                ChatActionIcon(
-                    icon = Icons.Outlined.AddComment,
-                    contentDescription = "新建聊天",
-                    onClick = onNewChat
-                )
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(xc.bgElevated)
+                    .border(0.8.dp, xc.border, androidx.compose.foundation.shape.CircleShape)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNewChat() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "新建聊天", tint = xc.ink, modifier = Modifier.size(18.dp))
             }
+            Spacer(Modifier.width(8.dp))
             Box {
+                IconButton(onClick = { showTopMenu = true }, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = "更多选项", tint = xc.ink, modifier = Modifier.size(20.dp))
+                }
                 DropdownMenu(
                     expanded = showTopMenu,
                     onDismissRequest = { showTopMenu = false },
-                    containerColor = xc.bgElevated
+                    modifier = Modifier.background(xc.bgElevated).widthIn(min = 180.dp)
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("打开终端", fontFamily = XinUiFont) },
-                        onClick = { showTopMenu = false; onNavigateToTerminal() }
+                    Text(
+                        conversationTitle,
+                        fontSize = 12.sp,
+                        fontFamily = XinUiFont,
+                        color = xc.faint,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                     )
+                    Box(Modifier.fillMaxWidth().height(0.5.dp).background(xc.border))
                     DropdownMenuItem(
-                        text = { Text("进入指挥室", fontFamily = XinUiFont) },
-                        onClick = { showTopMenu = false; onNavigateToAgentScene() }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("分享聊天", fontFamily = XinUiFont) },
+                        text = { Text("Share", fontFamily = XinUiFont) },
+                        leadingIcon = { Icon(Icons.Outlined.Share, contentDescription = null, tint = xc.ink, modifier = Modifier.size(18.dp)) },
                         onClick = {
                             showTopMenu = false
                             val intent = Intent(Intent.ACTION_SEND).apply {
@@ -636,10 +657,77 @@ fun ChatScreen(
                             context.startActivity(Intent.createChooser(intent, "分享对话"))
                         }
                     )
+                    DropdownMenuItem(
+                        text = { Text("Rename", fontFamily = XinUiFont) },
+                        leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null, tint = xc.ink, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showTopMenu = false
+                            renameSessionTitle = conversationTitle
+                            renameSessionDialog = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text(if (isStarred) "Unpin" else "Pin", fontFamily = XinUiFont) },
+                        leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null, tint = xc.ink, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showTopMenu = false
+                            onTogglePin(currentSessionId, !isStarred)
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add to project", fontFamily = XinUiFont) },
+                        leadingIcon = { Icon(Icons.Outlined.Folder, contentDescription = null, tint = xc.ink, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showTopMenu = false
+                            showAddToProjectSheet = true
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete", fontFamily = XinUiFont, color = xc.red) },
+                        leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = xc.red, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            showTopMenu = false
+                            onDeleteSession(currentSessionId)
+                        }
+                    )
                 }
             }
         }
         Box(Modifier.fillMaxWidth().height(0.5.dp).background(Border))
+
+        if (renameSessionDialog) {
+            AlertDialog(
+                onDismissRequest = { renameSessionDialog = false },
+                title = { Text("重命名会话", fontFamily = XinSerifFont, color = xc.ink) },
+                text = {
+                    TextField(
+                        value = renameSessionTitle,
+                        onValueChange = { renameSessionTitle = it },
+                        singleLine = true,
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = xc.bgElevated,
+                            unfocusedContainerColor = xc.bgElevated,
+                            cursorColor = xc.green,
+                            focusedTextColor = xc.ink,
+                            unfocusedTextColor = xc.ink
+                        ),
+                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 15.sp, fontFamily = XinUiFont)
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        if (renameSessionTitle.isNotBlank()) {
+                            onRenameSession(currentSessionId, renameSessionTitle.trim())
+                        }
+                        renameSessionDialog = false
+                    }) { Text("保存", color = xc.green, fontFamily = XinUiFont) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { renameSessionDialog = false }) { Text("取消", color = xc.sub, fontFamily = XinUiFont) }
+                },
+                containerColor = xc.bgElevated
+            )
+        }
 
         // ---- Goal/Work 模式横幅 ----
         if (isGoalSession) {
@@ -809,15 +897,18 @@ fun ChatScreen(
         if (showPlusCard) {
             ModalBottomSheet(
                 onDismissRequest = { showPlusCard = false },
-                containerColor = Bg,
-                scrimColor = Color.Black.copy(alpha = 0.32f),
+                containerColor = xc.bgElevated,
+                scrimColor = Color.Black.copy(alpha = 0.35f),
                 dragHandle = {
-                    Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Faint.copy(alpha = 0.6f)))
+                    Box(Modifier.padding(top = 10.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(xc.border))
                 }
             ) {
+                val curProj = projects.firstOrNull { it.id == currentProjectId }
                 AddToChatSheet(
                     webSearchOn = webSearchOn,
-                    thinkingEnabled = thinkingEnabled,
+                    projectName = curProj?.name ?: "None",
+                    toolAccessMode = toolAccessMode,
+                    onClose = { showPlusCard = false },
                     onCamera = {
                         showPlusCard = false
                         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -834,18 +925,117 @@ fun ChatScreen(
                         showPlusCard = false
                         attachLauncher.launch(arrayOf("*/*"))
                     },
-                    onSkill = { showPlusCard = false; showSkillPicker = true },
-                    onMcp = { showPlusCard = false; showMcpPicker = true },
-                    onFolder = { showPlusCard = false; showFolderPicker = true },
-                    onToolAccess = { showPlusCard = false; showModeCard = true },
                     onToggleWebSearch = {
                         webSearchOn = !webSearchOn
+                        com.xincode.tools.WebSearchGate.enabled = webSearchOn
                         onSetWebSearchEnabled(webSearchOn)
                     },
-                    onToggleThinking = {
-                        val next = !thinkingEnabled
-                        onThinkingEnabledChange(next)
-                        if (next) onThinkingLevelChange(4)
+                    onAddProject = {
+                        showPlusCard = false
+                        showAddToProjectSheet = true
+                    },
+                    onToolAccess = {
+                        showPlusCard = false
+                        showToolAccessSheet = true
+                    },
+                    onConnectors = {
+                        showPlusCard = false
+                        showMcpPicker = true
+                    }
+                )
+            }
+        }
+
+        // ---- Select model 底部抽屉 (Screenshot 23:11:53) ----
+        if (showSelectModelSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showSelectModelSheet = false },
+                containerColor = xc.bgElevated,
+                scrimColor = Color.Black.copy(alpha = 0.35f),
+                dragHandle = {
+                    Box(Modifier.padding(top = 10.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(xc.border))
+                }
+            ) {
+                SelectModelBottomSheet(
+                    currentModel = currentModel,
+                    availableModels = availableModels,
+                    effortLabel = thinkingLevelLabel(thinkingLevel),
+                    onClose = { showSelectModelSheet = false },
+                    onSelectModel = { modelId ->
+                        onSwitchModel(modelId)
+                        showSelectModelSheet = false
+                    },
+                    onOpenEffort = {
+                        showSelectModelSheet = false
+                        showEffortSheet = true
+                    }
+                )
+            }
+        }
+
+        // ---- Effort 底部抽屉 (Screenshot 23:11:58) ----
+        if (showEffortSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showEffortSheet = false },
+                containerColor = xc.bgElevated,
+                scrimColor = Color.Black.copy(alpha = 0.35f),
+                dragHandle = {
+                    Box(Modifier.padding(top = 10.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(xc.border))
+                }
+            ) {
+                EffortBottomSheet(
+                    currentLevel = thinkingLevel,
+                    onBack = {
+                        showEffortSheet = false
+                        showSelectModelSheet = true
+                    },
+                    onSelectLevel = { level ->
+                        onThinkingLevelChange(level)
+                        onThinkingEnabledChange(level > 0)
+                        showEffortSheet = false
+                    }
+                )
+            }
+        }
+
+        // ---- Tool access 底部抽屉 (Screenshot 23:13:00) ----
+        if (showToolAccessSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showToolAccessSheet = false },
+                containerColor = xc.bgElevated,
+                scrimColor = Color.Black.copy(alpha = 0.35f),
+                dragHandle = {
+                    Box(Modifier.padding(top = 10.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(xc.border))
+                }
+            ) {
+                ToolAccessBottomSheet(
+                    currentMode = toolAccessMode,
+                    onBack = { showToolAccessSheet = false },
+                    onSelectMode = { mode ->
+                        toolAccessMode = mode
+                        showToolAccessSheet = false
+                    }
+                )
+            }
+        }
+
+        // ---- Add to project 底部抽屉 (Screenshot 23:13:05) ----
+        if (showAddToProjectSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showAddToProjectSheet = false },
+                containerColor = xc.bgElevated,
+                scrimColor = Color.Black.copy(alpha = 0.35f),
+                dragHandle = {
+                    Box(Modifier.padding(top = 10.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(xc.border))
+                }
+            ) {
+                AddToProjectBottomSheet(
+                    projects = projects,
+                    currentProjectId = currentProjectId,
+                    onBack = { showAddToProjectSheet = false },
+                    onSelectProject = { project ->
+                        onMoveSessionToProject(currentSessionId, project.id)
+                        showAddToProjectSheet = false
                     }
                 )
             }
@@ -913,38 +1103,129 @@ fun ChatScreen(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp)
-                .padding(bottom = 14.dp)
+                .padding(bottom = 12.dp)
                 .clip(RoundedCornerShape(28.dp))
                 .background(xc.bgElevated)
                 .border(0.8.dp, Border, RoundedCornerShape(28.dp))
         ) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                if (!hasMessages) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                // Line 1: attachment chips (only if any)
+                if (pendingAttachments.value.isNotEmpty()) {
+                    val chipScrollState = rememberScrollState()
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(chipScrollState)
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("XINCODE Agent", fontFamily = XinSerifFont, fontSize = 13.sp, color = Ink)
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            "模型设置",
-                            fontFamily = XinUiFont,
-                            fontSize = 11.sp,
-                            color = Green,
-                            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                onNavigateToSettings()
+                        pendingAttachments.value.forEach { att ->
+                            val isImage = att.mimeType.startsWith("image/") || att.fileName.endsWith(".jpg", true) || att.fileName.endsWith(".png", true) || att.fileName.endsWith(".jpeg", true)
+                            if (isImage && att.absolutePath.isNotEmpty()) {
+                                val bitmap = remember(att.absolutePath) {
+                                    try {
+                                        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }
+                                        android.graphics.BitmapFactory.decodeFile(att.absolutePath, opts)
+                                    } catch (_: Exception) { null }
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .size(60.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(xc.bgElevated)
+                                        .border(1.dp, Border, RoundedCornerShape(12.dp))
+                                ) {
+                                    if (bitmap != null) {
+                                        androidx.compose.foundation.Image(
+                                            bitmap = bitmap.asImageBitmap(),
+                                            contentDescription = att.fileName,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Outlined.Image,
+                                            contentDescription = null,
+                                            tint = Sub,
+                                            modifier = Modifier.align(Alignment.Center).size(24.dp)
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(3.dp)
+                                            .size(18.dp)
+                                            .clip(androidx.compose.foundation.shape.CircleShape)
+                                            .background(Color.Black.copy(alpha = 0.65f))
+                                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                                pendingAttachments.value = pendingAttachments.value.filter { it.id != att.id }
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Outlined.Close, contentDescription = "删除", tint = Color.White, modifier = Modifier.size(11.dp))
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    Modifier
+                                        .height(28.dp)
+                                        .border(1.dp, Color(0x1A1A1A17), RoundedCornerShape(6.dp))
+                                        .background(Color(0x0D1A1A17), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Outlined.Description,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = Ink
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        att.fileName,
+                                        fontSize = 12.sp,
+                                        fontFamily = JetBrainsMono,
+                                        color = Ink,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (att.sizeBytes > 0) {
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            humanSize(att.sizeBytes),
+                                            fontSize = 10.sp,
+                                            fontFamily = JetBrainsMono,
+                                            color = Sub
+                                        )
+                                    }
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        Icons.Outlined.Close,
+                                        contentDescription = "删除",
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clickable(
+                                                indication = null,
+                                                interactionSource = remember { MutableInteractionSource() }
+                                            ) {
+                                                pendingAttachments.value =
+                                                    pendingAttachments.value.filter { it.id != att.id }
+                                            },
+                                        tint = Ink
+                                    )
+                                }
                             }
-                        )
+                        }
                     }
                 }
-                // Row 1: text field
+
+                // Line 2: text field
                 TextField(
                     value = chatState.input.value,
                     onValueChange = { chatState.input.value = it },
                     modifier = Modifier.fillMaxWidth(),
-                    // 始终可编辑:AI 运行中也能打字,以便「中途插话」不打断地注入指令。
                     enabled = true,
-                    // 回车发送模式=单行(回车即发,换行用输入法组合键);回车换行模式=多行(靠 [→] 发)。
                     singleLine = enterToSend,
                     maxLines = if (enterToSend) 1 else 6,
                     colors = TextFieldDefaults.colors(
@@ -960,231 +1241,82 @@ fun ChatScreen(
                     textStyle = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, lineHeight = 23.sp, fontFamily = XinUiFont),
                     keyboardOptions = KeyboardOptions(imeAction = if (enterToSend) ImeAction.Send else ImeAction.Default),
                     keyboardActions = KeyboardActions(onSend = { submitInput() }),
-                    trailingIcon = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            ContextRing(
-                                usage = contextUsage,
-                                onClick = { showStatsPopup = !showStatsPopup }
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            val streaming = chatState.isStreaming.value
-                            val hasText = chatState.input.value.isNotBlank()
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(androidx.compose.foundation.shape.CircleShape)
-                                    .background(
-                                        if (hasText || streaming) xc.green else xc.border
-                                    )
-                                    .clickable(
-                                        enabled = hasText || streaming,
-                                        indication = null,
-                                        interactionSource = remember { MutableInteractionSource() }
-                                    ) {
-                                        if (streaming && !hasText) {
-                                            if (isGoalSession && goalRunning) onStopGoal() else chatState.stop()
-                                        } else {
-                                            submitInput()
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (streaming && !hasText) Icons.Outlined.Stop else Icons.Outlined.ArrowUpward,
-                                    contentDescription = if (streaming && !hasText) "停止" else "发送",
-                                    tint = if (hasText || streaming) Color.White else xc.faint,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                    },
                     placeholder = {
                         Text(
                             when {
                                 chatState.isStreaming.value -> "插话给正在工作的 AI(不打断)…"
                                 isGoalSession && !goalRunning -> "输入目标,让 XINCODE 自主完成…"
-                                else -> "输入消息与 AI 聊天"
+                                else -> "Reply to Claude..."
                             },
                             color = Sub, fontSize = 16.sp, fontFamily = XinUiFont
                         )
                     }
                 )
-                Box(Modifier.fillMaxWidth().height(0.5.dp).background(Border))
 
-                // Row 1.5: attachment chips (only if any)
-                if (pendingAttachments.value.isNotEmpty()) {
-                    val chipScrollState = rememberScrollState()
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(chipScrollState)
-                            .padding(vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        pendingAttachments.value.forEach { att ->
-                            Row(
-                                Modifier
-                                    .height(28.dp)
-                                    .border(1.dp, Color(0x1A1A1A17), RoundedCornerShape(6.dp))
-                                    .background(Color(0x0D1A1A17), RoundedCornerShape(6.dp))
-                                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val isImage = att.absolutePath.isNotEmpty()
-                                Icon(
-                                    if (isImage) Icons.Outlined.Image else Icons.Outlined.Description,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp),
-                                    tint = Ink
-                                )
-                                Spacer(Modifier.width(4.dp))
-                                Text(
-                                    att.fileName,
-                                    fontSize = 12.sp,
-                                    fontFamily = JetBrainsMono,
-                                    color = Ink,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                // 不再有大小上限,附件可能很大 —— 把体积标出来,
-                                // 免得用户在毫不知情的情况下把几十 MB 的文本塞进上下文。
-                                if (att.sizeBytes > 0) {
-                                    Spacer(Modifier.width(4.dp))
-                                    Text(
-                                        humanSize(att.sizeBytes),
-                                        fontSize = 10.sp,
-                                        fontFamily = JetBrainsMono,
-                                        color = Sub
-                                    )
-                                }
-                                Spacer(Modifier.width(4.dp))
-                                Icon(
-                                    Icons.Outlined.Close,
-                                    contentDescription = "删除",
-                                    modifier = Modifier
-                                        .size(14.dp)
-                                        .clickable(
-                                            indication = null,
-                                            interactionSource = remember { MutableInteractionSource() }
-                                        ) {
-                                            pendingAttachments.value =
-                                                pendingAttachments.value.filter { it.id != att.id }
-                                        },
-                                    tint = Ink
-                                )
-                            }
-                        }
-                    }
-                }
+                Spacer(Modifier.height(8.dp))
 
-                AnimatedVisibility(visible = expandingPrompt || voiceFeedback.message != null) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
-                            .background(
-                                if (voiceFeedback.isError) Red.copy(alpha = 0.10f) else Green.copy(alpha = 0.10f),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        if (expandingPrompt || voiceFeedback.active) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                color = Green,
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(Modifier.width(8.dp))
-                        }
-                        Text(
-                            text = if (expandingPrompt) "正在把当前输入整理成更清晰的任务…"
-                            else voiceFeedback.message.orEmpty(),
-                            color = if (voiceFeedback.isError) Red else Sub,
-                            fontFamily = XinUiFont,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                // Claude-style composer toolbar: attachment, model chip, then quiet utility actions
+                // Line 3: Claude mobile bottom control bar
                 Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ChatActionIcon(
-                        icon = Icons.Outlined.Add,
-                        contentDescription = "添加到聊天",
-                        tint = if (showPlusCard) Green else Ink,
-                        onClick = { showPlusCard = !showPlusCard }
-                    )
+                    // [+] Circle button
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(xc.bg)
+                            .border(0.8.dp, Border, androidx.compose.foundation.shape.CircleShape)
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                showPlusCard = true
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Filled.Add,
+                            contentDescription = "Add to chat",
+                            tint = Ink,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    // Model & Effort pill capsule: e.g. "Sonnet 5 High"
+                    val modelNameText = modelDisplayName.ifBlank { "Sonnet 5" }
+                    val effortLabelText = thinkingLevelLabel(thinkingLevel)
+                    val pillText = if (thinkingEnabled) "$modelNameText $effortLabelText" else modelNameText
                     Row(
                         modifier = Modifier
+                            .height(36.dp)
                             .clip(RoundedCornerShape(18.dp))
                             .background(xc.bg)
                             .border(0.8.dp, Border, RoundedCornerShape(18.dp))
                             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                onOpenConversationModelPicker()
+                                showSelectModelSheet = true
                             }
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                            .padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            modelDisplayName.ifBlank { "选择模型" },
-                            fontSize = 12.sp,
+                            pillText,
+                            fontSize = 13.sp,
                             fontFamily = XinUiFont,
+                            fontWeight = FontWeight.Medium,
                             color = Ink,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "选择模型", tint = Sub, modifier = Modifier.size(16.dp))
                     }
-                    ChatActionIcon(
-                        icon = Icons.Outlined.Psychology,
-                        contentDescription = "聊天模式",
-                        tint = if (showModeCard) Green else Ink,
-                        onClick = { showModeCard = !showModeCard }
-                    )
-                    ChatActionIcon(
-                        icon = Icons.Outlined.Search,
-                        contentDescription = if (webSearchOn) "关闭联网搜索" else "开启联网搜索",
-                        tint = if (webSearchOn) Green else Ink,
-                        onClick = {
-                            webSearchOn = !webSearchOn
-                            com.xincode.tools.WebSearchGate.enabled = webSearchOn
-                            onSetWebSearchEnabled(webSearchOn)
-                        }
-                    )
-                    ChatActionIcon(
-                        icon = if (expandingPrompt) Icons.Outlined.Close else Icons.Outlined.Lightbulb,
-                        contentDescription = if (expandingPrompt) "停止提示词优化" else "灵感与提示词优化",
-                        tint = when {
-                            expandingPrompt -> Red
-                            showInspirationMenu -> Green
-                            else -> Ink
-                        },
-                        onClick = {
-                            if (expandingPrompt) {
-                                promptExpansionJob?.cancel()
-                            } else if (chatState.input.value.isBlank()) {
-                                showInspirationMenu = !showInspirationMenu
-                                showPlusCard = false
-                                showModeCard = false
-                                showStatsPopup = false
-                            } else expandCurrentPrompt()
-                        }
-                    )
+
                     Spacer(Modifier.weight(1f))
-                    ChatActionIcon(
-                        icon = Icons.Outlined.MicNone,
-                        contentDescription = if (voiceFeedback.active) "完成语音输入" else "语音输入",
-                        tint = if (voiceFeedback.active) Red else Ink,
-                        onClick = {
+
+                    // Microphone button
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                             when {
                                 voiceInputHelper == null -> Toast.makeText(context, "语音输入组件尚未初始化", Toast.LENGTH_LONG).show()
                                 voiceState == VoiceInputHelper.State.STARTING || voiceState == VoiceInputHelper.State.LISTENING -> voiceInputHelper.finishListening()
@@ -1192,19 +1324,54 @@ fun ChatScreen(
                                 ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> voiceInputHelper.startListening()
                                 else -> micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
-                        }
-                    )
-                    ChatActionIcon(
-                        icon = Icons.Outlined.DeleteSweep,
-                        contentDescription = "清空输入",
-                        tint = Ink,
-                        onClick = {
-                            chatState.input.value = ""
-                            pendingAttachments.value = emptyList()
-                            voiceInputHelper?.reset()
-                        }
-                    )
+                        },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Outlined.MicNone,
+                            contentDescription = "语音输入",
+                            tint = if (voiceFeedback.active) Red else Ink,
+                            modifier = Modifier.size(21.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    // Send or Stop button
+                    val streaming = chatState.isStreaming.value
+                    val hasText = chatState.input.value.isNotBlank() || pendingAttachments.value.isNotEmpty()
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(androidx.compose.foundation.shape.CircleShape)
+                            .background(
+                                if (streaming && !hasText) xc.ink
+                                else if (hasText) xc.ink
+                                else xc.border
+                            )
+                            .clickable(
+                                enabled = hasText || streaming,
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                if (streaming && !hasText) {
+                                    if (isGoalSession && goalRunning) onStopGoal() else chatState.stop()
+                                } else {
+                                    submitInput()
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (streaming && !hasText) Icons.Outlined.Stop else Icons.Outlined.ArrowUpward,
+                            contentDescription = if (streaming && !hasText) "停止" else "发送",
+                            tint = if (hasText || streaming) Color.White else xc.faint,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
                 }
+            }
+        }
             }
         }
 
@@ -2627,20 +2794,57 @@ private fun UserMessageBubble(
                 color = xc.sub,
                 modifier = Modifier.padding(end = 6.dp, bottom = 6.dp)
             )
+            val imagePathRegex = remember { Regex("""###\s*([^(]+)\(图片,路径:([^)]+)\)""") }
+            val imageMatches = remember(msg.content) { imagePathRegex.findAll(msg.content).toList() }
+            val cleanContent = remember(msg.content) {
+                msg.content.replace(Regex("""\n*---\n附件:[\s\S]*?---\n*"""), "").trim()
+            }
+
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 4.dp))
                     .background(xc.bgElevated)
                     .border(0.8.dp, xc.border, RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 4.dp))
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
-                Text(
-                    msg.content,
-                    fontSize = 15.sp,
-                    lineHeight = 23.sp,
-                    fontFamily = XinUiFont,
-                    color = xc.ink
-                )
+                Column {
+                    for (match in imageMatches) {
+                        val fileName = match.groupValues[1].trim()
+                        val path = match.groupValues[2].trim()
+                        val file = remember(path) { java.io.File(path) }
+                        val bitmap = remember(path) {
+                            if (file.exists()) {
+                                try {
+                                    val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
+                                    android.graphics.BitmapFactory.decodeFile(path, opts)
+                                } catch (_: Exception) { null }
+                            } else null
+                        }
+                        if (bitmap != null) {
+                            androidx.compose.foundation.Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = fileName,
+                                modifier = Modifier
+                                    .padding(bottom = if (cleanContent.isNotBlank()) 8.dp else 0.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .fillMaxWidth()
+                                    .heightIn(max = 240.dp),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                            )
+                        } else {
+                            Text("[图片: $fileName]", fontSize = 13.sp, color = xc.sub, modifier = Modifier.padding(bottom = 6.dp))
+                        }
+                    }
+                    if (cleanContent.isNotBlank()) {
+                        Text(
+                            cleanContent,
+                            fontSize = 15.sp,
+                            lineHeight = 23.sp,
+                            fontFamily = XinUiFont,
+                            color = xc.ink
+                        )
+                    }
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 ChatActionIcon(
@@ -2749,64 +2953,509 @@ private fun ClaudeGreetingHero() {
 @Composable
 private fun AddToChatSheet(
     webSearchOn: Boolean,
-    thinkingEnabled: Boolean,
+    projectName: String,
+    toolAccessMode: String,
+    onClose: () -> Unit,
     onCamera: () -> Unit,
     onPhotos: () -> Unit,
     onFiles: () -> Unit,
-    onSkill: () -> Unit,
-    onMcp: () -> Unit,
-    onFolder: () -> Unit,
-    onToolAccess: () -> Unit,
     onToggleWebSearch: () -> Unit,
-    onToggleThinking: () -> Unit
+    onAddProject: () -> Unit,
+    onToolAccess: () -> Unit,
+    onConnectors: () -> Unit
 ) {
     val xc = LocalXinColors.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 18.dp, vertical = 4.dp)
+            .padding(horizontal = 20.dp, vertical = 6.dp)
     ) {
-        Text("添加到聊天", fontFamily = XinSerifFont, fontSize = 28.sp, color = xc.ink)
-        Spacer(Modifier.height(4.dp))
-        Text("添加文件、图片或工具，让本轮对话获得更多上下文", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub)
+        // Top bar: ✕ on left, centered "Add to chat"
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Outlined.Close, contentDescription = "关闭", tint = xc.ink)
+            }
+            Spacer(Modifier.weight(1f))
+            Text("Add to chat", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(36.dp))
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // Row of 3 square cards: Camera, Photos, Files
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.PhotoCamera, "Camera", onCamera)
+            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.Image, "Photos", onPhotos)
+            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.Description, "Files", onFiles)
+        }
+
         Spacer(Modifier.height(18.dp))
 
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.PhotoCamera, "相机", onCamera)
-            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.Image, "照片", onPhotos)
-            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.Description, "文件", onFiles)
-        }
-        Spacer(Modifier.height(18.dp))
+        // Toggle row 1: Web search
         AddSheetToggleRow(
             icon = Icons.Outlined.Public,
-            title = "联网搜索",
-            subtitle = if (webSearchOn) "本轮允许调用联网搜索" else "关闭后不会联网获取信息",
+            title = "Web search",
+            subtitle = "",
             checked = webSearchOn,
             enabled = true,
             onCheckedChange = { onToggleWebSearch() }
         )
+
+        // Toggle row 2: Memory
         AddSheetToggleRow(
-            icon = Icons.Outlined.Lightbulb,
-            title = "记忆",
-            subtitle = "由当前会话设置控制",
+            icon = Icons.Outlined.Refresh,
+            title = "Memory",
+            subtitle = "Can't be changed for this chat",
             checked = true,
             enabled = false,
             onCheckedChange = {}
         )
-        AddSheetToggleRow(
-            icon = Icons.Outlined.Psychology,
-            title = "深度分析",
-            subtitle = if (thinkingEnabled) "已开启深度思考" else "使用普通响应模式",
-            checked = thinkingEnabled,
-            enabled = true,
-            onCheckedChange = { onToggleThinking() }
+
+        // Action row 3: Add to project
+        AddSheetActionRow(
+            icon = Icons.Outlined.Folder,
+            title = "Add to project",
+            subtitle = projectName,
+            onClick = onAddProject
         )
-        AddSheetActionRow(Icons.Outlined.Folder, "添加到项目", "整理到项目工作区", onFolder)
-        AddSheetActionRow(Icons.Outlined.Settings, "工具权限", "管理本轮可调用的工具", onToolAccess)
-        AddSheetActionRow(Icons.Outlined.Lightbulb, "选择技能", "将技能指令添加到输入框", onSkill)
-        AddSheetActionRow(Icons.Outlined.Extension, "选择 MCP", "连接本地或远程工具服务", onMcp)
+
+        // Action row 4: Tool access
+        AddSheetActionRow(
+            icon = Icons.Outlined.Folder,
+            title = "Tool access",
+            subtitle = toolAccessMode,
+            onClick = onToolAccess
+        )
+
+        // Action row 5: Connectors
+        AddSheetActionRow(
+            icon = Icons.Outlined.Extension,
+            title = "Connectors",
+            subtitle = "",
+            onClick = onConnectors
+        )
+
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+@Composable
+private fun SelectModelBottomSheet(
+    currentModel: String,
+    availableModels: List<String>,
+    effortLabel: String,
+    onClose: () -> Unit,
+    onSelectModel: (String) -> Unit,
+    onOpenEffort: () -> Unit
+) {
+    val xc = LocalXinColors.current
+
+    // Preset / displayed model metadata (matches Screenshot 23:11:53)
+    data class ModelItemUi(val id: String, val name: String, val badge: String?, val desc: String)
+    val defaultModels = listOf(
+        ModelItemUi("Fable 5.1", "Fable 5.1", "Pro or Max", "For your toughest challenges"),
+        ModelItemUi("Opus 5", "Opus 5", "Pro", "For complex tasks"),
+        ModelItemUi("Sonnet 5", "Sonnet 5", null, "Most efficient for everyday tasks"),
+        ModelItemUi("Haiku 4.5", "Haiku 4.5", null, "Fastest for quick answers")
+    )
+
+    val displayList = remember(availableModels, currentModel) {
+        if (availableModels.isNotEmpty()) {
+            availableModels.map { id ->
+                val matchingDefault = defaultModels.firstOrNull { it.id.equals(id, true) }
+                if (matchingDefault != null) matchingDefault
+                else {
+                    val desc = when {
+                        id.contains("r1", true) || id.contains("reason", true) -> "推理与深度思考模型"
+                        id.contains("flash", true) || id.contains("mini", true) -> "快速轻量化响应"
+                        id.contains("pro", true) || id.contains("opus", true) -> "高强度复杂工程架构设计"
+                        else -> "智能体通用对话与编程模型"
+                    }
+                    ModelItemUi(id = id, name = id, badge = if (id.contains("pro", true)) "Pro" else null, desc = desc)
+                }
+            }
+        } else {
+            defaultModels
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+    ) {
+        // Header: ✕ on left, centered "Select model"
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Outlined.Close, contentDescription = "关闭", tint = xc.ink)
+            }
+            Spacer(Modifier.weight(1f))
+            Text("Select model", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(36.dp))
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // Model list
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false)
+        ) {
+            items(displayList, key = { it.id }) { item ->
+                val isSelected = item.id.equals(currentModel, true) ||
+                    (currentModel.isBlank() && item.name == "Sonnet 5")
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onSelectModel(item.id) }
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                item.name,
+                                fontFamily = XinUiFont,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 17.sp,
+                                color = xc.ink
+                            )
+                            if (item.badge != null) {
+                                Spacer(Modifier.width(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(Color(0xFFE5EDFF))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(item.badge, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color(0xFF1E50C0))
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(3.dp))
+                        Text(item.desc, fontFamily = XinUiFont, fontSize = 13.sp, color = xc.sub)
+                    }
+
+                    if (isSelected) {
+                        Icon(
+                            Icons.Outlined.Check,
+                            contentDescription = "当前选中",
+                            tint = Color(0xFF1E50C0),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.fillMaxWidth().height(0.5.dp).background(xc.border))
+        Spacer(Modifier.height(10.dp))
+
+        // Bottom pinned card: Effort
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable { onOpenEffort() }
+                .padding(horizontal = 8.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(xc.activeBg),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.Psychology, contentDescription = null, tint = xc.ink, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Effort", fontFamily = XinUiFont, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+                Text(effortLabel, fontFamily = XinUiFont, fontSize = 13.sp, color = xc.sub)
+            }
+            Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = null, tint = xc.sub, modifier = Modifier.size(20.dp))
+        }
+
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun EffortBottomSheet(
+    currentLevel: Int,
+    onBack: () -> Unit,
+    onSelectLevel: (Int) -> Unit
+) {
+    val xc = LocalXinColors.current
+
+    data class EffortOption(val level: Int, val label: String, val badge: String?, val badgeColor: Color?, val badgeBg: Color?)
+    val options = listOf(
+        EffortOption(0, "Low", null, null, null),
+        EffortOption(1, "Medium", null, null, null),
+        EffortOption(2, "High", "Default", xc.sub, xc.activeBg),
+        EffortOption(3, "Extra", null, null, null),
+        EffortOption(4, "Max", "1.5× or more usage", Color(0xFF9A5B00), Color(0xFFFFF1D6))
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+    ) {
+        // Top bar: ← on left, centered "Effort"
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = xc.ink)
+            }
+            Spacer(Modifier.weight(1f))
+            Text("Effort", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(36.dp))
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        options.forEach { opt ->
+            val isSelected = opt.level == currentLevel
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { onSelectLevel(opt.level) }
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    opt.label,
+                    fontFamily = XinUiFont,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    fontSize = 17.sp,
+                    color = if (isSelected) Color(0xFF1E50C0) else xc.ink
+                )
+                if (opt.badge != null) {
+                    Spacer(Modifier.width(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(opt.badgeBg ?: xc.activeBg)
+                            .padding(horizontal = 7.dp, vertical = 2.dp)
+                    ) {
+                        Text(opt.badge, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = opt.badgeColor ?: xc.sub)
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                if (isSelected) {
+                    Icon(
+                        Icons.Outlined.Check,
+                        contentDescription = "已选择",
+                        tint = Color(0xFF1E50C0),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+    }
+}
+
+@Composable
+private fun ToolAccessBottomSheet(
+    currentMode: String,
+    onBack: () -> Unit,
+    onSelectMode: (String) -> Unit
+) {
+    val xc = LocalXinColors.current
+
+    data class ToolOption(val key: String, val title: String, val desc: String)
+    val options = listOf(
+        ToolOption("Auto", "Auto", "Claude chooses for you"),
+        ToolOption("On demand", "On demand", "Load when needed. More messages, lower accuracy"),
+        ToolOption("Always available", "Always available", "Ready from start. Fewer messages, better accuracy")
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+    ) {
+        // Top bar: ← on left, centered "Tool access"
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = xc.ink)
+            }
+            Spacer(Modifier.weight(1f))
+            Text("Tool access", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(36.dp))
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        options.forEach { opt ->
+            val isSelected = opt.key == currentMode
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable { onSelectMode(opt.key) }
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        opt.title,
+                        fontFamily = XinUiFont,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                        fontSize = 17.sp,
+                        color = if (isSelected) Color(0xFF1E50C0) else xc.ink
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(opt.desc, fontFamily = XinUiFont, fontSize = 13.sp, color = xc.sub)
+                }
+                if (isSelected) {
+                    Icon(
+                        Icons.Outlined.Check,
+                        contentDescription = "已选择",
+                        tint = Color(0xFF1E50C0),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+    }
+}
+
+@Composable
+private fun AddToProjectBottomSheet(
+    projects: List<ProjectEntity>,
+    currentProjectId: Long?,
+    onBack: () -> Unit,
+    onSelectProject: (ProjectEntity) -> Unit
+) {
+    val xc = LocalXinColors.current
+    var query by remember { mutableStateOf("") }
+
+    val filtered = remember(projects, query) {
+        if (query.isBlank()) projects else projects.filter { it.name.contains(query.trim(), ignoreCase = true) }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+    ) {
+        // Top bar: ← on left, centered "Add to project"
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = xc.ink)
+            }
+            Spacer(Modifier.weight(1f))
+            Text("Add to project", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(36.dp))
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // Search projects input
+        TextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(xc.bg)
+                .border(0.8.dp, xc.border, RoundedCornerShape(16.dp)),
+            singleLine = true,
+            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = xc.sub) },
+            placeholder = { Text("Search projects", fontFamily = XinUiFont, fontSize = 15.sp, color = xc.faint) },
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                cursorColor = xc.green,
+                focusedTextColor = xc.ink,
+                unfocusedTextColor = xc.ink
+            ),
+            textStyle = androidx.compose.ui.text.TextStyle(fontFamily = XinUiFont, fontSize = 15.sp)
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 360.dp)
+        ) {
+            items(filtered, key = { it.id }) { proj ->
+                val isSelected = proj.id == currentProjectId
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSelectProject(proj) }
+                        .padding(horizontal = 12.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Outlined.Folder,
+                        contentDescription = null,
+                        tint = if (isSelected) Color(0xFF1E50C0) else xc.sub,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Text(
+                        proj.name,
+                        fontFamily = XinUiFont,
+                        fontSize = 16.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isSelected) Color(0xFF1E50C0) else xc.ink,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (isSelected) {
+                        Icon(
+                            Icons.Outlined.Check,
+                            contentDescription = null,
+                            tint = Color(0xFF1E50C0),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -2820,22 +3469,22 @@ private fun AddSheetMediaCard(
     val xc = LocalXinColors.current
     Column(
         modifier = modifier
-            .heightIn(min = 112.dp)
+            .heightIn(min = 104.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(xc.bgElevated)
-            .border(1.dp, xc.border, RoundedCornerShape(18.dp))
+            .background(xc.bg)
+            .border(0.8.dp, xc.border, RoundedCornerShape(18.dp))
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
-            .padding(vertical = 14.dp),
+            .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
-            Modifier.size(48.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg),
+            Modifier.size(46.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = title, tint = xc.ink, modifier = Modifier.size(24.dp))
+            Icon(icon, contentDescription = title, tint = xc.ink, modifier = Modifier.size(22.dp))
         }
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         Text(title, fontFamily = XinUiFont, fontSize = 13.sp, color = xc.ink)
     }
 }
@@ -2854,15 +3503,25 @@ private fun AddSheetToggleRow(
         Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(42.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = title, tint = xc.ink, modifier = Modifier.size(21.dp))
+        Box(Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = title, tint = xc.ink, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontFamily = XinUiFont, fontSize = 15.sp, color = xc.ink)
-            Text(subtitle, fontFamily = XinUiFont, fontSize = 11.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle.isNotBlank()) {
+                Text(subtitle, fontFamily = XinUiFont, fontSize = 11.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = Color(0xFF2C64E3)
+            )
+        )
     }
 }
 
@@ -2876,19 +3535,21 @@ private fun AddSheetActionRow(
     val xc = LocalXinColors.current
     Row(
         Modifier.fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(14.dp))
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
-            .padding(vertical = 9.dp),
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(42.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg), contentAlignment = Alignment.Center) {
-            Icon(icon, contentDescription = title, tint = xc.ink, modifier = Modifier.size(21.dp))
+        Box(Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = title, tint = xc.ink, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontFamily = XinUiFont, fontSize = 15.sp, color = xc.ink)
-            Text(subtitle, fontFamily = XinUiFont, fontSize = 11.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle.isNotBlank()) {
+                Text(subtitle, fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
-        Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = null, tint = xc.sub, modifier = Modifier.size(22.dp))
+        Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = null, tint = xc.sub, modifier = Modifier.size(20.dp))
     }
 }
