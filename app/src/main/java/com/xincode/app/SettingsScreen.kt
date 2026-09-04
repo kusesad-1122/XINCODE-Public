@@ -32,6 +32,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.IconButton
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.BugReport
@@ -61,11 +63,10 @@ private val JetBrainsMono = XinUiFont
 object SettingsStateHolder {
     var scrollOffset = 0
     val hiddenSections = mutableStateListOf<String>()
-    val clickCounts = mutableStateMapOf<String, Int>()
-
-    fun recordClick(key: String) {
-        clickCounts[key] = (clickCounts[key] ?: 0) + 1
-    }
+    /** 用户手动置顶的设置项（点击☆置顶，点击★取消置顶）。 */
+    val pinnedItems = mutableStateListOf<String>()
+    /** label -> 跳转动作注册表（由 SettingRow 在组合时登记，置顶区点击直接前往）。 */
+    val itemActions = mutableMapOf<String, () -> Unit>()
 }
 
 /**
@@ -197,12 +198,11 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(8.dp))
 
-        // ── 常用置顶 ──
-        if (searchQuery.isBlank() && SettingsStateHolder.clickCounts.isNotEmpty()) {
-            val topEntries = SettingsStateHolder.clickCounts.entries.sortedByDescending { it.value }.take(3)
-            if (topEntries.isNotEmpty()) {
-                Text("★ 常用置顶", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = JetBrainsMono, color = xc.sub, modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp))
-                topEntries.forEach { entry ->
+        // ── ★ 我的置顶（用户手动置顶常用项，点击直接前往） ──
+        if (searchQuery.isBlank()) {
+            if (SettingsStateHolder.pinnedItems.isNotEmpty()) {
+                Text("★ 我的置顶", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, fontFamily = JetBrainsMono, color = xc.sub, modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp))
+                SettingsStateHolder.pinnedItems.toList().forEach { label ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -210,19 +210,24 @@ fun SettingsScreen(
                             .clip(RoundedCornerShape(14.dp))
                             .background(xc.bgElevated)
                             .border(0.8.dp, xc.border, RoundedCornerShape(14.dp))
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                SettingsStateHolder.itemActions[label]?.invoke()
+                            }
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(entry.key, fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink, modifier = Modifier.weight(1f))
-                        Text("使用 ${entry.value} 次", fontSize = 10.sp, color = xc.faint)
+                        Text(label, fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink, modifier = Modifier.weight(1f))
+                        Text("前往 ›", fontSize = 11.sp, color = xc.sub, fontFamily = JetBrainsMono)
                     }
                 }
                 Spacer(Modifier.height(8.dp))
+            } else {
+                Text("☆ 置顶常用功能：点击任意设置项右侧的 ☆ 即可置顶到此处", fontSize = 11.sp, fontFamily = JetBrainsMono, color = xc.faint, modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp))
             }
         }
 
         // ── Section: 外观 ──
-        if (!SettingsStateHolder.hiddenSections.contains("外观") && (searchQuery.isBlank() || "暗色模式 回车发送 外观".contains(searchQuery.trim(), ignoreCase = true))) {
+        if (!SettingsStateHolder.hiddenSections.contains("外观") && (searchQuery.isBlank() || "暗色模式 回车发送 语言 Language 外观".contains(searchQuery.trim(), ignoreCase = true))) {
         SectionHeader(title = "外观", icon = Icons.Outlined.DarkMode, expanded = expanded["外观"] == true, onToggle = { toggle("外观") })
         AnimatedVisibility(visible = expanded["外观"] == true) {
             Column {
@@ -282,6 +287,41 @@ fun SettingsScreen(
                             uncheckedBorderColor = Border
                         )
                     )
+                }
+
+                // 界面语言切换(中文 / English,持久化到 app_language)
+                Row(
+                    Modifier.fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .background(xc.bgElevated, RoundedCornerShape(18.dp))
+                        .border(1.dp, Border, RoundedCornerShape(18.dp))
+                        .heightIn(min = 58.dp)
+                        .padding(start = 20.dp, end = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("界面语言 / Language", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
+                        Text(if (app.appLanguage == "en") "Current: English" else "当前：中文", fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("zh" to "中文", "en" to "EN").forEach { (code, label) ->
+                            val selected = app.appLanguage == code
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (selected) Green else xc.bg)
+                                    .border(1.dp, if (selected) Green else Border, RoundedCornerShape(12.dp))
+                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                        app.updateAppLanguage(code)
+                                    }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(label, fontSize = 13.sp, fontFamily = JetBrainsMono, color = if (selected) Color.White else Sub)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -595,6 +635,9 @@ private fun SectionDivider() {
 @Composable
 private fun SettingRow(label: String, value: String, icon: ImageVector? = null, onClick: () -> Unit) {
     val xc = LocalXinColors.current
+    // 登记跳转动作，供顶部“★ 我的置顶”直接前往。
+    SideEffect { SettingsStateHolder.itemActions[label] = onClick }
+    val isPinned = SettingsStateHolder.pinnedItems.contains(label)
     Row(
         Modifier.fillMaxWidth()
             .padding(vertical = 4.dp)
@@ -602,10 +645,9 @@ private fun SettingRow(label: String, value: String, icon: ImageVector? = null, 
             .border(1.dp, xc.border, RoundedCornerShape(18.dp))
             .heightIn(min = 52.dp)
             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                SettingsStateHolder.recordClick(label)
                 onClick()
             }
-            .padding(start = 16.dp, end = 16.dp, top = 9.dp, bottom = 9.dp),
+            .padding(start = 16.dp, end = 8.dp, top = 9.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (icon != null) {
@@ -622,7 +664,20 @@ private fun SettingRow(label: String, value: String, icon: ImageVector? = null, 
                 )
             }
         }
-        Spacer(Modifier.width(10.dp))
+        IconButton(
+            onClick = {
+                if (isPinned) SettingsStateHolder.pinnedItems.remove(label)
+                else SettingsStateHolder.pinnedItems.add(label)
+            },
+            modifier = Modifier.size(36.dp)
+        ) {
+            Icon(
+                if (isPinned) Icons.Outlined.Star else Icons.Outlined.StarBorder,
+                contentDescription = if (isPinned) "取消置顶" else "置顶",
+                tint = if (isPinned) xc.green else xc.faint,
+                modifier = Modifier.size(18.dp)
+            )
+        }
         Text("›", fontSize = 20.sp, fontFamily = JetBrainsMono, color = xc.faint)
     }
 }

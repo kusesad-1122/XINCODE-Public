@@ -266,6 +266,8 @@ class MainActivity : ComponentActivity() {
                         onNavigateToSkills = { featureOrigins = featureOrigins + ("skills" to "chat"); currentPage = "skills" },
                         onNavigateToProjects = { featureOrigins = featureOrigins + ("projects" to "chat"); currentPage = "projects" },
                         onNavigateToChats = { featureOrigins = featureOrigins + ("chats" to "chat"); currentPage = "chats" },
+                        onNavigateToTerminal = { terminalOrigin = "chat"; currentPage = "terminal" },
+                        onNavigateToAgentScene = { currentPage = "agent_scene" },
                         onClose = { drawerScope.launch { drawerState.close() } },
                         onCreateProject = { name -> app.createProject(name) },
                         onCreateNewInProject = { projectId ->

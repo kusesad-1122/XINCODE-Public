@@ -168,6 +168,10 @@ private val groupSessionMember = HashMap<Long, String>()
     var enterToSend by mutableStateOf(true)
         private set
 
+    /** 界面语言:"zh"=中文,"en"=English。持久化到 Room `app_language` 设置。 */
+    var appLanguage by mutableStateOf("zh")
+        private set
+
     /** Live task cards are isolated by the AgentCore session that published them. */
     private val planStates = SessionPlanStore()
     val planState: PlanState
@@ -620,6 +624,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         agentChatState.thinkingLevel = thinkingLevel
         darkMode = runBlocking { database.settingDao().get("dark_mode")?.toBooleanStrictOrNull() ?: false }
         enterToSend = runBlocking { database.settingDao().get("enter_to_send")?.toBooleanStrictOrNull() ?: true }
+        appLanguage = runBlocking { database.settingDao().get("app_language")?.takeIf { it == "en" || it == "zh" } ?: "zh" }
         // 联网搜索总开关:默认【关闭】,不打开就不能联网获取信息。加载持久化值。
         com.xincode.tools.WebSearchGate.enabled = runBlocking { database.settingDao().get("web_search_enabled")?.toBooleanStrictOrNull() ?: false }
         // Ensure enabledModelIds has at least the active model
@@ -1743,6 +1748,14 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         enterToSend = enabled
         GlobalScope.launch(Dispatchers.IO) {
             database.settingDao().put("enter_to_send", enabled.toString())
+        }
+    }
+
+    fun updateAppLanguage(lang: String) {
+        val normalized = if (lang == "en") "en" else "zh"
+        appLanguage = normalized
+        GlobalScope.launch(Dispatchers.IO) {
+            database.settingDao().put("app_language", normalized)
         }
     }
 

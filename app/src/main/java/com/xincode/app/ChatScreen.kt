@@ -918,6 +918,8 @@ fun ChatScreen(
                     webSearchOn = webSearchOn,
                     projectName = curProj?.name ?: "None",
                     toolAccessMode = toolAccessMode,
+                    mcpNames = mcpNames,
+                    skillNames = skillNames,
                     onClose = { showPlusCard = false },
                     onCamera = {
                         showPlusCard = false
@@ -948,9 +950,13 @@ fun ChatScreen(
                         showPlusCard = false
                         showToolAccessSheet = true
                     },
-                    onConnectors = {
+                    onMcp = {
                         showPlusCard = false
                         showMcpPicker = true
+                    },
+                    onSkill = {
+                        showPlusCard = false
+                        showSkillPicker = true
                     }
                 )
             }
@@ -970,6 +976,15 @@ fun ChatScreen(
                     currentModel = currentModel,
                     availableModels = availableModels,
                     effortLabel = thinkingLevelLabel(thinkingLevel),
+                    permissionLabel = when {
+                        collabMode && permissionMode == com.xincode.security.PermissionMode.ALLOW_ALL -> "协同 · 完全访问"
+                        collabMode -> "协同 · 正常"
+                        permissionMode == com.xincode.security.PermissionMode.ALLOW_ALL -> "完全访问"
+                        permissionMode == com.xincode.security.PermissionMode.PLAN -> "计划模式"
+                        else -> "正常"
+                    },
+                    contextLabel = "已用 ${(contextUsage.ratio * 100).toInt()}%",
+                    collabOn = collabMode,
                     onClose = { showSelectModelSheet = false },
                     onSelectModel = { modelId ->
                         onSwitchModel(modelId)
@@ -978,7 +993,24 @@ fun ChatScreen(
                     onOpenEffort = {
                         showSelectModelSheet = false
                         showEffortSheet = true
-                    }
+                    },
+                    onOpenMode = {
+                        showSelectModelSheet = false
+                        showModeCard = true
+                    },
+                    onOpenStats = {
+                        showSelectModelSheet = false
+                        showStatsPopup = true
+                    },
+                    onOpenEnhance = {
+                        showSelectModelSheet = false
+                        expandCurrentPrompt()
+                    },
+                    onOpenGoal = {
+                        showSelectModelSheet = false
+                        onNavigateToGoal()
+                    },
+                    onToggleCollab = { onSetCollabMode(!collabMode) }
                 )
             }
         }
@@ -1047,6 +1079,60 @@ fun ChatScreen(
                         onMoveSessionToProject(currentSessionId, project.id)
                         showAddToProjectSheet = false
                     }
+                )
+            }
+        }
+
+        // ---- 模式卡片(普通聊天 / 计划模式 / 协作模式，由模型面板“访问权限”进入) ----
+        if (showModeCard) {
+            Popup(
+                alignment = Alignment.BottomStart,
+                offset = IntOffset(0, -70),
+                onDismissRequest = { showModeCard = false }
+            ) {
+                ModeCard(
+                    permissionMode = permissionMode,
+                    collabMode = collabMode,
+                    onPick = { mode, collab ->
+                        onSetCollabMode(collab)
+                        onUpdatePermissionMode(mode)
+                        showModeCard = false
+                    }
+                )
+            }
+        }
+
+        // ---- 上下文用量卡片(由模型面板“上下文用量”进入) ----
+        if (showStatsPopup) {
+            Popup(
+                alignment = Alignment.BottomEnd,
+                offset = IntOffset(0, -70),
+                onDismissRequest = { showStatsPopup = false }
+            ) {
+                ContextStatsCard(
+                    usage = contextUsage,
+                    stats = liveTokenStats,
+                    model = currentModel,
+                    chatState = chatState,
+                    onClose = { showStatsPopup = false }
+                )
+            }
+        }
+
+        // ---- 提示词增强卡片(由模型面板“增强提示词”进入，也可空输入时从灵感入口进入) ----
+        if (showInspirationMenu) {
+            Popup(
+                alignment = Alignment.BottomCenter,
+                offset = IntOffset(0, -76),
+                onDismissRequest = { showInspirationMenu = false }
+            ) {
+                InspirationCard(
+                    initialText = chatState.input.value,
+                    onApply = { combined ->
+                        chatState.input.value = combined
+                        showInspirationMenu = false
+                    },
+                    onDismiss = { showInspirationMenu = false }
                 )
             }
         }
@@ -2678,6 +2764,8 @@ private fun AddToChatSheet(
     webSearchOn: Boolean,
     projectName: String,
     toolAccessMode: String,
+    mcpNames: List<String> = emptyList(),
+    skillNames: List<String> = emptyList(),
     onClose: () -> Unit,
     onCamera: () -> Unit,
     onPhotos: () -> Unit,
@@ -2685,7 +2773,8 @@ private fun AddToChatSheet(
     onToggleWebSearch: () -> Unit,
     onAddProject: () -> Unit,
     onToolAccess: () -> Unit,
-    onConnectors: () -> Unit
+    onMcp: () -> Unit,
+    onSkill: () -> Unit
 ) {
     val xc = LocalXinColors.current
     Column(
@@ -2747,20 +2836,28 @@ private fun AddToChatSheet(
             onClick = onAddProject
         )
 
-        // Action row 4: Tool access
-        AddSheetActionRow(
-            icon = Icons.Outlined.Folder,
-            title = "Tool access",
-            subtitle = toolAccessMode,
-            onClick = onToolAccess
-        )
-
-        // Action row 5: Connectors
+        // Action row 4: MCP (original entry name kept)
         AddSheetActionRow(
             icon = Icons.Outlined.Extension,
-            title = "Connectors",
-            subtitle = "",
-            onClick = onConnectors
+            title = "MCP",
+            subtitle = if (mcpNames.isEmpty()) "连接本地或远程工具服务" else "已配置 ${mcpNames.size} 个服务",
+            onClick = onMcp
+        )
+
+        // Action row 5: Skills (original entry name kept)
+        AddSheetActionRow(
+            icon = Icons.Outlined.Lightbulb,
+            title = "Skills",
+            subtitle = if (skillNames.isEmpty()) "将技能指令添加到输入框" else "已配置 ${skillNames.size} 个技能",
+            onClick = onSkill
+        )
+
+        // Action row 6: 工具权限
+        AddSheetActionRow(
+            icon = Icons.Outlined.Settings,
+            title = "工具权限",
+            subtitle = toolAccessMode,
+            onClick = onToolAccess
         )
 
         Spacer(Modifier.height(16.dp))
@@ -2772,17 +2869,25 @@ private fun SelectModelBottomSheet(
     currentModel: String,
     availableModels: List<String>,
     effortLabel: String,
+    permissionLabel: String,
+    contextLabel: String,
+    collabOn: Boolean,
     onClose: () -> Unit,
     onSelectModel: (String) -> Unit,
-    onOpenEffort: () -> Unit
+    onOpenEffort: () -> Unit,
+    onOpenMode: () -> Unit,
+    onOpenStats: () -> Unit,
+    onOpenEnhance: () -> Unit,
+    onOpenGoal: () -> Unit,
+    onToggleCollab: () -> Unit
 ) {
     val xc = LocalXinColors.current
 
     // Preset / displayed model metadata (matches Screenshot 23:11:53)
     data class ModelItemUi(val id: String, val name: String, val badge: String?, val desc: String)
     val defaultModels = listOf(
-        ModelItemUi("Fable 5.1", "Fable 5.1", "Pro or Max", "For your toughest challenges"),
-        ModelItemUi("Opus 5", "Opus 5", "Pro", "For complex tasks"),
+        ModelItemUi("Fable 5.1", "Fable 5.1", null, "For your toughest challenges"),
+        ModelItemUi("Opus 5", "Opus 5", null, "For complex tasks"),
         ModelItemUi("Sonnet 5", "Sonnet 5", null, "Most efficient for everyday tasks"),
         ModelItemUi("Haiku 4.5", "Haiku 4.5", null, "Fastest for quick answers")
     )
@@ -2914,6 +3019,60 @@ private fun SelectModelBottomSheet(
             Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = null, tint = xc.sub, modifier = Modifier.size(20.dp))
         }
 
+        Spacer(Modifier.height(4.dp))
+        Box(Modifier.fillMaxWidth().height(0.5.dp).background(xc.border))
+        Spacer(Modifier.height(4.dp))
+
+        // ── 更多设置：原有核心功能入口（对应 Claude 样式多出的入口行） ──
+        AddSheetActionRow(
+            icon = Icons.Outlined.Settings,
+            title = "访问权限",
+            subtitle = permissionLabel,
+            onClick = onOpenMode
+        )
+        AddSheetActionRow(
+            icon = Icons.Outlined.Info,
+            title = "上下文用量",
+            subtitle = contextLabel,
+            onClick = onOpenStats
+        )
+        AddSheetActionRow(
+            icon = Icons.Outlined.Lightbulb,
+            title = "增强提示词",
+            subtitle = "优化当前输入",
+            onClick = onOpenEnhance
+        )
+        AddSheetActionRow(
+            icon = Icons.Outlined.Bolt,
+            title = "目标模式",
+            subtitle = "前往 Goal 模式",
+            onClick = onOpenGoal
+        )
+        Row(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onToggleCollab() }
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg), contentAlignment = Alignment.Center) {
+                Icon(Icons.Outlined.Psychology, contentDescription = "多Agent协同", tint = xc.ink, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("多Agent协同", fontFamily = XinUiFont, fontSize = 15.sp, color = xc.ink)
+                Text(if (collabOn) "已开启：主脑+子智能体并行" else "已关闭", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Switch(
+                checked = collabOn,
+                onCheckedChange = { onToggleCollab() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = Color(0xFF2C64E3)
+                )
+            )
+        }
+
         Spacer(Modifier.height(12.dp))
     }
 }
@@ -2926,13 +3085,13 @@ private fun EffortBottomSheet(
 ) {
     val xc = LocalXinColors.current
 
-    data class EffortOption(val level: Int, val label: String, val badge: String?, val badgeColor: Color?, val badgeBg: Color?)
+    data class EffortOption(val level: Int, val label: String)
     val options = listOf(
-        EffortOption(0, "Low", null, null, null),
-        EffortOption(1, "Medium", null, null, null),
-        EffortOption(2, "High", "Default", xc.sub, xc.activeBg),
-        EffortOption(3, "Extra", null, null, null),
-        EffortOption(4, "Max", "1.5× or more usage", Color(0xFF9A5B00), Color(0xFFFFF1D6))
+        EffortOption(0, "Low"),
+        EffortOption(1, "Medium"),
+        EffortOption(2, "High"),
+        EffortOption(3, "Extra"),
+        EffortOption(4, "Max")
     )
 
     Column(
@@ -2974,17 +3133,6 @@ private fun EffortBottomSheet(
                     fontSize = 17.sp,
                     color = if (isSelected) Color(0xFF1E50C0) else xc.ink
                 )
-                if (opt.badge != null) {
-                    Spacer(Modifier.width(10.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(opt.badgeBg ?: xc.activeBg)
-                            .padding(horizontal = 7.dp, vertical = 2.dp)
-                    ) {
-                        Text(opt.badge, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = opt.badgeColor ?: xc.sub)
-                    }
-                }
                 Spacer(Modifier.weight(1f))
                 if (isSelected) {
                     Icon(
@@ -3011,9 +3159,9 @@ private fun ToolAccessBottomSheet(
 
     data class ToolOption(val key: String, val title: String, val desc: String)
     val options = listOf(
-        ToolOption("Auto", "Auto", "Claude chooses for you"),
-        ToolOption("On demand", "On demand", "Load when needed. More messages, lower accuracy"),
-        ToolOption("Always available", "Always available", "Ready from start. Fewer messages, better accuracy")
+        ToolOption("Auto", "Auto", "模型按需自主调用工具"),
+        ToolOption("On demand", "On demand", "需要时加载，消息更多、精度稍低"),
+        ToolOption("Always available", "Always available", "启动即就绪，消息更少、精度更高")
     )
 
     Column(
@@ -3022,7 +3170,7 @@ private fun ToolAccessBottomSheet(
             .navigationBarsPadding()
             .padding(horizontal = 20.dp, vertical = 6.dp)
     ) {
-        // Top bar: ← on left, centered "Tool access"
+        // Top bar: ← on left, centered "工具权限"
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -3031,7 +3179,7 @@ private fun ToolAccessBottomSheet(
                 Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = xc.ink)
             }
             Spacer(Modifier.weight(1f))
-            Text("Tool access", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Text("工具权限", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.width(36.dp))
         }

@@ -24,6 +24,9 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -52,9 +55,10 @@ data class SearchHit(
 )
 
 /**
- * Exact Claude-style mobile sidebar layout:
+ * Claude-style mobile sidebar layout (XINCODE functional entries kept):
  * - Clean editorial "XINCODE" header
- * - Primary items: Chats / Projects / Artifacts
+ * - Primary items: Chats / Projects / IDE (original feature names, Claude styling only)
+ * - Workspace: 像素指挥室 / 终端 / 目标模式 / 群聊房间 / MCP / Skills
  * - Groupings: Projects / Pinned / Recents with bullet points and friendly date
  * - Bottom bar: Left "设置" with user badge + Right "+ New chat" pill capsule
  * - No redundant bottom search bar
@@ -91,6 +95,8 @@ fun SidebarContent(
     onNavigateToSkills: () -> Unit = {},
     onNavigateToProjects: () -> Unit = {},
     onNavigateToChats: () -> Unit = {},
+    onNavigateToTerminal: () -> Unit = {},
+    onNavigateToAgentScene: () -> Unit = {},
     onClose: () -> Unit,
     onSearchMessages: suspend (String) -> List<SearchHit> = { emptyList() },
     goalSessions: List<SessionEntity> = emptyList(),
@@ -137,7 +143,7 @@ fun SidebarContent(
             modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 28.dp, bottom = 18.dp)
         )
 
-        // ── Primary Navigation Items (Chats / Projects / Artifacts) ──
+        // ── Primary Navigation Items (original XINCODE entries, Claude styling only) ──
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -157,10 +163,59 @@ fun SidebarContent(
             )
             ClaudeSidebarNavRow(
                 icon = Icons.Outlined.Code,
-                label = "Artifacts",
+                label = "IDE",
                 selected = false,
                 enabled = true,
                 onClick = { onNavigateToIde(); onClose() }
+            )
+        }
+
+        Spacer(Modifier.height(14.dp))
+        Box(Modifier.fillMaxWidth().height(0.5.dp).background(Divider))
+        Spacer(Modifier.height(8.dp))
+
+        // ── Workspace: original feature entries (pixel control room, terminal, goal, rooms, MCP, Skills) ──
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp)
+        ) {
+            ClaudeSidebarSectionTitle("工作台")
+            ClaudeSidebarNavRow(
+                icon = Icons.Outlined.Star,
+                label = "像素指挥室",
+                selected = false,
+                onClick = { onNavigateToAgentScene(); onClose() }
+            )
+            ClaudeSidebarNavRow(
+                icon = Icons.Outlined.Terminal,
+                label = "终端",
+                selected = false,
+                onClick = { onNavigateToTerminal(); onClose() }
+            )
+            ClaudeSidebarNavRow(
+                icon = Icons.Outlined.StarBorder,
+                label = "目标模式",
+                selected = false,
+                onClick = { onNavigateToGoal(); onClose() }
+            )
+            ClaudeSidebarNavRow(
+                icon = Icons.Outlined.FolderOpen,
+                label = "群聊房间",
+                selected = false,
+                onClick = { onOpenGroupRooms(); onClose() }
+            )
+            ClaudeSidebarNavRow(
+                icon = Icons.Outlined.Extension,
+                label = "MCP",
+                selected = false,
+                onClick = { onNavigateToMcp(); onClose() }
+            )
+            ClaudeSidebarNavRow(
+                icon = Icons.Outlined.Lightbulb,
+                label = "Skills",
+                selected = false,
+                onClick = { onNavigateToSkills(); onClose() }
             )
         }
 
