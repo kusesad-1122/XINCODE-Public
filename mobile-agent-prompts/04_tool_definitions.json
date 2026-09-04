@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://xincode.app/schemas/tools/v1",
   "title": "XINCODE Tool Definitions (this repo, not DeepSeek desktop)",
-  "description": "Mirrors ToolRegistry + parametersSchema + SecurityGateImpl + SelfProtect in this workspace. Render {{VARIABLE}} by string substitution, then JSON-parse to validate. Tool names must be copied verbatim; canonicalName/suggest only corrects order/separator variants on unique hit.",
+  "description": "Mirrors ToolRegistry + parametersSchema + SecurityGateImpl + SelfProtect in this workspace. Render all placeholder slots by string substitution, then JSON-parse to validate. Tool names must be copied verbatim; canonicalName/suggest only corrects order/separator variants on unique hit.",
   "metadata": {
     "agent_name": "{{AGENT_NAME}}",
     "workspace_root": "{{WORKSPACE_ROOT}}",
@@ -139,6 +139,72 @@
       "description": "Accurate now for time-sensitive tasks. Do not derive from session-start anchor.",
       "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow" },
       "input_schema": { "type": "object", "properties": {}, "additionalProperties": false }
+    },
+    {
+      "name": "download_file",
+      "description": "Download URL to local file. Binary-friendly (images/archives); content does not enter context, only path+size. Use web_fetch for page text.",
+      "security": { "capability": "NET", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "url": { "type": "string" }, "path": { "type": "string", "description": "Save path; relative resolves against workspace; omit to use URL filename at workspace root" } }, "required": ["url"], "additionalProperties": false }
+    },
+    {
+      "name": "sleep",
+      "description": "Pause N seconds (0.1-30) for polling gaps. Keep short; do not poll background tasks blindly. NOTE: falls in gate UNKNOWN bucket, so ASK mode may pop a confirm card.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "need-confirm-per-gate-default" },
+      "input_schema": { "type": "object", "properties": { "seconds": { "type": "number", "description": "0.1 to 30" } }, "required": ["seconds"], "additionalProperties": false }
+    },
+    {
+      "name": "get_memory_by_title",
+      "description": "Fetch one memory by exact title. Miss returns 5 near-title suggestions; then switch to recall_memory instead of guessing titles.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "need-confirm-per-gate-default" },
+      "input_schema": { "type": "object", "properties": { "title": { "type": "string" } }, "required": ["title"], "additionalProperties": false }
+    },
+    {
+      "name": "skill_manage",
+      "description": "Manage skills table: view/create/patch/edit/remove by name. Installing skills never touches app private DB dirs (SelfProtect).",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["view", "create", "patch", "edit", "remove"] }, "name": { "type": "string" }, "description": { "type": "string" }, "content": { "type": "string" }, "old_string": { "type": "string" }, "new_string": { "type": "string" } }, "required": ["action", "name"], "additionalProperties": false }
+    },
+    {
+      "name": "describe_image",
+      "description": "Describe local image or http(s) URL via vision sub-model, optional question. Gated: hidden until a vision endpoint is configured.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow-when-available" },
+      "input_schema": { "type": "object", "properties": { "image": { "type": "string" }, "question": { "type": "string" } }, "required": ["image"], "additionalProperties": false }
+    },
+    {
+      "name": "transcribe_audio",
+      "description": "Transcribe local audio file. Gated: hidden until a transcribe/STT endpoint or active provider exists.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow-when-available" },
+      "input_schema": { "type": "object", "properties": { "path": { "type": "string" }, "language": { "type": "string" } }, "required": ["path"], "additionalProperties": false }
+    },
+    {
+      "name": "translate_text",
+      "description": "Translate text to target language; outputs translation only. Gated: hidden until a translate sub-model is configured.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow-when-available" },
+      "input_schema": { "type": "object", "properties": { "text": { "type": "string" }, "target": { "type": "string" } }, "required": ["text", "target"], "additionalProperties": false }
+    },
+    {
+      "name": "ask_reasoning",
+      "description": "Delegate hard reasoning to reason sub-model with full context. Gated: hidden until a reason endpoint is configured.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow-when-available" },
+      "input_schema": { "type": "object", "properties": { "question": { "type": "string" } }, "required": ["question"], "additionalProperties": false }
+    },
+    {
+      "name": "code_graph",
+      "description": "Symbol index queries: define/callers/callees/file/status. Falls back to grep when native kernel unavailable on device.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "need-confirm-per-gate-default" },
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["define", "callers", "callees", "file", "status"] }, "name": { "type": "string" }, "path": { "type": "string" } }, "required": ["action"], "additionalProperties": false }
+    },
+    {
+      "name": "cronjob",
+      "description": "Manage timed tasks (WorkManager): create/list/remove with prompt+schedule. Time-sensitive: combine with current_time, not session-start anchor.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "action": { "type": "string", "enum": ["create", "list", "remove"] }, "name": { "type": "string" }, "prompt": { "type": "string" }, "schedule": { "type": "string", "description": "e.g. 30m / 2h / every 1d" }, "deliver": { "type": "string", "enum": ["local", "notify"] }, "id": { "type": "integer" } }, "required": ["action"], "additionalProperties": false }
+    },
+    {
+      "name": "wolfpack_run",
+      "description": "Run multiple independent sub-tasks in parallel batches and return combined results (memory-capped concurrency, per-task timeout). Prefer dispatch_agents for role-typed delegation.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "tasks": { "type": "array", "items": { "type": "object", "properties": { "task": { "type": "string" } }, "required": ["task"] } } }, "required": ["tasks"], "additionalProperties": false }
     }
   ],
   "mapping_notes": {
