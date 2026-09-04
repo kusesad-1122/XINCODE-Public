@@ -1077,7 +1077,7 @@ class OpenAiClient(
 
     /** Read Gemini's signature from direct, function, or OpenAI extra_content shapes. */
     private fun JSONObject.optThoughtSignature(): String {
-        optStr("thought_signature").ifBlank {
+        return optStr("thought_signature").ifBlank {
             val extra = optJSONObject("extra_content") ?: optJSONObject("extraContent")
             val google = extra?.optJSONObject("google") ?: optJSONObject("google")
             google?.optStr("thought_signature").orEmpty()

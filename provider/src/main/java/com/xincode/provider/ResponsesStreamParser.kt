@@ -15,7 +15,7 @@ class ResponsesStreamParser(
         var id: String = "",
         var callId: String = "",
         var name: String = "",
-        var thoughtSignature: String = ""
+        var thoughtSignature: String = "",
         var arguments: String = ""
     )
 
