@@ -1,5 +1,22 @@
 # 更新日志
 
+## [1.13] - 2026-09-04
+
+### 供应商、模型与 MCP 稳定性
+- 修复供应商配置编辑/删除按钮触控区域过近导致的误触，两个操作现在拥有独立的 40dp 触控区域和清晰间距。
+- 重做模型发现：支持 OpenAI 兼容的 data 响应、Google Gemini 的 models 响应、Gemini OpenAI 兼容入口和 x-goog-api-key 鉴权；在线列表成功后替换旧缓存，避免只显示过期默认模型。
+- 修复 Google Gemini 工具调用缺少 thought_signature：签名会随流式响应、assistant tool_calls、断点游标、Room 工具记录和恢复历史完整保留。
+
+### 终端与配置能力
+- 终端增加顶部快捷命令输入、多行命令编辑和展开/收起输入区。
+- 增加强制终止命令能力，普通 Shell、Shizuku 和 Root/chroot 路径分别使用进程句柄、PID 与进程组终止。
+- 每个模型可单独配置上下文窗口、最大输出 token、思考强度（auto/none/minimal/low/medium/high/xhigh/max）和图片输入能力；数据库增加 v46→v47 迁移。
+- 供应商市场增加搜索和侧边分类筛选。
+
+### UI 与项目工作区
+- 包含 Claude 风格 UI 改版：真实 Noto Serif SC 标题字库、空聊天欢迎态、浮动输入岛、Add to chat 底部面板、模型选择底部面板、Projects 页面和新版侧栏。
+- 合并 PR #5 的 mobile-agent-prompts 专用提示词库及 32 个工具 Schema。
+
 ## [1.12.3] - 2026-09-04
 
 ### Claude 桌面端美学重塑与排版彻底解放
