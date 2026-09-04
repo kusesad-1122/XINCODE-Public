@@ -422,6 +422,40 @@ fun ChatScreen(
             withContext(Dispatchers.IO) { processAttachmentUri(context, uri, pendingAttachments) }
         }
     }
+    // 相机拍照后直接复制到应用私有附件目录，保持与相册图片相同的按需读取路径。
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: android.graphics.Bitmap? ->
+        if (bitmap == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val attachment = withContext(Dispatchers.IO) {
+                runCatching {
+                    val dir = java.io.File(context.filesDir, "attachments").apply { mkdirs() }
+                    val file = java.io.File(dir, "camera_${System.currentTimeMillis()}.jpg")
+                    file.outputStream().use { output ->
+                        check(bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 92, output)) { "拍照图片保存失败" }
+                    }
+                    Attachment(
+                        fileName = file.name,
+                        absolutePath = file.absolutePath,
+                        sizeBytes = file.length(),
+                        mimeType = "image/jpeg",
+                        content = ""
+                    )
+                }.getOrNull()
+            }
+            withContext(Dispatchers.Main) {
+                if (attachment != null) pendingAttachments.value = pendingAttachments.value + attachment
+                else Toast.makeText(context, "拍照图片保存失败", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) cameraLauncher.launch(null)
+        else Toast.makeText(context, "需要相机权限才能拍照", Toast.LENGTH_SHORT).show()
+    }
 
     // 「+」卡片 + 文件夹/技能选择器 状态;联网搜索、深度分析 开关。
     var showPlusCard by remember { mutableStateOf(false) }
@@ -784,7 +818,14 @@ fun ChatScreen(
                 AddToChatSheet(
                     webSearchOn = webSearchOn,
                     thinkingEnabled = thinkingEnabled,
-                    onCamera = { Toast.makeText(context, "相机入口将在下一版接入", Toast.LENGTH_SHORT).show() },
+                    onCamera = {
+                        showPlusCard = false
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            cameraLauncher.launch(null)
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    },
                     onPhotos = {
                         showPlusCard = false
                         imageLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
