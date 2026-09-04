@@ -1,7 +1,12 @@
 package com.xincode.app
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,7 +95,7 @@ fun AgentTurnBlock(
                     fontSize = 15.sp,
                     lineHeight = 20.sp,
                     fontFamily = XinSerifFont,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                    fontWeight = FontWeight.SemiBold,
                     color = xc.ink
                 )
             }
@@ -99,9 +104,9 @@ fun AgentTurnBlock(
                 Spacer(Modifier.height(8.dp))
                 Row(
                     modifier = Modifier
-                        .androidx.compose.ui.draw.clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
-                        .androidx.compose.foundation.background(xc.bgElevated)
-                        .androidx.compose.foundation.border(0.5.dp, xc.border, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(xc.bgElevated)
+                        .border(0.5.dp, xc.border, RoundedCornerShape(12.dp))
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
