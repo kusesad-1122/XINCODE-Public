@@ -61,7 +61,7 @@ fun MarkdownContent(content: String, modifier: Modifier = Modifier) {
                         color = xc.ink,
                         fontFamily = XinSerifFont,
                         lineHeight = (size + 8).sp,
-                        letterSpacing = (-0.3).sp,
+                        letterSpacing = 0.sp,
                         modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                     )
                 }

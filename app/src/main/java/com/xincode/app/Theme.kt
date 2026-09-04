@@ -156,8 +156,13 @@ fun XinTheme(dark: Boolean, content: @Composable () -> Unit) {
     }
 }
 
-/** Classical literary serif font for Claude-style titles, headers, brand, and editorial prompts. */
-val XinSerifFont: FontFamily = FontFamily.Serif
+/** Bundled Chinese serif for stable editorial headings on Android OEM fonts. */
+val XinSerifFont: FontFamily = FontFamily(
+    Font(R.font.noto_serif_sc, FontWeight.Normal),
+    Font(R.font.noto_serif_sc, FontWeight.Medium),
+    Font(R.font.noto_serif_sc, FontWeight.SemiBold),
+    Font(R.font.noto_serif_sc, FontWeight.Bold)
+)
 
 /** Clean humanist system sans for UI buttons, forms, and conversation body. */
 val XinUiFont: FontFamily = FontFamily.SansSerif
@@ -174,14 +179,14 @@ val XinTypography = Typography(
         fontWeight = FontWeight.SemiBold,
         fontSize = 32.sp,
         lineHeight = 40.sp,
-        letterSpacing = (-0.5).sp
+        letterSpacing = 0.sp
     ),
     headlineSmall = androidx.compose.ui.text.TextStyle(
         fontFamily = XinSerifFont,
         fontWeight = FontWeight.SemiBold,
         fontSize = 24.sp,
         lineHeight = 32.sp,
-        letterSpacing = (-0.3).sp
+        letterSpacing = 0.sp
     ),
     titleLarge = androidx.compose.ui.text.TextStyle(
         fontFamily = XinSerifFont,

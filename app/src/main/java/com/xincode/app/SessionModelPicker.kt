@@ -9,7 +9,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -19,25 +25,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.data.AppDatabase
-import com.xincode.data.ProviderConfigEntity
 import com.xincode.provider.OpenAiClient
 import com.xincode.security.KeystoreProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private val Mono = XinUiFont
-
-/**
- * 本对话的供应商/模型选择器。
- *
- * 与「功能模型配置」的区别:这里是**主对话本身**用哪个模型,不是某个内部功能用哪个模型。
- * 选择会写进 sessions.modelProviderConfigId + currentModelId,只影响这一个会话,
- * 下一轮回复立即生效(OpenAiClient 按会话解析覆盖)。
- */
+/** Bottom-sheet model picker for the current conversation. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionModelPicker(
     database: AppDatabase,
@@ -51,8 +51,8 @@ fun SessionModelPicker(
     val app = LocalContext.current.applicationContext as XincodeApplication
     val configs by database.providerConfigDao().observeAll().collectAsState(initial = emptyList())
 
-    var pickedProvider by remember { mutableStateOf<Long?>(null) }  // null = 跟随全局
-    var pickedModel by remember { mutableStateOf("") }              // "" = 该供应商默认模型
+    var pickedProvider by remember { mutableStateOf<Long?>(null) }
+    var pickedModel by remember { mutableStateOf("") }
     var fetched by remember { mutableStateOf<List<String>>(emptyList()) }
     var loading by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("") }
@@ -60,154 +60,175 @@ fun SessionModelPicker(
     var loadedSession by remember { mutableStateOf(false) }
 
     LaunchedEffect(sessionId) {
-        val s = withContext(Dispatchers.IO) { database.sessionDao().getById(sessionId) }
-        pickedProvider = s?.modelProviderConfigId
-        pickedModel = s?.currentModelId?.trim().orEmpty()
+        val session = withContext(Dispatchers.IO) { database.sessionDao().getById(sessionId) }
+        pickedProvider = session?.modelProviderConfigId
+        pickedModel = session?.currentModelId?.trim().orEmpty()
         loadedSession = true
     }
 
-    // When following the global active provider, its model list is still selectable. A deleted
-    // explicit provider also falls back visually to active instead of leaving a dead picker.
     val cfg = configs.firstOrNull { it.id == pickedProvider }
         ?: configs.firstOrNull { it.isActive }
-    val enabled = remember(cfg) {
-        runCatching {
-            val arr = org.json.JSONArray(cfg?.enabledModelIds ?: "[]")
-            (0 until arr.length()).map { arr.getString(it) }
-        }.getOrDefault(emptyList())
-    }
-    val models = remember(enabled, fetched, cfg) {
-        (enabled + fetched + listOfNotNull(cfg?.model?.takeIf { it.isNotBlank() })).distinct()
-    }
+    val configuredModels = cfg?.enabledModelIds.orEmpty()
+    val models = (configuredModels + fetched + listOfNotNull(cfg?.model?.takeIf { it.isNotBlank() })).distinct()
 
-    fun refresh() {
-        val c = cfg ?: return
-        val key = runCatching {
-            keystore.decrypt(Base64.decode(c.apiKeyEnc, Base64.NO_WRAP))
-        }.getOrNull()
-        if (key.isNullOrBlank()) { status = "✗ 这个配置没有可用的 API Key"; return }
-        loading = true; status = ""
+    fun refreshModels() {
+        val current = cfg ?: return
+        val key = runCatching { keystore.decrypt(Base64.decode(current.apiKeyEnc, Base64.NO_WRAP)) }.getOrNull()
+        if (key.isNullOrBlank()) {
+            status = "✗ 当前配置没有可用的 API Key"
+            return
+        }
+        loading = true
+        status = ""
         scope.launch {
-            val r = openAiClient.listModels(c.baseUrl, key)
-            fetched = r.getOrDefault(emptyList())
+            val result = openAiClient.listModels(current.baseUrl, key)
+            fetched = result.getOrDefault(emptyList())
             loading = false
-            status = if (fetched.isEmpty()) "✗ 拉不到列表,可手填模型 ID" else "✓ 拉到 ${fetched.size} 个"
+            status = if (fetched.isEmpty()) "✗ 拉不到模型列表，可手填模型 ID" else "✓ 已加载 ${fetched.size} 个模型"
         }
     }
 
     if (!loadedSession) return
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onClose,
-        title = { Text("本对话模型", fontFamily = Mono, color = xc.ink, fontSize = 14.sp) },
-        text = {
-            Column(Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState())) {
-                Text(
-                    "只影响当前对话,下一轮回复立即生效;其他会话不受影响。",
-                    fontSize = 9.sp, fontFamily = Mono, color = xc.faint, lineHeight = 13.sp
-                )
-                Spacer(Modifier.height(8.dp))
-                Text("供应商", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
-
-                Row(Modifier.fillMaxWidth()
-                    .background(if (pickedProvider == null) xc.activeBg else xc.bg)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        pickedProvider = null; pickedModel = ""; fetched = emptyList(); status = ""
-                    }.padding(6.dp)) {
-                    Text("跟随全局活跃配置", fontSize = 11.sp, fontFamily = Mono,
-                        color = if (pickedProvider == null) xc.green else xc.sub)
+        containerColor = xc.bg,
+        scrimColor = Color.Black.copy(alpha = 0.32f),
+        dragHandle = {
+            Box(Modifier.width(36.dp).height(4.dp).background(xc.faint.copy(alpha = 0.65f), RoundedCornerShape(2.dp)))
+        }
+    ) {
+        Column(
+            Modifier.fillMaxWidth().fillMaxHeight(0.86f).navigationBarsPadding()
+                .padding(horizontal = 18.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("选择模型", fontFamily = XinSerifFont, fontWeight = FontWeight.SemiBold, fontSize = 28.sp, color = xc.ink)
+                Spacer(Modifier.weight(1f))
+                IconButton(onClick = onClose, modifier = Modifier.size(42.dp)) {
+                    Icon(Icons.Outlined.Close, contentDescription = "关闭", tint = xc.ink)
                 }
-                configs.forEach { c ->
-                    Row(Modifier.fillMaxWidth()
-                        .background(if (pickedProvider == c.id) xc.activeBg else xc.bg)
-                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                            pickedProvider = c.id; pickedModel = ""; fetched = emptyList(); status = ""
-                        }.padding(6.dp)) {
-                        Text(c.name, fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
-                    }
+            }
+            Text("Select model · 只影响当前会话，下一轮回复立即生效", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub)
+            Spacer(Modifier.height(16.dp))
+
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                Text("供应商", fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = xc.sub)
+                Spacer(Modifier.height(6.dp))
+                ModelPickerRow(
+                    title = "跟随全局活跃配置",
+                    subtitle = configs.firstOrNull { it.isActive }?.name ?: "尚未配置供应商",
+                    selected = pickedProvider == null,
+                    onClick = { pickedProvider = null; pickedModel = ""; fetched = emptyList(); status = "" }
+                )
+                configs.forEach { provider ->
+                    ModelPickerRow(
+                        title = provider.name,
+                        subtitle = provider.baseUrl,
+                        selected = pickedProvider == provider.id,
+                        onClick = { pickedProvider = provider.id; pickedModel = ""; fetched = emptyList(); status = "" }
+                    )
                 }
 
                 if (cfg != null) {
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(18.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("模型", fontSize = 11.sp, fontFamily = Mono, color = xc.sub,
-                            modifier = Modifier.weight(1f))
-                        Text(
-                            if (loading) "拉取中…" else "刷新列表",
-                            fontSize = 10.sp, fontFamily = Mono,
-                            color = if (loading) xc.faint else xc.green,
-                            modifier = Modifier.clickable(
-                                indication = null, interactionSource = remember { MutableInteractionSource() }
-                            ) { if (!loading) refresh() }
-                        )
+                        Column(Modifier.weight(1f)) {
+                            Text("模型", fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = xc.sub)
+                            Text(cfg.name, fontFamily = XinUiFont, fontSize = 11.sp, color = xc.faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        TextButton(onClick = { if (!loading) refreshModels() }, enabled = !loading) {
+                            Icon(Icons.Outlined.Refresh, contentDescription = "刷新模型", modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(if (loading) "拉取中" else "刷新列表", fontFamily = XinUiFont)
+                        }
                     }
                     if (status.isNotBlank()) {
-                        Text(status, fontSize = 9.sp, fontFamily = Mono,
-                            color = if (status.startsWith("✓")) xc.green else xc.red)
+                        Text(status, fontFamily = XinUiFont, fontSize = 11.sp, color = if (status.startsWith("✓")) xc.green else xc.red)
                     }
-                    Row(Modifier.fillMaxWidth()
-                        .background(if (pickedModel.isBlank()) xc.activeBg else xc.bg)
-                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                            pickedModel = ""
-                        }.padding(6.dp)) {
-                        Text("用该供应商默认模型", fontSize = 11.sp, fontFamily = Mono, color = xc.sub)
+                    Spacer(Modifier.height(4.dp))
+                    ModelPickerRow(
+                        title = "使用供应商默认模型",
+                        subtitle = cfg.model.ifBlank { "未设置默认模型" },
+                        selected = pickedModel.isBlank(),
+                        onClick = { pickedModel = "" }
+                    )
+                    models.forEach { modelId ->
+                        ModelPickerRow(
+                            title = modelId,
+                            subtitle = if (modelId == cfg.model) "供应商默认模型" else "可用模型",
+                            selected = pickedModel == modelId,
+                            onClick = { pickedModel = modelId }
+                        )
                     }
-                    models.forEach { m ->
-                        Row(Modifier.fillMaxWidth()
-                            .background(if (pickedModel == m) xc.activeBg else xc.bg)
-                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                pickedModel = m
-                            }.padding(6.dp)) {
-                            Text(m, fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text("拉不到就手填模型 ID", fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
+                    Spacer(Modifier.height(10.dp))
+                    Text("没有列表时手动添加", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f)) {
-                            TextField(
-                                value = manualId, onValueChange = { manualId = it }, singleLine = true,
-                                placeholder = { Text("例如 deepseek-chat", fontSize = 11.sp, fontFamily = Mono, color = xc.faint) },
-                                modifier = Modifier.fillMaxWidth().border(0.5.dp, xc.border, RoundedCornerShape(4.dp)),
-                                colors = TextFieldDefaults.colors(
-                                    focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
-                                    cursorColor = xc.ink, focusedTextColor = xc.ink, unfocusedTextColor = xc.ink,
-                                    focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
-                                ),
-                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontFamily = Mono)
-                            )
-                        }
-                        Text("加入", fontSize = 11.sp, fontFamily = Mono, color = xc.green,
-                            modifier = Modifier
-                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                    val id = manualId.trim()
-                                    if (id.isNotBlank()) {
-                                        if (id !in models) fetched = fetched + id
-                                        pickedModel = id
-                                        manualId = ""
-                                    }
-                                }
-                                .padding(horizontal = 10.dp, vertical = 8.dp))
+                        TextField(
+                            value = manualId,
+                            onValueChange = { manualId = it },
+                            modifier = Modifier.weight(1f).border(1.dp, xc.border, RoundedCornerShape(12.dp)),
+                            singleLine = true,
+                            placeholder = { Text("例如 deepseek-chat", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.faint) },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = xc.bgElevated,
+                                unfocusedContainerColor = xc.bgElevated,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                focusedTextColor = xc.ink,
+                                unfocusedTextColor = xc.ink,
+                                cursorColor = xc.green
+                            ),
+                            textStyle = androidx.compose.ui.text.TextStyle(fontFamily = XinUiFont, fontSize = 13.sp)
+                        )
+                        TextButton(onClick = {
+                            val id = manualId.trim()
+                            if (id.isNotBlank()) {
+                                if (id !in models) fetched = fetched + id
+                                pickedModel = id
+                                manualId = ""
+                            }
+                        }) { Text("添加", fontFamily = XinUiFont, color = xc.green) }
                     }
                 }
+                Spacer(Modifier.height(14.dp))
             }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                val providerId = pickedProvider?.takeIf { id -> configs.any { it.id == id } }
-                app.switchSessionModel(sessionId, providerId, pickedModel)
-                onClose()
-            }) { Text("保存", fontFamily = Mono, color = xc.green) }
-        },
-        dismissButton = {
-            Row {
+
+            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { app.clearSessionModelOverride(sessionId); onClose() }) {
+                    Text("清除覆盖", fontFamily = XinUiFont, color = xc.red)
+                }
+                TextButton(onClick = onClose) { Text("取消", fontFamily = XinUiFont, color = xc.sub) }
                 TextButton(onClick = {
-                    app.clearSessionModelOverride(sessionId)
+                    val providerId = pickedProvider?.takeIf { id -> configs.any { it.id == id } }
+                    app.switchSessionModel(sessionId, providerId, pickedModel)
                     onClose()
-                }) { Text("清除覆盖", fontFamily = Mono, color = xc.red) }
-                TextButton(onClick = onClose) { Text("取消", fontFamily = Mono, color = xc.sub) }
+                }) { Text("保存", fontFamily = XinUiFont, fontWeight = FontWeight.Medium, color = xc.green) }
             }
-        },
-        containerColor = xc.bg
-    )
+        }
+    }
+}
+
+@Composable
+private fun ModelPickerRow(
+    title: String,
+    subtitle: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val xc = LocalXinColors.current
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) xc.activeBg else Color.Transparent)
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontFamily = XinUiFont, fontSize = 14.sp, color = xc.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle.isNotBlank()) Text(subtitle, fontFamily = XinUiFont, fontSize = 11.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (selected) Text("✓", fontFamily = XinUiFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = xc.green)
+    }
 }

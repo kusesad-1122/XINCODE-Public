@@ -49,40 +49,11 @@ fun AgentTurnBlock(
     val hasReasoning = assistant?.reasoning?.isNotBlank() == true
     var toolsExpanded by remember(group.key) { mutableStateOf(toolCount <= 1) }
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .padding(vertical = 10.dp)
+            .padding(horizontal = 4.dp, vertical = 12.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .width(48.dp)
-                .fillMaxHeight()
-        ) {
-            Canvas(Modifier.fillMaxHeight().width(48.dp)) {
-                val x = size.width / 2f
-                drawLine(
-                    color = xc.border,
-                    start = androidx.compose.ui.geometry.Offset(x, 42.dp.toPx()),
-                    end = androidx.compose.ui.geometry.Offset(x, size.height),
-                    strokeWidth = 1.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-            }
-            ProviderAvatar(
-                supplierId = supplierId,
-                size = 42.dp,
-                contentDescription = "$assistantName 供应商图标",
-                modifier = Modifier.align(Alignment.TopCenter)
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 4.dp, end = 4.dp)
-        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     "✦",
@@ -179,7 +150,6 @@ fun AgentTurnBlock(
             assistant?.takeIf { !isStreaming }?.let { message ->
                 MessageActionsRow(message.content, onRegenerate)
             }
-        }
     }
 }
 

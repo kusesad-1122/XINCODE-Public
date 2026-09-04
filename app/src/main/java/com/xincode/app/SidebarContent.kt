@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AddComment
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
@@ -85,6 +86,7 @@ fun SidebarContent(
     onNavigateToGoal: () -> Unit = {},
     onNavigateToMcp: () -> Unit = {},
     onNavigateToSkills: () -> Unit = {},
+    onNavigateToProjects: () -> Unit = {},
     onClose: () -> Unit,
     onSearchMessages: suspend (String) -> List<SearchHit> = { emptyList() },
     // ---- Goal/Work 模式 ----
@@ -121,43 +123,39 @@ fun SidebarContent(
     Column(
         Modifier
             .fillMaxHeight()
-            .widthIn(max = 320.dp)
-            .fillMaxWidth(0.82f)
+            .widthIn(max = 360.dp)
+            .fillMaxWidth(0.94f)
             .background(Bg)
     ) {
-        // ── Logo ──
-        Text(
-            "XINCODE",
-            fontFamily = FontFamily.Serif,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 22.sp,
-            color = Ink,
-            letterSpacing = 0.08.sp,
-            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 16.dp)
-        )
-
-        // ── New session capsule ──
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 12.dp)
-                .height(40.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(Ink)
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                    onCreateNew(); onClose()
-                }
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(Icons.Filled.Add, null, Modifier.size(16.dp), tint = Bg)
-            Spacer(Modifier.width(8.dp))
-            Text("新对话", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Bg, letterSpacing = 0.02.sp)
+        // ── Brand and primary navigation ──
+        Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 12.dp)) {
+            Text(
+                "XINCODE",
+                fontFamily = XinSerifFont,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 30.sp,
+                lineHeight = 34.sp,
+                color = Ink,
+                letterSpacing = 0.sp
+            )
+            Spacer(Modifier.height(3.dp))
+            Text("个人 Agent 工作台", fontFamily = XinUiFont, fontSize = 12.sp, color = Sub)
+        }
+        Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            SidebarMainRow("Chats", Icons.Outlined.AddComment, selected = true) { onClose() }
+            SidebarMainRow("Projects", Icons.Outlined.FolderOpen) { onNavigateToProjects(); onClose() }
+            SidebarMainRow("Artifacts", Icons.Outlined.Code, enabled = false) {}
         }
 
-        Spacer(Modifier.height(12.dp))
-
-        // ── Primary navigation ──
+        Spacer(Modifier.height(18.dp))
+        Text(
+            "工作区",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = XinUiFont,
+            color = Sub,
+            modifier = Modifier.padding(start = 22.dp, bottom = 6.dp)
+        )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -366,7 +364,24 @@ fun SidebarContent(
             } // end else (non-search branch)
         }
 
-        // ── Settings ──
+        // ── New chat and settings ──
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .heightIn(min = 48.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(Ink)
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                    onCreateNew(); onClose()
+                }
+                .padding(horizontal = 18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp), tint = Bg)
+            Spacer(Modifier.width(10.dp))
+            Text("New chat", fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = XinUiFont, color = Bg)
+        }
         Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(0.5.dp).background(Divider))
         Row(
             modifier = Modifier.fillMaxWidth().height(36.dp)
@@ -716,6 +731,32 @@ private fun ProjectHeaderRow(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SidebarMainRow(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean = false,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val xc = LocalXinColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (selected) xc.activeBg else Color.Transparent)
+            .clickable(enabled = enabled, indication = null, interactionSource = remember { MutableInteractionSource() }) { onClick() }
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = label, modifier = Modifier.size(20.dp), tint = if (enabled) xc.ink else xc.faint)
+        Spacer(Modifier.width(14.dp))
+        Text(label, fontSize = 15.sp, fontFamily = XinUiFont, fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            color = if (enabled) xc.ink else xc.faint)
     }
 }
 

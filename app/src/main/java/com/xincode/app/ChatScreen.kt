@@ -52,13 +52,16 @@ import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Psychology
 import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.MicNone
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Send
@@ -67,6 +70,8 @@ import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -276,6 +281,7 @@ private fun XinIcon(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     chatState: ChatStateLike,
@@ -513,52 +519,64 @@ fun ChatScreen(
         }
     }
 
+    val hasMessages = chatState.messages.isNotEmpty()
     Column(Modifier.fillMaxSize().background(Bg)) {
-        // ---- top bar ----
+        // ---- Claude-style top bar: hamburger, quiet title, settings/actions ----
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             ChatActionIcon(
-                icon = Icons.Outlined.ArrowBack,
-                contentDescription = "返回会话列表",
+                icon = Icons.Outlined.Menu,
+                contentDescription = "打开侧边栏",
                 onClick = onOpenDrawer
             )
-            Column(
-                Modifier
-                    .weight(1f)
-                    .padding(horizontal = 8.dp)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        showMainMenu = true
-                        effortExpanded = false
-                    }
-            ) {
-                Text(
-                    conversationTitle,
-                    fontSize = 22.sp,
-                    lineHeight = 26.sp,
-                    fontFamily = XinSerifFont,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Ink,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    assistantSubtitle(assistantName, currentModel, providerName),
-                    fontSize = 12.sp,
-                    lineHeight = 17.sp,
-                    fontFamily = XinUiFont,
-                    color = Sub,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+            if (hasMessages) {
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(horizontal = 10.dp)
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            showMainMenu = true
+                            effortExpanded = false
+                        }
+                ) {
+                    Text(
+                        conversationTitle,
+                        fontSize = 20.sp,
+                        lineHeight = 25.sp,
+                        fontFamily = XinSerifFont,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Ink,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        assistantSubtitle(assistantName, currentModel, providerName),
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        fontFamily = XinUiFont,
+                        color = Sub,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            ChatActionIcon(
+                icon = Icons.Outlined.Settings,
+                contentDescription = "会话设置",
+                onClick = { showTopMenu = true }
+            )
+            if (hasMessages) {
+                ChatActionIcon(
+                    icon = Icons.Outlined.AddComment,
+                    contentDescription = "新建聊天",
+                    onClick = onNewChat
                 )
             }
             Box {
-                ChatActionIcon(
-                    icon = Icons.Outlined.MoreVert,
-                    contentDescription = "更多会话操作",
-                    onClick = { showTopMenu = true }
-                )
                 DropdownMenu(
                     expanded = showTopMenu,
                     onDismissRequest = { showTopMenu = false },
@@ -586,11 +604,6 @@ fun ChatScreen(
                     )
                 }
             }
-            ChatActionIcon(
-                icon = Icons.Outlined.AddComment,
-                contentDescription = "新建聊天",
-                onClick = onNewChat
-            )
         }
         Box(Modifier.fillMaxWidth().height(0.5.dp).background(Border))
 
@@ -617,11 +630,7 @@ fun ChatScreen(
         ) {
             if (turnGroups.isEmpty()) {
                 item(key = "claude_greeting_hero") {
-                    ClaudeGreetingHero(
-                        onSelectPrompt = { prompt ->
-                            chatState.input.value = prompt
-                        }
-                    )
+                    ClaudeGreetingHero()
                 }
             }
             items(turnGroups, key = { it.key }) { group ->
@@ -762,30 +771,42 @@ fun ChatScreen(
             )
         }
 
-        // ---- 「+」卡片:上排 图片/文件/文件夹,下排 skill/MCP/联网搜索/深度分析 ----
+        // ---- 「+」底部抽屉:媒体、搜索、记忆和工具权限 ----
         if (showPlusCard) {
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp)
-                    .background(Bg, RoundedCornerShape(16.dp))
-                    .border(1.dp, Color(0x1A1A1A17), RoundedCornerShape(16.dp))
-                    .padding(12.dp)
+            ModalBottomSheet(
+                onDismissRequest = { showPlusCard = false },
+                containerColor = Bg,
+                scrimColor = Color.Black.copy(alpha = 0.32f),
+                dragHandle = {
+                    Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Faint.copy(alpha = 0.6f)))
+                }
             ) {
-                // 上排:图片 / 文件 / 文件夹
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    PlusAction(Icons.Outlined.Image, "图片", Ink, Sub) { showPlusCard = false; imageLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
-                    PlusAction(Icons.Outlined.Description, "文件", Ink, Sub) { showPlusCard = false; attachLauncher.launch(arrayOf("*/*")) }
-                    PlusAction(Icons.Outlined.Folder, "文件夹", Ink, Sub) { showPlusCard = false; showFolderPicker = true }
-                }
-                Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(0.5.dp).background(Border))
-                // 下排:skill / MCP / 联网搜索 / 深度分析
-                PlusRow(Icons.Outlined.Bolt, "Skill", "选择技能,在输入框生成 /技能名", Ink, Sub, null) { showPlusCard = false; showSkillPicker = true }
-                PlusRow(Icons.Outlined.Extension, "MCP", "选择 MCP 服务器,生成 @服务器 引用", Ink, Sub, null) { showPlusCard = false; showMcpPicker = true }
-                PlusRow(Icons.Outlined.Public, "联网搜索", if (webSearchOn) "已开启" else "已关闭(不打开就不能联网获取信息)", Ink, Sub, webSearchOn) {
-                    webSearchOn = !webSearchOn; onSetWebSearchEnabled(webSearchOn)
-                }
-                PlusRow(Icons.Outlined.Psychology, "深度分析", if (thinkingEnabled) "已开启(深度思考)" else "已关闭", Ink, Sub, thinkingEnabled) {
-                    val next = !thinkingEnabled; onThinkingEnabledChange(next); if (next) onThinkingLevelChange(4)
-                }
+                AddToChatSheet(
+                    webSearchOn = webSearchOn,
+                    thinkingEnabled = thinkingEnabled,
+                    onCamera = { Toast.makeText(context, "相机入口将在下一版接入", Toast.LENGTH_SHORT).show() },
+                    onPhotos = {
+                        showPlusCard = false
+                        imageLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                    onFiles = {
+                        showPlusCard = false
+                        attachLauncher.launch(arrayOf("*/*"))
+                    },
+                    onSkill = { showPlusCard = false; showSkillPicker = true },
+                    onMcp = { showPlusCard = false; showMcpPicker = true },
+                    onFolder = { showPlusCard = false; showFolderPicker = true },
+                    onToolAccess = { showPlusCard = false; showModeCard = true },
+                    onToggleWebSearch = {
+                        webSearchOn = !webSearchOn
+                        onSetWebSearchEnabled(webSearchOn)
+                    },
+                    onToggleThinking = {
+                        val next = !thinkingEnabled
+                        onThinkingEnabledChange(next)
+                        if (next) onThinkingLevelChange(4)
+                    }
+                )
             }
         }
         if (showFolderPicker) {
@@ -850,12 +871,31 @@ fun ChatScreen(
         Box(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp)
-                .padding(bottom = 12.dp)
-                .border(1.dp, Border, RoundedCornerShape(28.dp))
-                .background(xc.bgElevated, RoundedCornerShape(28.dp))
+                .padding(horizontal = 14.dp)
+                .padding(bottom = 14.dp)
+                .clip(RoundedCornerShape(28.dp))
+                .background(xc.bgElevated)
+                .border(0.8.dp, Border, RoundedCornerShape(28.dp))
         ) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                if (!hasMessages) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("XINCODE Agent", fontFamily = XinSerifFont, fontSize = 13.sp, color = Ink)
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "模型设置",
+                            fontFamily = XinUiFont,
+                            fontSize = 11.sp,
+                            color = Green,
+                            modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                onNavigateToSettings()
+                            }
+                        )
+                    }
+                }
                 // Row 1: text field
                 TextField(
                     value = chatState.input.value,
@@ -1030,28 +1070,45 @@ fun ChatScreen(
                     }
                 }
 
-                // Row 2: toolbar
+                // Claude-style composer toolbar: attachment, model chip, then quiet utility actions
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
+                    ChatActionIcon(
+                        icon = Icons.Outlined.Add,
+                        contentDescription = "添加到聊天",
+                        tint = if (showPlusCard) Green else Ink,
+                        onClick = { showPlusCard = !showPlusCard }
+                    )
+                    Row(
                         modifier = Modifier
-                            .size(40.dp)
-                            .clickable(
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() }
-                            ) { showModeCard = !showModeCard },
-                        contentAlignment = Alignment.Center
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(xc.bg)
+                            .border(0.8.dp, Border, RoundedCornerShape(18.dp))
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                onOpenConversationModelPicker()
+                            }
+                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        ProviderAvatar(
-                            supplierId = supplierId,
-                            size = 36.dp,
-                            contentDescription = "切换聊天模式"
+                        Text(
+                            modelDisplayName.ifBlank { "选择模型" },
+                            fontSize = 12.sp,
+                            fontFamily = XinUiFont,
+                            color = Ink,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
+                        Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = "选择模型", tint = Sub, modifier = Modifier.size(16.dp))
                     }
-
+                    ChatActionIcon(
+                        icon = Icons.Outlined.Psychology,
+                        contentDescription = "聊天模式",
+                        tint = if (showModeCard) Green else Ink,
+                        onClick = { showModeCard = !showModeCard }
+                    )
                     ChatActionIcon(
                         icon = Icons.Outlined.Search,
                         contentDescription = if (webSearchOn) "关闭联网搜索" else "开启联网搜索",
@@ -1062,7 +1119,6 @@ fun ChatScreen(
                             onSetWebSearchEnabled(webSearchOn)
                         }
                     )
-
                     ChatActionIcon(
                         icon = if (expandingPrompt) Icons.Outlined.Close else Icons.Outlined.Lightbulb,
                         contentDescription = if (expandingPrompt) "停止提示词优化" else "灵感与提示词优化",
@@ -1082,39 +1138,21 @@ fun ChatScreen(
                             } else expandCurrentPrompt()
                         }
                     )
-
-                    ChatActionIcon(
-                        icon = Icons.Outlined.Add,
-                        contentDescription = "添加图片、文件或工具",
-                        tint = if (showPlusCard) Green else Ink,
-                        onClick = { showPlusCard = !showPlusCard }
-                    )
-
+                    Spacer(Modifier.weight(1f))
                     ChatActionIcon(
                         icon = Icons.Outlined.MicNone,
                         contentDescription = if (voiceFeedback.active) "完成语音输入" else "语音输入",
                         tint = if (voiceFeedback.active) Red else Ink,
                         onClick = {
                             when {
-                                voiceInputHelper == null -> Toast.makeText(
-                                    context,
-                                    "语音输入组件尚未初始化",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                                voiceState == VoiceInputHelper.State.STARTING ||
-                                    voiceState == VoiceInputHelper.State.LISTENING -> voiceInputHelper.finishListening()
-                                voiceState == VoiceInputHelper.State.PROCESSING -> Toast.makeText(
-                                    context,
-                                    "正在整理识别结果，请稍候",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED ->
-                                    voiceInputHelper.startListening()
+                                voiceInputHelper == null -> Toast.makeText(context, "语音输入组件尚未初始化", Toast.LENGTH_LONG).show()
+                                voiceState == VoiceInputHelper.State.STARTING || voiceState == VoiceInputHelper.State.LISTENING -> voiceInputHelper.finishListening()
+                                voiceState == VoiceInputHelper.State.PROCESSING -> Toast.makeText(context, "正在整理识别结果，请稍候", Toast.LENGTH_SHORT).show()
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> voiceInputHelper.startListening()
                                 else -> micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                             }
                         }
                     )
-
                     ChatActionIcon(
                         icon = Icons.Outlined.DeleteSweep,
                         contentDescription = "清空输入",
@@ -2625,103 +2663,191 @@ private fun UserMessageBubble(
 }
 
 @Composable
-private fun ClaudeGreetingHero(
-    onSelectPrompt: (String) -> Unit
-) {
+private fun ClaudeGreetingHero() {
     val xc = LocalXinColors.current
-    val hour = remember { java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) }
-    val greetingTime = when (hour) {
-        in 5..11 -> "早上好"
-        in 12..13 -> "中午好"
-        in 14..18 -> "下午好"
-        else -> "晚上好"
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 24.dp)
+    Box(
+        modifier = Modifier.fillMaxWidth().height(460.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "✦",
-                fontSize = 15.sp,
-                color = xc.green,
-                modifier = Modifier.padding(end = 6.dp)
-            )
-            Text(
-                "$greetingTime · 探索者",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium,
-                fontFamily = XinUiFont,
-                color = xc.sub,
-                letterSpacing = 0.2.sp
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            "今天想探索什么？",
-            fontSize = 30.sp,
-            lineHeight = 36.sp,
-            fontFamily = XinSerifFont,
-            fontWeight = FontWeight.SemiBold,
-            color = xc.ink,
-            letterSpacing = (-0.5).sp
-        )
-        Spacer(Modifier.height(20.dp))
-
-        // Claude 式 4 个灵动快捷胶囊卡片
-        val prompts = listOf(
-            "✦ 代码架构与演进" to "分析系统分层设计、识别模块解耦方向",
-            "⚡ 编写测试与深度重构" to "设计单元测试用例，重构复杂边界逻辑",
-            "◈ 扩展本地 MCP 工具" to "连接并调试 127.0.0.1 本地 MCP 服务",
-            "⟐ 复杂业务流与调用图" to "梳理核心功能状态机与调用关系链路"
-        )
-
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            prompts.forEach { (title, subtitle) ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(xc.bgElevated)
-                        .border(0.8.dp, xc.border, RoundedCornerShape(16.dp))
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }
-                        ) {
-                            onSelectPrompt(title.substringAfter(" ").trim())
-                        }
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            title,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            fontFamily = XinUiFont,
-                            color = xc.ink
-                        )
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            subtitle,
-                            fontSize = 11.sp,
-                            fontFamily = XinUiFont,
-                            color = xc.sub,
-                            lineHeight = 15.sp
-                        )
-                    }
-                    Text(
-                        "→",
-                        fontSize = 15.sp,
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Canvas(Modifier.size(64.dp)) {
+                val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+                val inner = 8.dp.toPx()
+                val outer = 27.dp.toPx()
+                repeat(12) { index ->
+                    val angle = index * (Math.PI / 6.0)
+                    drawLine(
                         color = xc.green,
-                        fontFamily = XinUiFont,
-                        modifier = Modifier.padding(start = 8.dp)
+                        start = center + androidx.compose.ui.geometry.Offset(
+                            (kotlin.math.cos(angle) * inner).toFloat(),
+                            (kotlin.math.sin(angle) * inner).toFloat()
+                        ),
+                        end = center + androidx.compose.ui.geometry.Offset(
+                            (kotlin.math.cos(angle) * outer).toFloat(),
+                            (kotlin.math.sin(angle) * outer).toFloat()
+                        ),
+                        strokeWidth = 4.dp.toPx(),
+                        cap = StrokeCap.Round
                     )
                 }
             }
+            Spacer(Modifier.height(22.dp))
+            Text(
+                "Evening thoughts",
+                fontFamily = XinSerifFont,
+                fontWeight = FontWeight.Medium,
+                fontSize = 30.sp,
+                lineHeight = 36.sp,
+                color = xc.ink
+            )
         }
     }
 }
 
+
+@Composable
+private fun AddToChatSheet(
+    webSearchOn: Boolean,
+    thinkingEnabled: Boolean,
+    onCamera: () -> Unit,
+    onPhotos: () -> Unit,
+    onFiles: () -> Unit,
+    onSkill: () -> Unit,
+    onMcp: () -> Unit,
+    onFolder: () -> Unit,
+    onToolAccess: () -> Unit,
+    onToggleWebSearch: () -> Unit,
+    onToggleThinking: () -> Unit
+) {
+    val xc = LocalXinColors.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(horizontal = 18.dp, vertical = 4.dp)
+    ) {
+        Text("添加到聊天", fontFamily = XinSerifFont, fontSize = 28.sp, color = xc.ink)
+        Spacer(Modifier.height(4.dp))
+        Text("添加文件、图片或工具，让本轮对话获得更多上下文", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub)
+        Spacer(Modifier.height(18.dp))
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.PhotoCamera, "相机", onCamera)
+            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.Image, "照片", onPhotos)
+            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.Description, "文件", onFiles)
+        }
+        Spacer(Modifier.height(18.dp))
+        AddSheetToggleRow(
+            icon = Icons.Outlined.Public,
+            title = "联网搜索",
+            subtitle = if (webSearchOn) "本轮允许调用联网搜索" else "关闭后不会联网获取信息",
+            checked = webSearchOn,
+            enabled = true,
+            onCheckedChange = { onToggleWebSearch() }
+        )
+        AddSheetToggleRow(
+            icon = Icons.Outlined.Lightbulb,
+            title = "记忆",
+            subtitle = "由当前会话设置控制",
+            checked = true,
+            enabled = false,
+            onCheckedChange = {}
+        )
+        AddSheetToggleRow(
+            icon = Icons.Outlined.Psychology,
+            title = "深度分析",
+            subtitle = if (thinkingEnabled) "已开启深度思考" else "使用普通响应模式",
+            checked = thinkingEnabled,
+            enabled = true,
+            onCheckedChange = { onToggleThinking() }
+        )
+        AddSheetActionRow(Icons.Outlined.Folder, "添加到项目", "整理到项目工作区", onFolder)
+        AddSheetActionRow(Icons.Outlined.Settings, "工具权限", "管理本轮可调用的工具", onToolAccess)
+        AddSheetActionRow(Icons.Outlined.Lightbulb, "选择技能", "将技能指令添加到输入框", onSkill)
+        AddSheetActionRow(Icons.Outlined.Extension, "选择 MCP", "连接本地或远程工具服务", onMcp)
+        Spacer(Modifier.height(12.dp))
+    }
+}
+
+@Composable
+private fun AddSheetMediaCard(
+    modifier: Modifier,
+    icon: ImageVector,
+    title: String,
+    onClick: () -> Unit
+) {
+    val xc = LocalXinColors.current
+    Column(
+        modifier = modifier
+            .heightIn(min = 112.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(xc.bgElevated)
+            .border(1.dp, xc.border, RoundedCornerShape(18.dp))
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            Modifier.size(48.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = title, tint = xc.ink, modifier = Modifier.size(24.dp))
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(title, fontFamily = XinUiFont, fontSize = 13.sp, color = xc.ink)
+    }
+}
+
+@Composable
+private fun AddSheetToggleRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    val xc = LocalXinColors.current
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(42.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = title, tint = xc.ink, modifier = Modifier.size(21.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontFamily = XinUiFont, fontSize = 15.sp, color = xc.ink)
+            Text(subtitle, fontFamily = XinUiFont, fontSize = 11.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+    }
+}
+
+@Composable
+private fun AddSheetActionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    val xc = LocalXinColors.current
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
+            .padding(vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(42.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg), contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = title, tint = xc.ink, modifier = Modifier.size(21.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontFamily = XinUiFont, fontSize = 15.sp, color = xc.ink)
+            Text(subtitle, fontFamily = XinUiFont, fontSize = 11.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = null, tint = xc.sub, modifier = Modifier.size(22.dp))
+    }
+}

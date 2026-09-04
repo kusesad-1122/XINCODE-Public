@@ -9,6 +9,11 @@ XINCODE 主体代码采用 **GPL-3.0-or-later** 许可(见 LICENSE)。除此之�
   - 全文:[`licenses/JetBrainsMono-OFL-1.1.txt`](licenses/JetBrainsMono-OFL-1.1.txt)
   - 位置:`app/src/main/res/font/jetbrains_mono.ttf`
 
+- **Noto Serif SC** — Google Fonts / Noto CJK Contributors。
+  - 许可:SIL Open Font License 1.1。
+  - 全文:[`licenses/NotoSerifSC-OFL-1.1.txt`](licenses/NotoSerifSC-OFL-1.1.txt)
+  - 位置:`app/src/main/res/font/noto_serif_sc.ttf`
+
 ## 像素素材 / Pixel Assets
 
 - **角色 sprite(characters)** — JIK-A-4「MetroCity」免费 topdown 角色包(https://jik-a-4.itch.io/metrocity-free-topdown-character-pack)。

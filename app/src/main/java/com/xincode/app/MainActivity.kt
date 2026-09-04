@@ -23,6 +23,7 @@ import androidx.compose.material3.rememberDrawerState
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -73,7 +74,8 @@ class MainActivity : ComponentActivity() {
                 "mcp" to "chat",
                 "skills" to "chat",
                 "group_rooms" to "chat",
-                "goal" to "chat"
+                "goal" to "chat",
+                "projects" to "chat"
             )) }
             var rootDiagResult by remember { mutableStateOf<RootDiagnosticResult?>(null) }
             var editingIdentityId by remember { mutableStateOf<Long?>(null) }
@@ -228,6 +230,7 @@ class MainActivity : ComponentActivity() {
                 drawerState = drawerState,
                 drawerContent = {
                     ModalDrawerSheet(
+                        modifier = Modifier.widthIn(max = 360.dp),
                         drawerTonalElevation = 0.dp,
                         drawerContainerColor = LocalXinColors.current.bg,
                         drawerShape = RoundedCornerShape(0.dp)
@@ -261,6 +264,7 @@ class MainActivity : ComponentActivity() {
                         onNavigateToGoal = { featureOrigins = featureOrigins + ("goal" to "chat"); currentPage = "goal" },
                         onNavigateToMcp = { featureOrigins = featureOrigins + ("mcp" to "chat"); currentPage = "mcp" },
                         onNavigateToSkills = { featureOrigins = featureOrigins + ("skills" to "chat"); currentPage = "skills" },
+                        onNavigateToProjects = { featureOrigins = featureOrigins + ("projects" to "chat"); currentPage = "projects" },
                         onClose = { drawerScope.launch { drawerState.close() } },
                         onCreateProject = { name -> app.createProject(name) },
                         onCreateNewInProject = { projectId ->
@@ -420,6 +424,23 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                    "projects" -> ProjectsScreen(
+                        projects = projects,
+                        projectSessions = projectSessionsMap,
+                        onBack = { currentPage = featureOrigins["projects"] ?: "chat" },
+                        onCreateProject = { name -> app.createProject(name) },
+                        onCreateNewInProject = { projectId ->
+                            val newId = app.createSessionInProject(projectId)
+                            app.switchToSession(newId)
+                            currentPage = "chat"
+                        },
+                        onSelectSession = { id ->
+                            app.switchToSession(id)
+                            currentPage = "chat"
+                        },
+                        onRenameProject = { id, name -> app.renameProject(id, name) },
+                        onDeleteProject = { id -> app.deleteProject(id) }
+                    )
                     "settings" -> SettingsScreen(
                         onBack = { currentPage = "chat" },
                         onNavigateToSupplierConfig = { currentPage = "supplier" },
@@ -732,7 +753,7 @@ private fun parentPageOf(page: String): String = when (page) {
     "supplier", "model_market", "git_config", "audit", "memory_storage", "curated_memory",
     "cron_jobs", "aux_models", "function_models", "sub_agents", "env_config", "context_compress", "about",
     "lan_devices", "logs", "usage_stats", "kanban", "profiles", "code_index" -> "settings"
-    "skills", "mcp", "group_rooms", "ide_dashboard", "goal" -> "chat"
+    "skills", "mcp", "group_rooms", "ide_dashboard", "goal", "projects" -> "chat"
     "ide_gradle", "ide_sdk", "ide_envvar", "ide_jdk", "ide_lsp", "ide_designer", "ide_translator", "ide_assets", "ide_plugin", "ide_git" -> "ide_dashboard"
     "replay" -> "workflow"
     "identity_edit" -> "identity_list"
