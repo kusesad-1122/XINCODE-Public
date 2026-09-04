@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://xincode.app/schemas/tools/v1",
+  "title": "XINCODE Tool Definitions (this repo, not DeepSeek desktop)",
+  "description": "Mirrors ToolRegistry + parametersSchema + SecurityGateImpl + SelfProtect in this workspace. Render {{VARIABLE}} by string substitution, then JSON-parse to validate. Tool names must be copied verbatim; canonicalName/suggest only corrects order/separator variants on unique hit.",
+  "metadata": {
+    "agent_name": "{{AGENT_NAME}}",
+    "workspace_root": "{{WORKSPACE_ROOT}}",
+    "permission_mode": "{{PERMISSION_MODE}}",
+    "default_permission_mode": "ASK",
+    "read_only_tools": ["file_read", "list_dir", "grep", "glob"],
+    "write_tools": ["file_write", "file_edit", "multi_edit", "su_exec"],
+    "gate_entry": "AgentCore -> ToolRegistry.canonicalName -> SecurityGate.classify/decide -> executeJson -> audit",
+    "budgets": "shell 30s; stdout 4000/stderr 2000; file_read 4000 chars window, >10MB must grep; grep head_limit default 200; dispatch max 4 concurrent, 10min timeout"
+  },
+  "tools": [
+    {
+      "name": "file_read",
+      "description": "Read a file by path. Optionally startLine/endLine (1-based). Relative paths resolve against workspace root. SelfProtect denies app private DB dirs.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow" },
+      "input_schema": { "type": "object", "properties": { "path": { "type": "string" }, "startLine": { "type": "integer" }, "endLine": { "type": "integer" } }, "required": ["path"], "additionalProperties": false }
+    },
+    {
+      "name": "list_dir",
+      "description": "List directory entries under workspace. Use to feel structure before glob/grep.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow" },
+      "input_schema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false }
+    },
+    {
+      "name": "glob",
+      "description": "Fast file pattern match (**/*.kt). Returns paths by mtime. Name search only; content search uses grep.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow" },
+      "input_schema": { "type": "object", "properties": { "pattern": { "type": "string" }, "path": { "type": "string" } }, "required": ["pattern"], "additionalProperties": false }
+    },
+    {
+      "name": "grep",
+      "description": "Regex content search in workspace (JVM walk, skips binary/>2MB). output_mode content|files_with_matches|count. Who-uses-X uses grep, not glob.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow" },
+      "input_schema": { "type": "object", "properties": { "pattern": { "type": "string" }, "path": { "type": "string" }, "glob": { "type": "string" }, "output_mode": { "type": "string", "enum": ["content", "files_with_matches", "count"] }, "case_insensitive": { "type": "boolean" }, "head_limit": { "type": "integer", "default": 200 } }, "required": ["pattern"], "additionalProperties": false }
+    },
+    {
+      "name": "file_write",
+      "description": "Create or overwrite whole file. Prefer file_edit for existing files. SelfProtect locked dirs are denied, not confirmed.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "path": { "type": "string" }, "content": { "type": "string" } }, "required": ["path", "content"], "additionalProperties": false }
+    },
+    {
+      "name": "file_edit",
+      "description": "Surgical replace: unique old_string -> new_string; empty old_string means create; multi-hit requires replace_all=true.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "path": { "type": "string" }, "old_string": { "type": "string" }, "new_string": { "type": "string" }, "replace_all": { "type": "boolean", "default": false } }, "required": ["path", "old_string", "new_string"], "additionalProperties": false }
+    },
+    {
+      "name": "multi_edit",
+      "description": "Multiple file_edit operations atomically with typed edits array. Keeps structured params via executeJson.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "edits": { "type": "array", "items": { "type": "object", "properties": { "path": { "type": "string" }, "old_string": { "type": "string" }, "new_string": { "type": "string" } }, "required": ["path", "old_string", "new_string"] } } }, "required": ["edits"], "additionalProperties": false }
+    },
+    {
+      "name": "make_directory",
+      "description": "Create directories under workspace.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false }
+    },
+    {
+      "name": "delete_file",
+      "description": "Delete file/directory. IRREVERSIBLE. Prefer reversible move-aside when unsure.",
+      "security": { "capability": "FS", "reversibility": "IRREVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"], "additionalProperties": false }
+    },
+    {
+      "name": "shell_exec",
+      "description": "Run sh -c as app uid (never root). 30s timeout, stdout 4000/stderr 2000. Read-only SAFE_COMMANDS without redirect auto-allow; else confirm. Use su_exec explicitly for root.",
+      "security": { "capability": "inferred FS/PROCESS/NET/KERNEL/APP/SYSTEM/BUILD/TERMINAL", "reversibility": "by-risk NORMAL=REVERSIBLE else IRREVERSIBLE", "read_only": "conditional", "plan_allowed": "safe-only", "ask_mode": "safe-auto-else-confirm" },
+      "input_schema": { "type": "object", "properties": { "command": { "type": "string" } }, "required": ["command"], "additionalProperties": false }
+    },
+    {
+      "name": "su_exec",
+      "description": "Run command as root via libsu. Always audited. Root unavailable aborts. Classified SYSTEM, reversibility by risk.",
+      "security": { "capability": "SYSTEM", "reversibility": "by-risk", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm-except-ALLOW_ALL" },
+      "input_schema": { "type": "object", "properties": { "command": { "type": "string" } }, "required": ["command"], "additionalProperties": false }
+    },
+    {
+      "name": "env_exec",
+      "description": "Execute inside built-in Ubuntu chroot (storage already透传). Capability TERMINAL.",
+      "security": { "capability": "TERMINAL", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "command": { "type": "string" } }, "required": ["command"], "additionalProperties": false }
+    },
+    {
+      "name": "execute_code",
+      "description": "Script bridge that can dispatch other tools. Names also pass canonicalName + availability gate; unavailable tools are refused with reason, not unknown-tool.",
+      "security": { "capability": "SYSTEM", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "code": { "type": "string" } }, "required": ["code"], "additionalProperties": false }
+    },
+    {
+      "name": "web_search",
+      "description": "Internet search (Bing/Baidu first, Tavily optional). Gated by master switch; when off, refused with switch reason. Max 2-3 queries, adopt on first key hit.",
+      "security": { "capability": "NET", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow-when-switch-on" },
+      "input_schema": { "type": "object", "properties": { "query": { "type": "string" }, "count": { "type": "integer", "default": 5 } }, "required": ["query"], "additionalProperties": false }
+    },
+    {
+      "name": "web_fetch",
+      "description": "Fetch page text. JS-heavy thin pages: switch source or use snippet, do not re-fetch same URL.",
+      "security": { "capability": "NET", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow-when-switch-on" },
+      "input_schema": { "type": "object", "properties": { "url": { "type": "string" }, "max_chars": { "type": "integer", "default": 4000 } }, "required": ["url"], "additionalProperties": false }
+    },
+    {
+      "name": "agent_plan",
+      "description": "Live task-list surface with user-visible card. op set(title+steps 3-8)/advance/done/fail/reset. First action on >=3-step tasks must be set.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": true, "ask_mode": "auto-allow" },
+      "input_schema": { "type": "object", "properties": { "op": { "type": "string", "enum": ["set", "advance", "done", "fail", "reset"] }, "title": { "type": "string" }, "steps": { "type": "array", "items": { "type": "string" } }, "id": { "type": "integer" } }, "required": ["op"], "additionalProperties": false }
+    },
+    {
+      "name": "dispatch_agents",
+      "description": "Fan-out to专职 subagents in parallel (isolated AgentCore + own skills/tools). assignments=[{agent,task}]. Max 4 concurrent, 10min each. Brain aggregates afterwards.",
+      "security": { "capability": "SYSTEM", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "auto-allow" },
+      "input_schema": { "type": "object", "properties": { "assignments": { "type": "array", "items": { "type": "object", "properties": { "agent": { "type": "string" }, "task": { "type": "string" } }, "required": ["agent", "task"] } } }, "required": ["assignments"], "additionalProperties": false }
+    },
+    {
+      "name": "recall_memory",
+      "description": "FTS+vector long-term recall, project-isolated. Trigger on 上次/之前/还记得. 3-5 word query. None found => say so, do not invent.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow" },
+      "input_schema": { "type": "object", "properties": { "query": { "type": "string" }, "limit": { "type": "integer", "default": 5 } }, "required": ["query"], "additionalProperties": false }
+    },
+    {
+      "name": "save_memory",
+      "description": "Persist durable fact to long-term memory.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "auto-allow" },
+      "input_schema": { "type": "object", "properties": { "content": { "type": "string" } }, "required": ["content"], "additionalProperties": false }
+    },
+    {
+      "name": "invoke_skill",
+      "description": "Pull skill body by exact name before doing scenario work (explore/code-review/systematic-debugging/test-loop). /skill means mandatory pull.",
+      "security": { "capability": "FS", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow" },
+      "input_schema": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"], "additionalProperties": false }
+    },
+    {
+      "name": "current_time",
+      "description": "Accurate now for time-sensitive tasks. Do not derive from session-start anchor.",
+      "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "auto-allow" },
+      "input_schema": { "type": "object", "properties": {}, "additionalProperties": false }
+    }
+  ],
+  "mapping_notes": {
+    "TodoWrite_to_agent_plan": "content/activeForm/status + one-in_progress + immediate-verified-completion retained; rendered as PlanCard set/advance/done/fail/reset, 3-8 steps.",
+    "Grep_Glob_Read_to_same": "No phone-tap remap needed in this repo: XINCODE is a code agent on phone. Glob/Grep/Read stay as file tools; observe-before-act = file_read/grep before file_edit.",
+    "Bash_Edit_to_shell_su_env": "Bash maps to shell_exec/su_exec/env_exec with SAFE_COMMANDS + FATAL_BANNED/DANGEROUS tiers, not tap/swipe.",
+    "AskUser_to_gate_confirm": "ASK=>confirmation card; no handler=>auto-deny; deny>allow>none; FATAL_BANNED never overridden.",
+    "Agent_to_dispatch": "Plan=read-only architect; Explore=read-only locator (探索者); coder/reviewer/researcher own skills+tools; background SAFE_AUTO_ALLOW only."
+  },
+  "render_checklist": [
+    "Replace {{AGENT_NAME}}=XINCODE, {{WORKSPACE_ROOT}}, {{PERMISSION_MODE}} before injecting into AgentCore(systemPrompt).",
+    "Keep ToolRegistry.buildToolsJson sorted for prefix-cache stability; hide isAvailable()==false with unavailableReason to stop guessing.",
+    "Enforce PLAN/READ_ONLY exposure in code, not prose: WRITE_TOOLS hidden, safe shell only.",
+    "Validate JSON after substitution."
+  ]
+}
