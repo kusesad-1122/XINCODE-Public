@@ -306,7 +306,7 @@ fun SidebarContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
-                    Icons.Filled.Add,
+                    Icons.Outlined.Add,
                     contentDescription = null,
                     tint = Bg,
                     modifier = Modifier.size(15.dp)

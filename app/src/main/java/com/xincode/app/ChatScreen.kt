@@ -632,7 +632,7 @@ fun ChatScreen(
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNewChat() },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "新建聊天", tint = xc.ink, modifier = Modifier.size(18.dp))
+                Icon(Icons.Outlined.Add, contentDescription = "新建聊天", tint = xc.ink, modifier = Modifier.size(18.dp))
             }
             Spacer(Modifier.width(8.dp))
             Box {
@@ -1283,7 +1283,7 @@ fun ChatScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Filled.Add,
+                            Icons.Outlined.Add,
                             contentDescription = "Add to chat",
                             tint = Ink,
                             modifier = Modifier.size(19.dp)

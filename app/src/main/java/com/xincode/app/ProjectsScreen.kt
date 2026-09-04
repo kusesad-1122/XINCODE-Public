@@ -280,7 +280,7 @@ fun ProjectsScreen(
                     .padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Add, contentDescription = null, tint = xc.bg, modifier = Modifier.size(17.dp))
+                Icon(Icons.Outlined.Add, contentDescription = null, tint = xc.bg, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("New chat", color = xc.bg, fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp)
             }
@@ -495,7 +495,7 @@ fun ProjectsScreen(
                     .padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Filled.Add, contentDescription = null, tint = xc.bg, modifier = Modifier.size(17.dp))
+                Icon(Icons.Outlined.Add, contentDescription = null, tint = xc.bg, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("New project", color = xc.bg, fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp)
             }
