@@ -43,6 +43,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** A single matched message returned by search. */
+data class SearchHit(
+    val messageId: Long,
+    val sessionId: Long,
+    val sessionTitle: String,
+    val snippet: String
+)
+
 /**
  * Exact Claude-style mobile sidebar layout:
  * - Clean editorial "XINCODE" header
@@ -84,6 +92,7 @@ fun SidebarContent(
     onNavigateToProjects: () -> Unit = {},
     onNavigateToChats: () -> Unit = {},
     onClose: () -> Unit,
+    onSearchMessages: suspend (String) -> List<SearchHit> = { emptyList() },
     goalSessions: List<SessionEntity> = emptyList(),
     goalLiveStatus: (Long) -> String = { "" },
     onCreateGoal: () -> Unit = {},

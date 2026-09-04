@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.Manifest
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -627,7 +628,7 @@ fun ChatScreen(
                     .size(36.dp)
                     .clip(CircleShape)
                     .background(xc.bgElevated)
-                    .border(0.8.dp, xc.border, CircleShape)
+                    .border(BorderStroke(0.8.dp, xc.border), CircleShape)
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNewChat() },
                 contentAlignment = Alignment.Center
             ) {
@@ -1275,7 +1276,7 @@ fun ChatScreen(
                             .size(36.dp)
                             .clip(CircleShape)
                             .background(xc.bg)
-                            .border(0.8.dp, Border, CircleShape)
+                            .border(BorderStroke(0.8.dp, xc.border), CircleShape)
                             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                 showPlusCard = true
                             },
@@ -1363,14 +1364,6 @@ fun ChatScreen(
                                 indication = null,
                                 interactionSource = remember { MutableInteractionSource() }
                             ) {
-                                if (streaming && !hasText) {
-                                    if (isGoalSession && goalRunning) onStopGoal() else chatState.stop()
-                                } else {
-                                    submitInput()
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
                                 if (streaming && !hasText) {
                                     if (isGoalSession && goalRunning) onStopGoal() else chatState.stop()
                                 } else {
