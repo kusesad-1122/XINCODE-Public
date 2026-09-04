@@ -18,6 +18,15 @@ enum class PrivilegeTier(val label: String, val desc: String) {
 
 object PrivilegedExecutor {
 
+    @Volatile private var normalStreamingProcess: Process? = null
+
+    private fun terminateNormalStreamingProcess() {
+        val process = normalStreamingProcess ?: return
+        runCatching { process.destroy() }
+        runCatching { if (process.isAlive) process.destroyForcibly() }
+        normalStreamingProcess = null
+    }
+
     fun currentTier(context: Context? = null): PrivilegeTier {
         return when {
             RootShellManager.rootStatus == com.xincode.app.root.RootStatus.OK -> PrivilegeTier.ROOT
@@ -56,6 +65,8 @@ object PrivilegedExecutor {
     /** Best-effort hard stop for a terminal shell process and its process group. */
     suspend fun terminate(pid: Long, context: Context? = null): ExecResult {
         if (pid <= 1L) return ExecResult("", "拒绝终止非法 PID", -1, 0L, false)
+        terminateNormalStreamingProcess()
+        ShizukuShell.terminateCurrentProcess()
         val safePid = pid.toString()
         val command = "kill -TERM -$safePid 2>/dev/null; kill -TERM $safePid 2>/dev/null; sleep 1; kill -KILL -$safePid 2>/dev/null; kill -KILL $safePid 2>/dev/null"
         return execute(command, context)
@@ -94,6 +105,7 @@ object PrivilegedExecutor {
         val start = System.currentTimeMillis()
         try {
             val p = ProcessBuilder("sh", "-c", command).redirectErrorStream(false).start()
+            normalStreamingProcess = p
             val outT = Thread {
                 try { p.inputStream.bufferedReader().forEachLine { onLine(it) } } catch (_: Exception) {}
             }
@@ -103,6 +115,7 @@ object PrivilegedExecutor {
             outT.start(); errT.start()
             val code = p.waitFor()
             outT.join(2000); errT.join(2000)
+            if (normalStreamingProcess === p) normalStreamingProcess = null
             ExecResult("", "", code, System.currentTimeMillis() - start, code == 0)
         } catch (e: Exception) {
             onLine("[异常] ${e.message}")

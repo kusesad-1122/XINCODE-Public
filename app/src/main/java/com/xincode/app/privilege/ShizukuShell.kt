@@ -11,6 +11,16 @@ import java.io.BufferedReader
  */
 object ShizukuShell {
 
+    @Volatile private var activeStreamingProcess: Process? = null
+
+    fun terminateCurrentProcess(): Boolean {
+        val process = activeStreamingProcess ?: return false
+        runCatching { process.destroy() }
+        runCatching { if (process.isAlive) process.destroyForcibly() }
+        activeStreamingProcess = null
+        return true
+    }
+
     private fun shizukuClass(): Class<*>? = try { Class.forName("rikka.shizuku.Shizuku") } catch (_: Exception) { null }
 
     private fun isShizukuPackagesInstalled(pm: PackageManager): Boolean {
@@ -97,6 +107,7 @@ object ShizukuShell {
             val m = c.getMethod("newProcess", Array<String>::class.java, Array<String>::class.java, String::class.java)
             val process = m.invoke(null, arrayOf("sh", "-c", command), null, null) as? Process
                 ?: return@withContext com.xincode.app.root.ExecResult("", "Shizuku 启动失败", -1, 0, false)
+            activeStreamingProcess = process
             val outT = Thread {
                 try { process.inputStream.bufferedReader().forEachLine { onLine(it) } } catch (_: Exception) {}
             }
@@ -106,6 +117,7 @@ object ShizukuShell {
             outT.start(); errT.start()
             val code = process.waitFor()
             outT.join(2000); errT.join(2000)
+            if (activeStreamingProcess === process) activeStreamingProcess = null
             com.xincode.app.root.ExecResult("", "", code, System.currentTimeMillis() - start, code == 0)
         } catch (e: Exception) {
             onLine("[Shizuku 异常] ${e.message}")

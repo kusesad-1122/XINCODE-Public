@@ -1116,16 +1116,11 @@ private fun MemberModelPicker(
 
     // 配置里【已启用】的模型。这是之前唯一的来源,也是「只显示一个模型」的原因:
     // 用户没在供应商页勾选多个时,这里就只有一个,而这个列表并不代表供应商真正提供了什么。
-    val enabled = remember(cfg) {
-        runCatching {
-            val arr = org.json.JSONArray(cfg?.enabledModelIds ?: "[]")
-            (0 until arr.length()).map { arr.getString(it) }
-        }.getOrDefault(emptyList())
-    }
+    val enabled = cfg?.enabledModelIds.orEmpty()
 
-    // 已启用 + 刚拉到的 + 配置自己的默认模型,去重后一起给用户选
+    // 在线列表成功后优先展示服务端结果；离线时再使用配置缓存。
     val models = remember(enabled, fetched, cfg) {
-        (enabled + fetched + listOfNotNull(cfg?.model?.takeIf { it.isNotBlank() })).distinct()
+        ((if (fetched.isNotEmpty()) fetched else enabled) + listOfNotNull(cfg?.model?.takeIf { it.isNotBlank() })).distinct()
     }
 
     fun refresh() {

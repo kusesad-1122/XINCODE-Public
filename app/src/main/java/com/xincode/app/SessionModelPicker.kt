@@ -70,7 +70,7 @@ fun SessionModelPicker(
     val cfg = configs.firstOrNull { it.id == pickedProvider }
         ?: configs.firstOrNull { it.isActive }
     val configuredModels = cfg?.enabledModelIds.orEmpty()
-    val models = (configuredModels + fetched + listOfNotNull(cfg?.model?.takeIf { it.isNotBlank() })).distinct()
+    val models = ((if (fetched.isNotEmpty()) fetched else configuredModels) + listOfNotNull(cfg?.model?.takeIf { it.isNotBlank() })).distinct()
 
     fun refreshModels() {
         val current = cfg ?: return

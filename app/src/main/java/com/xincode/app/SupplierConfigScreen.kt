@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.*
@@ -31,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -234,11 +236,11 @@ fun SupplierConfigScreen(
     fun startEdit(cfg: ProviderConfigEntity) {
         editingConfig = cfg; configName = cfg.name; selectedSupplierId = cfg.supplierId
         baseUrl = cfg.baseUrl; apiKey = ""; model = cfg.model
-        models = emptyList()  // will be fetched live, same as startNew
+        // 已保存列表只是离线缓存；在线刷新成功后会被真实服务端列表替换。
+        models = cfg.enabledModelIds
         checkedModelIds = cfg.enabledModelIds.toSet()
-        // 已保存的模型直接进手填集合:models 此刻是空的(等用户现拉),不这样做的话
-        // 手填保存过的模型再进来编辑就整个不见了,只能重填一遍。
-        manualModelIds = cfg.enabledModelIds.toSet()
+        // 真正手填模型由用户在本次编辑中添加，不能把所有旧缓存误判为手填。
+        manualModelIds = emptySet()
         newModelId = ""
         capVision = cfg.supportsVision; capAudio = cfg.supportsAudio
         capVideo = cfg.supportsVideo; capToolCall = cfg.supportsToolCall
@@ -259,11 +261,23 @@ fun SupplierConfigScreen(
         }
         modelsLoading = true; status = ""
         scope.launch {
-            val r = openAiClient.listModels(effectiveBaseUrl, key, selectedSupplierId)
-            models = r.getOrDefault(emptyList())
+            val liveModels = openAiClient.listModels(effectiveBaseUrl, key, selectedSupplierId).getOrDefault(emptyList())
             modelsLoading = false
-            if (models.isEmpty()) status = "✗ 拉取失败或无可用模型，可在下方手动填写模型 ID"
-            else { showModelDropdown = true; status = "✓ 已加载 ${models.size} 个模型" }
+            if (liveModels.isEmpty()) {
+                status = "✗ 拉取失败或无可用模型，可在下方手动填写模型 ID"
+            } else {
+                // 在线列表是权威来源；旧缓存中的下线模型不再继续混入选择器。
+                models = liveModels
+                val allowed = liveModels.toSet() + manualModelIds
+                checkedModelIds = if (checkedModelIds.isEmpty()) {
+                    setOf(liveModels.first())
+                } else {
+                    checkedModelIds.intersect(allowed).ifEmpty { setOf(liveModels.first()) }
+                }
+                if (model !in checkedModelIds) model = checkedModelIds.first()
+                showModelDropdown = true
+                status = "✓ 已加载 ${liveModels.size} 个模型"
+            }
         }
     }
 
