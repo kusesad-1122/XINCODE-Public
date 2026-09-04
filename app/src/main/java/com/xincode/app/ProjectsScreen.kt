@@ -146,7 +146,7 @@ fun ProjectsScreen(
                             project = project,
                             sessionCount = count,
                             onOpen = {
-                                projectSessions[project.id].orEmpty().firstOrNull()?.let(onSelectSession)
+                                projectSessions[project.id].orEmpty().firstOrNull()?.let { onSelectSession(it.id) }
                                     ?: onCreateNewInProject(project.id)
                             },
                             onMenu = { menuProject = project }
