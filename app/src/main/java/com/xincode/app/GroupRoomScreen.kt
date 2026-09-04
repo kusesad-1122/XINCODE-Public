@@ -1136,7 +1136,7 @@ private fun MemberModelPicker(
         if (key.isNullOrBlank()) { status = "✗ 这个配置没有可用的 API Key"; return }
         loading = true; status = ""
         scope.launch {
-            val r = openAiClient.listModels(c.baseUrl, key)
+            val r = openAiClient.listModels(c.baseUrl, key, c.supplierId)
             fetched = r.getOrDefault(emptyList())
             loading = false
             status = if (fetched.isEmpty())

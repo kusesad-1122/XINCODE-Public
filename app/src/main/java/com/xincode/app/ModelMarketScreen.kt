@@ -4,13 +4,20 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.FilterList
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -143,8 +150,8 @@ object ProviderPresets {
         ProviderPreset("Kimi / Moonshot(国际)", "kimi-intl", "https://api.moonshot.ai/v1",
             "kimi-k2-0905-preview", listOf("kimi-k2-0905-preview", "moonshot-v1-128k"),
             "https://platform.moonshot.ai/", "Moonshot 国际站", free = false, contextWindow = 128000),
-        ProviderPreset("Google AI Studio", "gemini", "https://generativelanguage.googleapis.com/v1beta",
-            "gemini-2.0-flash", listOf("gemini-2.0-flash", "gemini-1.5-pro"),
+        ProviderPreset("Google AI Studio", "gemini", "https://generativelanguage.googleapis.com/v1beta/openai",
+            "gemini-2.5-flash", emptyList(),
             "https://aistudio.google.com/", "Google AI Studio,有免费额度;需能连外网", free = true, contextWindow = 1000000),
         ProviderPreset("xAI Grok", "xai", "https://api.x.ai/v1",
             "grok-2", listOf("grok-2", "grok-2-mini"),
@@ -206,6 +213,10 @@ fun ModelMarketScreen(
     val scope = rememberCoroutineScope()
     var keyDialogFor by remember { mutableStateOf<ProviderPreset?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
+    var searchOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var showFilters by remember { mutableStateOf(false) }
+    var marketCategory by remember { mutableStateOf("all") }
 
     fun openSite(url: String) {
         try { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
@@ -223,26 +234,98 @@ fun ModelMarketScreen(
         toast?.let {
             Text(it, fontSize = 11.sp, fontFamily = Mono, color = xc.green, modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp))
         }
-        LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            // 三区:免费额度 / 订阅套餐(plan) / 按量付费。列表在外部先算好,避免在 items 里反复 filter。
-            val freeList = ProviderPresets.ALL.filter { it.free }
-            val planList = ProviderPresets.ALL.filter { it.plan }
-            val payList = ProviderPresets.ALL.filter { !it.free && !it.plan }
+        // 长市场页提供一个可收起的左侧筛选栏；搜索只在用户需要时展开，保持默认页面安静。
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (searchOpen) {
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp, max = 52.dp),
+                    singleLine = true,
+                    placeholder = { Text("搜索供应商或模型", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.faint) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = xc.sub) },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Outlined.Close, contentDescription = "清除搜索", tint = xc.sub)
+                        }
+                    },
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = xc.bgElevated, unfocusedContainerColor = xc.bgElevated,
+                        focusedIndicatorColor = xc.green, unfocusedIndicatorColor = xc.border,
+                        focusedTextColor = xc.ink, unfocusedTextColor = xc.ink, cursorColor = xc.green
+                    ),
+                    textStyle = TextStyle(fontFamily = XinUiFont, fontSize = 13.sp)
+                )
+            } else {
+                Text("供应商市场", fontFamily = XinSerifFont, fontSize = 18.sp, color = xc.ink, modifier = Modifier.weight(1f))
+            }
+            IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) searchQuery = "" }) {
+                Icon(Icons.Outlined.Search, contentDescription = "搜索供应商", tint = if (searchOpen) xc.green else xc.sub)
+            }
+            IconButton(onClick = { showFilters = !showFilters }) {
+                Icon(Icons.Outlined.FilterList, contentDescription = "筛选市场", tint = if (showFilters) xc.green else xc.sub)
+            }
+        }
 
-            item { SectionLabel("免费 / 免费额度(自己注册领 key,每日有额度或限速)", xc) }
-            items(freeList.size) { i ->
-                val p = freeList[i]
-                PresetCard(p, xc, onSite = { openSite(p.site) }, onAdd = { keyDialogFor = p })
+        val query = searchQuery.trim()
+        val filteredPresets = ProviderPresets.ALL.filter { preset ->
+            val categoryMatch = marketCategory == "all" ||
+                (marketCategory == "free" && preset.free) ||
+                (marketCategory == "plan" && preset.plan) ||
+                (marketCategory == "paid" && !preset.free && !preset.plan)
+            val textMatch = query.isBlank() || listOf(preset.name, preset.supplierId, preset.note, preset.models.joinToString(" ")).any { it.contains(query, ignoreCase = true) }
+            categoryMatch && textMatch
+        }
+        val freeList = filteredPresets.filter { it.free }
+        val planList = filteredPresets.filter { it.plan }
+        val payList = filteredPresets.filter { !it.free && !it.plan }
+
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+            if (showFilters) {
+                Column(
+                    Modifier.width(116.dp).fillMaxHeight().background(xc.bgElevated).padding(horizontal = 10.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text("筛选", fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = xc.sub)
+                    listOf("all" to "全部", "free" to "免费", "plan" to "套餐", "paid" to "付费").forEach { (id, label) ->
+                        Row(
+                            Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                                .background(if (marketCategory == id) xc.activeBg else Color.Transparent)
+                                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { marketCategory = id }
+                                .padding(horizontal = 8.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(label, fontFamily = XinUiFont, fontSize = 12.sp, color = if (marketCategory == id) xc.green else xc.sub)
+                        }
+                    }
+                }
             }
-            item { Spacer(Modifier.height(6.dp)); SectionLabel("订阅套餐 Plan(按月订阅,非按量计费)", xc) }
-            items(planList.size) { i ->
-                val p = planList[i]
-                PresetCard(p, xc, onSite = { openSite(p.site) }, onAdd = { keyDialogFor = p })
-            }
-            item { Spacer(Modifier.height(6.dp)); SectionLabel("按量付费(购买 API 额度)", xc) }
-            items(payList.size) { i ->
-                val p = payList[i]
-                PresetCard(p, xc, onSite = { openSite(p.site) }, onAdd = { keyDialogFor = p })
+            LazyColumn(
+                Modifier.weight(1f).fillMaxHeight(),
+                contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item { SectionLabel("免费 / 免费额度(自己注册领 key,每日有额度或限速)", xc) }
+                items(freeList.size) { i ->
+                    val p = freeList[i]
+                    PresetCard(p, xc, onSite = { openSite(p.site) }, onAdd = { keyDialogFor = p })
+                }
+                item { Spacer(Modifier.height(6.dp)); SectionLabel("订阅套餐 Plan(按月订阅,非按量计费)", xc) }
+                items(planList.size) { i ->
+                    val p = planList[i]
+                    PresetCard(p, xc, onSite = { openSite(p.site) }, onAdd = { keyDialogFor = p })
+                }
+                item { Spacer(Modifier.height(6.dp)); SectionLabel("按量付费(购买 API 额度)", xc) }
+                items(payList.size) { i ->
+                    val p = payList[i]
+                    PresetCard(p, xc, onSite = { openSite(p.site) }, onAdd = { keyDialogFor = p })
+                }
+                if (filteredPresets.isEmpty()) item {
+                    Text("没有匹配的供应商或模型", fontFamily = XinSerifFont, fontSize = 18.sp, color = xc.ink, modifier = Modifier.padding(top = 28.dp))
+                }
             }
         }
     }
@@ -269,7 +352,7 @@ fun ModelMarketScreen(
             if (k.isBlank()) { toast = "先填 API Key 再拉取"; return }
             fetching = true; toast = "正在拉取模型列表…"
             scope.launch {
-                val r = openAiClient.listModels(p.baseUrl, k)
+                val r = openAiClient.listModels(p.baseUrl, k, p.supplierId)
                 fetched = r.getOrDefault(emptyList())
                 fetching = false
                 toast = if (fetched.isEmpty()) "拉取失败或该供应商不提供列表接口,可手动填写模型 ID"
@@ -413,7 +496,7 @@ fun ModelMarketScreen(
                             // 所以这里自动拉一次列表。
                             if (model.isBlank()) {
                                 toast = "授权成功,正在拉取模型列表…"
-                                val r = openAiClient.listModels(p.baseUrl, tok)
+                                val r = openAiClient.listModels(p.baseUrl, tok, p.supplierId)
                                 fetched = r.getOrDefault(emptyList())
                                 if (fetched.isNotEmpty()) {
                                     model = fetched.first()
@@ -443,7 +526,7 @@ fun ModelMarketScreen(
                                     ProviderConfigEntity(
                                         name = p.name, supplierId = p.supplierId, baseUrl = p.baseUrl,
                                         apiKeyEnc = enc, model = m,
-                                        enabledModelIds = (p.models + m).distinct(),
+                                        enabledModelIds = (p.models + fetched + m).filter { it.isNotBlank() }.distinct(),
                                         isActive = false, apiPathType = p.apiPathType, contextWindow = p.contextWindow
                                     )
                                 )

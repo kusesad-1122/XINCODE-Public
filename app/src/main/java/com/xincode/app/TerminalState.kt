@@ -10,7 +10,9 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import android.content.Context
 import com.xincode.app.privilege.PrivilegedExecutor
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 可视终端(Application 级)。三路输出汇聚到这里、实时上屏:
@@ -30,6 +32,9 @@ class TerminalState {
         private set
 
     private val maxLines = 4000
+    private val pidMarker = "__XINCODE_TERM_PID__:"
+    @Volatile private var activePid: Long? = null
+    @Volatile private var stopRequested = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -70,21 +75,46 @@ class TerminalState {
     suspend fun run(cmd: String) {
         val c = cmd.trim()
         if (c.isEmpty()) return
-        // running 必须在主线程变更（Compose state 约束）
         withContext(Dispatchers.Main) { running = true }
+        activePid = null
+        stopRequested = false
         appendChunk("$ $c")
+        // 输出外层 shell PID，stop() 可以从另一条特权命令终止卡住的命令。
+        val wrapped = "echo " + pidMarker + Char(36) + Char(36) + "; " + c
+        val onLine: (String) -> Unit = { line ->
+            val pid = line.trim().removePrefix(pidMarker).toLongOrNull()
+            if (pid != null) activePid = pid else appendChunk(line)
+        }
         try {
             val res = withContext(Dispatchers.IO) {
                 if (LinuxEnvironment.isReady())
-                    LinuxEnvironment.runInEnvStreaming(c, scope = "terminal") { appendChunk(it) }
+                    LinuxEnvironment.runInEnvStreaming(wrapped, scope = "terminal", onLine = onLine)
                 else
-                    PrivilegedExecutor.executeStreaming(c, { appendChunk(it) }, appContext)
+                    PrivilegedExecutor.executeStreaming(wrapped, onLine, appContext)
             }
-            appendChunk("[exit ${res.exitCode}]")
+            if (stopRequested) appendChunk("[已终止]") else appendChunk("[exit " + res.exitCode + "]")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            appendChunk("[已终止]")
         } catch (e: Exception) {
-            appendChunk("[错误] ${e.message}")
+            appendChunk("[错误] " + e.message)
         } finally {
+            activePid = null
             withContext(Dispatchers.Main) { running = false }
+        }
+    }
+
+    /** 终止当前命令:先杀进程组，再让 run() 收尾，避免终端卡死在 waitFor/readLine。 */
+    suspend fun stop() {
+        if (!running) return
+        stopRequested = true
+        val pid = activePid ?: withTimeoutOrNull(500L) {
+            while (activePid == null && running) delay(10L)
+            activePid
+        }
+        appendChunk("[终止] " + if (pid != null) "正在结束 PID " + pid else "正在取消命令")
+        if (pid != null) {
+            val result = PrivilegedExecutor.terminate(pid, appContext)
+            if (!result.success && result.stderr.isNotBlank()) appendChunk("[终止失败] " + result.stderr.take(160))
         }
     }
 }

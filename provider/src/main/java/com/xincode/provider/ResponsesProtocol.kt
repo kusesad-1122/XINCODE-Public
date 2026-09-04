@@ -231,7 +231,10 @@ object ResponsesProtocol {
             val id = item.safeString("call_id").ifBlank { item.safeString("id") }
             val name = item.safeString("name")
             if (id.isNotBlank() && name.isNotBlank()) {
-                calls += ToolCall(id, name, item.safeString("arguments").ifBlank { "{}" })
+                val extra = item.optJSONObject("extra_content") ?: item.optJSONObject("extraContent")
+                val google = extra?.optJSONObject("google") ?: item.optJSONObject("google")
+                val signature = item.safeString("thought_signature").ifBlank { google?.safeString("thought_signature").orEmpty() }
+                calls += ToolCall(id, name, item.safeString("arguments").ifBlank { "{}" }, signature)
             }
         }
         return calls

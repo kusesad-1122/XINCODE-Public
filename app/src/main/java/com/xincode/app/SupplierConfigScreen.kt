@@ -13,9 +13,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -34,6 +38,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.xincode.data.AppDatabase
+import com.xincode.data.ModelProfile
+import com.xincode.data.ModelProfileCodec
 import com.xincode.data.ProviderConfigEntity
 import com.xincode.provider.OpenAiClient
 import com.xincode.security.KeystoreProvider
@@ -80,6 +86,8 @@ private val knownSuppliers = listOf(
         listOf("moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k")),
     Supplier("baidu", "百度千帆", "https://qianfan.baidubce.com/v2", "ernie-3.5-8k",
         listOf("ernie-3.5-8k", "ernie-4.0-8k", "ernie-speed-8k")),
+    Supplier("gemini", "Google Gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.5-flash",
+        emptyList()),
     Supplier("ollama", "Ollama (本地)", "http://localhost:11434", "",
         listOf("llama3", "qwen2.5", "deepseek-r1", "mistral")),
     Supplier("anthropic", "Anthropic", "https://api.anthropic.com", "claude-sonnet-4-20250514",
@@ -144,6 +152,8 @@ fun SupplierConfigScreen(
     var showModelDropdown by remember { mutableStateOf(false) }
     var pendingActivateId by remember { mutableStateOf<Long?>(null) }  // warn before activating
     var editingApiKey by remember { mutableStateOf("") }  // decrypted stored key for live fetch during edit
+    var modelProfiles by remember { mutableStateOf<Map<String, ModelProfile>>(emptyMap()) }
+    var modelProfileTarget by remember { mutableStateOf<String?>(null) }
     var switchModelConfig by remember { mutableStateOf<ProviderConfigEntity?>(null) }
 
     val selectedSupplier = knownSuppliers.find { it.id == selectedSupplierId } ?: knownSuppliers.last()
@@ -216,6 +226,7 @@ fun SupplierConfigScreen(
         baseUrl = ""; apiKey = ""; model = ""; models = emptyList()
         editingApiKey = ""; checkedModelIds = emptySet(); selectedApiPathType = "openai"
         manualModelIds = emptySet(); newModelId = ""
+        modelProfiles = emptyMap(); modelProfileTarget = null
         capVision = false; capAudio = false; capVideo = false; capToolCall = true
         showForm = true; status = ""
     }
@@ -231,6 +242,8 @@ fun SupplierConfigScreen(
         newModelId = ""
         capVision = cfg.supportsVision; capAudio = cfg.supportsAudio
         capVideo = cfg.supportsVideo; capToolCall = cfg.supportsToolCall
+        modelProfiles = ModelProfileCodec.decode(cfg.modelSettingsJson)
+        modelProfileTarget = null
         selectedApiPathType = cfg.apiPathType
         // Decrypt stored key so user can refresh models without re-entering
         editingApiKey = try {
@@ -246,7 +259,7 @@ fun SupplierConfigScreen(
         }
         modelsLoading = true; status = ""
         scope.launch {
-            val r = openAiClient.listModels(effectiveBaseUrl, key)
+            val r = openAiClient.listModels(effectiveBaseUrl, key, selectedSupplierId)
             models = r.getOrDefault(emptyList())
             modelsLoading = false
             if (models.isEmpty()) status = "✗ 拉取失败或无可用模型，可在下方手动填写模型 ID"
@@ -301,7 +314,8 @@ fun SupplierConfigScreen(
                 // 编辑时保留原有的上下文窗口/压缩阈值,别被默认值悄悄清掉
                 contextWindow = editingConfig?.contextWindow ?: 0,
                 autoCompactThresholdPercent = editingConfig?.autoCompactThresholdPercent ?: 85,
-                extraHeadersJson = editingConfig?.extraHeadersJson ?: ""
+                extraHeadersJson = editingConfig?.extraHeadersJson ?: "",
+                modelSettingsJson = ModelProfileCodec.encode(modelProfiles)
             )
             val newId = withContext(Dispatchers.IO) {
                 database.inTransaction {
@@ -441,11 +455,17 @@ fun SupplierConfigScreen(
                         }
                     }
                     if (isActive) Text("✓", fontSize = 12.sp, color = Green, modifier = Modifier.padding(end = 8.dp))
-                    Text("✎", fontSize = 12.sp, fontFamily = XinUiFont, color = Sub,
-                        modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { startEdit(cfg) }.padding(4.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("✗", fontSize = 12.sp, fontFamily = XinUiFont, color = Red,
-                        modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { deleteConfig(cfg) }.padding(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { startEdit(cfg) }, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Outlined.Edit, contentDescription = "编辑 ${cfg.name}", tint = Sub, modifier = Modifier.size(19.dp))
+                        }
+                        IconButton(onClick = { deleteConfig(cfg) }, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Outlined.Delete, contentDescription = "删除 ${cfg.name}", tint = Red, modifier = Modifier.size(19.dp))
+                        }
+                    }
                 }
                 Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
             }
@@ -675,6 +695,9 @@ fun SupplierConfigScreen(
                                 }
                                 // Active marker
                                 if (m == model) Text("←", fontSize = 10.sp, color = Sub, modifier = Modifier.padding(start = 4.dp))
+                                IconButton(onClick = { modelProfileTarget = m }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Outlined.Settings, contentDescription = "配置模型", tint = if (modelProfiles.containsKey(m)) Green else Faint, modifier = Modifier.size(17.dp))
+                                }
                                 // 手填的可以删掉(拉取来的不给删,刷新一下就回来了,给了反而误导)
                                 if (isManual) {
                                     Text("✕", fontSize = 11.sp, fontFamily = XinUiFont, color = Faint,
@@ -787,6 +810,18 @@ fun SupplierConfigScreen(
             )
         }
 
+        modelProfileTarget?.let { modelId ->
+            ModelProfileDialog(
+                modelId = modelId,
+                initial = modelProfiles[modelId] ?: ModelProfile(),
+                onDismiss = { modelProfileTarget = null },
+                onApply = { profile ->
+                    modelProfiles = modelProfiles + (modelId to profile)
+                    modelProfileTarget = null
+                }
+            )
+        }
+
         // ---- model switch warning dialog ----
         if (pendingActivateId != null) {
             val targetCfg = savedConfigs.find { it.id == pendingActivateId }
@@ -864,3 +899,141 @@ private fun fieldColors() = TextFieldDefaults.colors(
 
 @Composable
 private fun fieldTextStyle() = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = XinUiFont)
+
+
+@Composable
+private fun ModelProfileDialog(
+    modelId: String,
+    initial: ModelProfile,
+    onDismiss: () -> Unit,
+    onApply: (ModelProfile) -> Unit
+) {
+    val xc = LocalXinColors.current
+    var contextText by remember(modelId) { mutableStateOf(formatTokenBudget(initial.contextWindow)) }
+    var outputText by remember(modelId) { mutableStateOf(formatTokenBudget(initial.maxOutputTokens)) }
+    var thinkingEffort by remember(modelId) { mutableStateOf(initial.thinkingEffort) }
+    var supportsImage by remember(modelId) { mutableStateOf(initial.supportsImageInput) }
+    val efforts = listOf("auto", "none", "minimal", "low", "medium", "high", "xhigh", "max")
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("模型配置", fontFamily = XinSerifFont, fontWeight = FontWeight.SemiBold, color = xc.ink) },
+        text = {
+            Column(
+                Modifier.fillMaxWidth().heightIn(max = 460.dp).verticalScroll(rememberScrollState())
+            ) {
+                Text(modelId, fontFamily = XinCodeFont, fontSize = 12.sp, color = xc.green, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(12.dp))
+                Text("上下文窗口", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub)
+                Text("输入过长时按此容量触发自动压缩；自动表示跟随供应商配置。", fontFamily = XinUiFont, fontSize = 10.sp, color = xc.faint)
+                Spacer(Modifier.height(5.dp))
+                TextField(
+                    value = contextText,
+                    onValueChange = { contextText = it },
+                    modifier = Modifier.fillMaxWidth().border(1.dp, xc.border, RoundedCornerShape(12.dp)),
+                    singleLine = true,
+                    placeholder = { Text("例如 1100K", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.faint) },
+                    colors = profileFieldColors(xc),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = XinCodeFont, fontSize = 13.sp)
+                )
+                Spacer(Modifier.height(12.dp))
+                Text("最大输出 token", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub)
+                Text("留空或自动表示不覆盖服务商默认值。", fontFamily = XinUiFont, fontSize = 10.sp, color = xc.faint)
+                Spacer(Modifier.height(5.dp))
+                TextField(
+                    value = outputText,
+                    onValueChange = { outputText = it },
+                    modifier = Modifier.fillMaxWidth().border(1.dp, xc.border, RoundedCornerShape(12.dp)),
+                    singleLine = true,
+                    placeholder = { Text("例如 128K", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.faint) },
+                    colors = profileFieldColors(xc),
+                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = XinCodeFont, fontSize = 13.sp)
+                )
+                Spacer(Modifier.height(14.dp))
+                Text("思考强度", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub)
+                Spacer(Modifier.height(6.dp))
+                efforts.chunked(2).forEach { pair ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        pair.forEach { effort ->
+                            ModelEffortChoice(
+                                label = effort,
+                                selected = thinkingEffort == effort,
+                                modifier = Modifier.weight(1f),
+                                onClick = { thinkingEffort = effort }
+                            )
+                        }
+                        if (pair.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(6.dp))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("图片输入", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.ink)
+                        Text("声明该模型支持视觉内容", fontFamily = XinUiFont, fontSize = 10.sp, color = xc.faint)
+                    }
+                    Switch(checked = supportsImage, onCheckedChange = { supportsImage = it })
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onApply(
+                    ModelProfile(
+                        contextWindow = parseTokenBudget(contextText),
+                        maxOutputTokens = parseTokenBudget(outputText),
+                        thinkingEffort = thinkingEffort,
+                        supportsImageInput = supportsImage
+                    )
+                )
+            }) { Text("应用", fontFamily = XinUiFont, color = xc.green) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("放弃修改", fontFamily = XinUiFont, color = xc.sub) } },
+        containerColor = xc.bgElevated
+    )
+}
+
+@Composable
+private fun ModelEffortChoice(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val xc = LocalXinColors.current
+    Row(
+        modifier = modifier.clip(RoundedCornerShape(10.dp))
+            .background(if (selected) xc.activeBg else xc.bg)
+            .border(0.8.dp, if (selected) xc.green else xc.border, RoundedCornerShape(10.dp))
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onClick)
+            .padding(horizontal = 9.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(if (selected) "✓" else "", fontFamily = XinUiFont, fontSize = 11.sp, color = xc.green, modifier = Modifier.width(15.dp))
+        Text(label, fontFamily = XinCodeFont, fontSize = 11.sp, color = if (selected) xc.ink else xc.sub)
+    }
+}
+
+@Composable
+private fun profileFieldColors(xc: XinColors) = TextFieldDefaults.colors(
+    focusedContainerColor = xc.bg,
+    unfocusedContainerColor = xc.bg,
+    focusedIndicatorColor = Color.Transparent,
+    unfocusedIndicatorColor = Color.Transparent,
+    cursorColor = xc.green,
+    focusedTextColor = xc.ink,
+    unfocusedTextColor = xc.ink
+)
+
+private fun parseTokenBudget(raw: String): Int {
+    val value = raw.trim().replace(",", "").lowercase()
+    if (value.isBlank() || value == "auto" || value == "自动") return 0
+    val multiplier = when {
+        value.endsWith("m") -> 1_000_000.0
+        value.endsWith("k") -> 1_000.0
+        else -> 1.0
+    }
+    val number = value.trimEnd('k', 'm').toDoubleOrNull() ?: return 0
+    return (number * multiplier).toInt().coerceIn(0, 2_000_000)
+}
+
+private fun formatTokenBudget(value: Int): String = when {
+    value <= 0 -> "auto"
+    value % 1_000_000 == 0 -> (value / 1_000_000).toString() + "M"
+    value % 1_000 == 0 -> (value / 1_000).toString() + "K"
+    else -> value.toString()
+}

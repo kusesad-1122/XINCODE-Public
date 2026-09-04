@@ -5,6 +5,7 @@ import com.xincode.core.AgentCore
 import com.xincode.core.AgentState
 import com.xincode.data.AppDatabase
 import com.xincode.data.MessageEntity
+import com.xincode.data.ModelProfileCodec
 import com.xincode.security.Decision
 import com.xincode.security.GateCommand
 import com.xincode.security.ToolConfirmResult
@@ -161,6 +162,7 @@ class AgentChatState(
             put("exit_code", tc.exitCode?.toLong() ?: org.json.JSONObject.NULL)
             put("duration_ms", tc.durationMs ?: org.json.JSONObject.NULL)
             put("status", tc.status.name)
+            if (tc.thoughtSignature.isNotBlank()) put("thought_signature", tc.thoughtSignature)
         }.toString()
     }
 
@@ -177,7 +179,8 @@ class AgentChatState(
                 stderr = j.optString("stderr", ""),
                 exitCode = if (j.isNull("exit_code")) null else j.optInt("exit_code"),
                 durationMs = if (j.isNull("duration_ms")) null else j.optLong("duration_ms"),
-                status = try { ToolStatus.valueOf(j.optString("status", "RUNNING")) } catch (_: Exception) { ToolStatus.RUNNING }
+                status = try { ToolStatus.valueOf(j.optString("status", "RUNNING")) } catch (_: Exception) { ToolStatus.RUNNING },
+                thoughtSignature = j.optString("thought_signature", "")
             )
         } catch (_: Exception) { null }
     }
@@ -186,13 +189,14 @@ class AgentChatState(
     private val toolRowIdJobs = mutableMapOf<Int, kotlinx.coroutines.Deferred<Long>>()
 
     /** Push a new ToolCallBlock message (status=RUNNING) and record its index. Persist to Room OFF-Main. */
-    fun pushToolCallBlock(toolName: String, arguments: String, callIndex: Int) {
+    fun pushToolCallBlock(toolName: String, arguments: String, callIndex: Int, thoughtSignature: String = "") {
         val summary = summarizeParams(toolName, arguments)
         val block = MessageContent.ToolCall(
             toolName = toolName,
             paramsSummary = summary,
             fullParams = arguments,
-            status = ToolStatus.RUNNING
+            status = ToolStatus.RUNNING,
+            thoughtSignature = thoughtSignature
         )
         val jsonContent = toolCallToJson(block)
         val entity = MessageEntity(role = "tool", content = jsonContent, sessionId = currentSessionId, turnId = agentCore.currentTurnId)
@@ -466,7 +470,9 @@ class AgentChatState(
 
         input.value = ""
 
-        activeJob = s.launch {
+        var requestThinkingEnabled = thinkingEnabled
+    var requestThinkingLevel = thinkingLevel
+    activeJob = s.launch {
             // B3 修复:把流式相关协程/通道的引用提到 try 外,保证【任何退出路径】(stop 取消/异常)
             // 都在 finally 里清理,不再泄漏残留 collector(否则下一轮两个 collector 抢同一 channel,
             // 约半数 token 被丢进已关闭的旧 channel,导致回答缺字/串字)。
@@ -539,9 +545,6 @@ class AgentChatState(
                         agentCore.updateSystemPrompt(recallBase + "\n\n" + recallBlock)
                     }
                     agentCore.temperature = identity?.temperature ?: 1.0f
-                    // gap-09 采样参数:从 identity 卡注入(null=不发)。
-                    agentCore.maxTokens = identity?.maxTokens
-                    agentCore.topP = identity?.topP
                     // 身份卡工具白名单:留空=不限制。每回合重设,这样编辑身份卡后下一回合就生效。
                     agentCore.toolRegistry.identityAllowlist =
                         identity?.allowedTools.orEmpty()
@@ -549,14 +552,32 @@ class AgentChatState(
                             .map { it.trim() }
                             .filter { it.isNotEmpty() }
                             .toSet()
-                    // gap-10 上下文窗口/自动压缩阈值:全局设置覆盖 > 供应商配置。
+                    // 对话级模型覆盖后,上下文/输出/思考设置跟随实际模型。
                     val activeCfg = database.providerConfigDao().getActive()
-                    // 对话级模型覆盖后,上下文窗口/压缩阈值应跟随【覆盖的供应商】而不是全局活跃配置。
                     val effectiveCfg = session?.modelProviderConfigId
                         ?.let { database.providerConfigDao().getById(it) }
                         ?: activeCfg
+                    val effectiveModelId = session?.currentModelId?.trim().orEmpty().ifBlank { effectiveCfg?.model.orEmpty() }
+                    val modelProfile = effectiveCfg?.let { ModelProfileCodec.decode(it.modelSettingsJson)[effectiveModelId] }
+                    val effort = modelProfile?.thinkingEffort.orEmpty()
+                    requestThinkingEnabled = when {
+                        effort == "none" -> false
+                        effort.isBlank() || effort == "auto" -> thinkingEnabled
+                        else -> true
+                    }
+                    requestThinkingLevel = when (effort) {
+                        "minimal", "low" -> 0
+                        "medium" -> 1
+                        "high" -> 2
+                        "xhigh", "max" -> 4
+                        else -> thinkingLevel
+                    }
+                    // 全局设置覆盖 > 模型 profile > 供应商配置。
                     val winOverride = settings?.contextWindowOverride ?: 0
-                    agentCore.contextWindow = if (winOverride > 0) winOverride else (effectiveCfg?.contextWindow ?: 0)
+                    agentCore.contextWindow = if (winOverride > 0) winOverride else
+                        (modelProfile?.contextWindow?.takeIf { it > 0 } ?: (effectiveCfg?.contextWindow ?: 0))
+                    agentCore.maxTokens = modelProfile?.maxOutputTokens?.takeIf { it > 0 } ?: identity?.maxTokens
+                    agentCore.topP = identity?.topP
                     val thOverride = settings?.autoCompactThresholdOverride ?: 0
                     agentCore.autoCompactThresholdPercent =
                         if (thOverride in 1..100) thOverride else (effectiveCfg?.autoCompactThresholdPercent ?: 85)
@@ -650,7 +671,7 @@ class AgentChatState(
 
                 consumerRef = consumer
                 // B 方案:先 run()(内部重建本轮 channel)再启动 collector,确保绑定本轮新队列。
-                val agentJob = agentCore.run(text, s, thinkingEnabled, thinkingLevel)
+                val agentJob = agentCore.run(text, s, requestThinkingEnabled, requestThinkingLevel)
                 // Collect tokens from AgentCore → feed to channel
                 val tokenCollector = s.launch {
                     var tcCnt = 0
@@ -687,7 +708,7 @@ class AgentChatState(
                             // 先请求分段:让此前产出的文字定稿成独立一条,工具块随后插入其下方,
                             // 从而形成「说一段 → 做一步 → 再说一段」的交错时间线。
                             wantNewSegment.set(true)
-                            pushToolCallBlock(action.toolName, action.arguments, action.callIndex)
+                            pushToolCallBlock(action.toolName, action.arguments, action.callIndex, action.thoughtSignature)
                         }
                         is ToolBlockAction.UpdateResult -> {
                             val status = when (action.status) {

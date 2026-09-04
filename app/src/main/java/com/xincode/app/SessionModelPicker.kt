@@ -82,7 +82,7 @@ fun SessionModelPicker(
         loading = true
         status = ""
         scope.launch {
-            val result = openAiClient.listModels(current.baseUrl, key)
+            val result = openAiClient.listModels(current.baseUrl, key, current.supplierId)
             fetched = result.getOrDefault(emptyList())
             loading = false
             status = if (fetched.isEmpty()) "✗ 拉不到模型列表，可手填模型 ID" else "✓ 已加载 ${fetched.size} 个模型"

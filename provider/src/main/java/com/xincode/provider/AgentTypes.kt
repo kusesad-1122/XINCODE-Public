@@ -9,7 +9,9 @@ package com.xincode.provider
 data class ToolCall(
     val id: String,
     val name: String,
-    val arguments: String  // raw JSON string (model-generated)
+    val arguments: String,  // raw JSON string (model-generated)
+    /** Gemini thought signature; must survive the assistant tool-call round trip. */
+    val thoughtSignature: String = ""
 )
 
 /** Complete result of one agent streaming call. */

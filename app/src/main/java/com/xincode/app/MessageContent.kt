@@ -18,7 +18,8 @@ sealed class MessageContent {
         val stderr: String = "",
         val exitCode: Int? = null,
         val durationMs: Long? = null,
-        val status: ToolStatus = ToolStatus.PENDING
+        val status: ToolStatus = ToolStatus.PENDING,
+        val thoughtSignature: String = ""
     ) : MessageContent()
 
     /** File read block — rendered as a code viewer. */

@@ -15,6 +15,7 @@ class ResponsesStreamParser(
         var id: String = "",
         var callId: String = "",
         var name: String = "",
+        var thoughtSignature: String = ""
         var arguments: String = ""
     )
 
@@ -116,7 +117,7 @@ class ResponsesStreamParser(
         toolCalls = tools.values.mapNotNull { acc ->
             val id = acc.callId.ifBlank { acc.id }
             if (id.isBlank() || acc.name.isBlank()) null
-            else ToolCall(id, acc.name, acc.arguments.ifBlank { "{}" })
+            else ToolCall(id, acc.name, acc.arguments.ifBlank { "{}" }, acc.thoughtSignature)
         },
         usage = usage,
         truncated = terminal == Terminal.NONE || terminal == Terminal.INCOMPLETE,
@@ -135,6 +136,11 @@ class ResponsesStreamParser(
         if (item.has("arguments") && !item.isNull("arguments")) {
             acc.arguments = item.safeString("arguments")
         }
+        val direct = item.safeString("thought_signature")
+        val extra = item.optJSONObject("extra_content") ?: item.optJSONObject("extraContent")
+        val google = extra?.optJSONObject("google") ?: item.optJSONObject("google")
+        val signature = direct.ifBlank { google?.safeString("thought_signature").orEmpty() }
+        if (signature.isNotBlank()) acc.thoughtSignature = signature
     }
 
     private fun updateUsage(candidate: JSONObject?) {

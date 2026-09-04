@@ -22,7 +22,8 @@ sealed class ToolBlockAction {
     data class PushCall(
         val callIndex: Int,
         val toolName: String,
-        val arguments: String
+        val arguments: String,
+        val thoughtSignature: String = ""
     ) : ToolBlockAction()
 
     /** Tool execution result ready — update the ToolCall block. */
@@ -404,11 +405,14 @@ class AgentCore(
         // tool_calls 数组里(id 用 restored_<msgId> 一一对应),保证配对合法。
         var lastAssistant: org.json.JSONObject? = null
 
-        fun attachToolCall(assistant: org.json.JSONObject, id: String, name: String, arguments: String) {
+        fun attachToolCall(assistant: org.json.JSONObject, id: String, name: String, arguments: String, thoughtSignature: String = "") {
             val arr = assistant.optJSONArray("tool_calls") ?: org.json.JSONArray().also { assistant.put("tool_calls", it) }
             arr.put(org.json.JSONObject().apply {
                 put("id", id); put("type", "function")
                 put("function", org.json.JSONObject().apply { put("name", name); put("arguments", arguments) })
+                if (thoughtSignature.isNotBlank()) {
+                    put("extra_content", org.json.JSONObject().put("google", org.json.JSONObject().put("thought_signature", thoughtSignature)))
+                }
             })
             // assistant 带 tool_calls 时 content 允许为 null;若原本为空串,保持空串也可,这里不动 content。
         }
@@ -432,6 +436,7 @@ class AgentCore(
                     val isToolCall = j?.optBoolean("__tool_call__", false) == true
                     val name = if (isToolCall) j!!.optString("tool_name", "tool") else "tool"
                     val arguments = if (isToolCall) j!!.optString("full_params", "{}").ifBlank { "{}" } else "{}"
+                    val thoughtSignature = if (isToolCall) j!!.optString("thought_signature", "") else ""
                     val content = if (isToolCall) {
                         val stdout = j!!.optString("stdout", "")
                         val stderr = j.optString("stderr", "")
@@ -446,7 +451,7 @@ class AgentCore(
                     val assistant = lastAssistant ?: org.json.JSONObject().apply {
                         put("role", "assistant"); put("content", org.json.JSONObject.NULL)
                     }.also { messages.add(it); lastAssistant = it }
-                    attachToolCall(assistant, id, name, arguments)
+                    attachToolCall(assistant, id, name, arguments, thoughtSignature)
                     messages.add(org.json.JSONObject().apply {
                         put("role", "tool"); put("tool_call_id", id); put("content", content)
                     })
@@ -639,7 +644,7 @@ class AgentCore(
                 _state.value = AgentState.CallingTool(iteration, call.name, call.arguments)
 
                 // Emit PushCall so UI shows a pending ToolCallBlock
-                onToolBlock?.invoke(ToolBlockAction.PushCall(callIndex, call.name, call.arguments))
+                onToolBlock?.invoke(ToolBlockAction.PushCall(callIndex, call.name, call.arguments, call.thoughtSignature))
 
                 // --- Security Gate ---
                 val gate = securityGate
@@ -800,6 +805,7 @@ class AgentCore(
                     put("tool_call_id", call.id)
                     put("name", call.name)
                     put("arguments", call.arguments)
+                    if (call.thoughtSignature.isNotBlank()) put("thought_signature", call.thoughtSignature)
                 }.toString()
                 pendingToolResultJson = org.json.JSONObject().apply {
                     put("tool_call_id", call.id)
@@ -1075,6 +1081,9 @@ onComplete = { result ->
                                 put("name", tc.name)
                                 put("arguments", tc.arguments)
                             })
+                            if (tc.thoughtSignature.isNotBlank()) {
+                                put("extra_content", org.json.JSONObject().put("google", org.json.JSONObject().put("thought_signature", tc.thoughtSignature)))
+                            }
                         })
                     }
                 })

@@ -4,6 +4,7 @@ import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverter
 import org.json.JSONArray
+import org.json.JSONObject
 
 @Entity(tableName = "provider_configs")
 data class ProviderConfigEntity(
@@ -33,8 +34,50 @@ data class ProviderConfigEntity(
     val supportsVision: Boolean = false,
     val supportsAudio: Boolean = false,
     val supportsVideo: Boolean = false,
-    val supportsToolCall: Boolean = true
+    val supportsToolCall: Boolean = true,
+    /** JSON map: model id -> independent context/output/thinking profile. */
+    val modelSettingsJson: String = "{}"
 )
+
+/** Per-model limits and reasoning controls shown in the provider configuration UI. */
+data class ModelProfile(
+    val contextWindow: Int = 0,
+    val maxOutputTokens: Int = 0,
+    val thinkingEffort: String = "auto",
+    val supportsImageInput: Boolean = false
+)
+
+object ModelProfileCodec {
+    fun decode(raw: String): Map<String, ModelProfile> {
+        return try {
+            val root = JSONObject(raw.ifBlank { "{}" })
+            val result = linkedMapOf<String, ModelProfile>()
+            val keys = root.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val item = root.optJSONObject(key) ?: continue
+                result[key] = ModelProfile(
+                    contextWindow = item.optInt("contextWindow", 0).coerceAtLeast(0),
+                    maxOutputTokens = item.optInt("maxOutputTokens", 0).coerceAtLeast(0),
+                    thinkingEffort = item.optString("thinkingEffort", "auto").ifBlank { "auto" },
+                    supportsImageInput = item.optBoolean("supportsImageInput", false)
+                )
+            }
+            result
+        } catch (_: Exception) { emptyMap() }
+    }
+
+    fun encode(profiles: Map<String, ModelProfile>): String = JSONObject().apply {
+        profiles.forEach { (model, profile) ->
+            put(model, JSONObject().apply {
+                put("contextWindow", profile.contextWindow)
+                put("maxOutputTokens", profile.maxOutputTokens)
+                put("thinkingEffort", profile.thinkingEffort)
+                put("supportsImageInput", profile.supportsImageInput)
+            })
+        }
+    }.toString()
+}
 
 class Converters {
     @TypeConverter

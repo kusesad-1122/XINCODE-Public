@@ -103,14 +103,21 @@ class OpenAiClient(
 
     private fun trimBase(baseUrl: String): String = baseUrl.trim().trimEnd('/')
 
+    private fun isGeminiEndpoint(baseUrl: String, supplierId: String = ""): Boolean =
+        supplierId.equals("gemini", ignoreCase = true) ||
+            baseUrl.contains("generativelanguage.googleapis.com", ignoreCase = true)
+
     /**
      * 按 base_url 是否自带版本段,拼出正确的端点——带版本就只接资源路径,不带才补 /v1。
-     * 这样「带不带 /v1」「用 /v4 的智谱」都能一次配通。
+     * Gemini 的 OpenAI 兼容入口额外位于 /openai;旧配置填 /v1beta 时自动补上。
      */
     private fun chatEndpoint(baseUrl: String, apiPathType: String): String {
         // custom = 用户提供完整 URL,原样使用(不追加任何东西)。
         if (apiPathType == "custom") return trimBase(baseUrl)
-        val base = trimBase(baseUrl)
+        var base = trimBase(baseUrl)
+        if (apiPathType == "openai" && isGeminiEndpoint(base) && !base.endsWith("/openai")) {
+            base += "/openai"
+        }
         val versioned = hasVersionSegment(base)
         return base + when (apiPathType) {
             "anthropic" -> if (versioned) "/messages" else "/v1/messages"
@@ -187,48 +194,79 @@ class OpenAiClient(
     // -- model list ------------------------------------------------------------
 
     /**
-     * Fetches available model IDs from GET /v1/models.
-     * Takes raw [baseUrl] and [apiKey] directly — no Room/Keystore dependency,
-     * so it can be called before saving config.
+     * Fetch model IDs from OpenAI-compatible and Gemini model-list responses.
+     * Gemini may return either {data:[{id}]} through /openai/models or
+     * {models:[{name,supportedGenerationMethods}]} through /models.
      */
-    suspend fun listModels(baseUrl: String, apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
+    suspend fun listModels(baseUrl: String, apiKey: String, supplierId: String = ""): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
-            // 与 chatEndpoint 同一套规则:base_url 自带版本段(/v1、/v4…)时只接 /models。
             val b = trimBase(baseUrl)
-            val url = if (hasVersionSegment(b)) "$b/models" else "$b/v1/models"
-            val request = Request.Builder()
-                .url(url)
-                .addHeader("Authorization", "Bearer $apiKey")
-                .get()
-                .build()
-
-            Log.d(TAG, "→ GET $url")
-
-            val response = httpClient.newCall(request).execute()
-            val responseBody = response.body?.string() ?: ""
-            Log.d(TAG, "← ${response.code} ${responseBody.take(300)}")
-
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    ApiError.from(IOException("HTTP ${response.code}"), httpCode = response.code)
-                )
+            val gemini = isGeminiEndpoint(b, supplierId)
+            val urls = if (gemini) {
+                val compatBase = if (b.endsWith("/openai")) b else "$b/openai"
+                listOf("$compatBase/models", "$b/models").distinct()
+            } else {
+                listOf(if (hasVersionSegment(b)) "$b/models" else "$b/v1/models")
             }
-
-            val dataArray = JSONObject(responseBody).optJSONArray("data")
-                ?: return@withContext Result.success(emptyList())
-
-            val models = mutableListOf<String>()
-            for (i in 0 until dataArray.length()) {
-                val id = dataArray.optJSONObject(i)?.optString("id", "") ?: ""
-                if (id.isNotBlank()) models.add(id)
+            var lastError = "模型列表为空"
+            for (url in urls) {
+                val nativeGemini = gemini && !url.contains("/openai/")
+                val response = httpClient.newCall(
+                    Request.Builder()
+                        .url(url)
+                        .apply {
+                            if (nativeGemini) addHeader("x-goog-api-key", apiKey)
+                            else addHeader("Authorization", "Bearer $apiKey")
+                        }
+                        .get()
+                        .build()
+                ).execute()
+                response.use {
+                    val responseBody = it.body?.string().orEmpty()
+                    Log.d(TAG, "← GET $url ${it.code} ${responseBody.take(300)}")
+                    if (!it.isSuccessful) {
+                        lastError = "HTTP ${it.code}"
+                        return@use
+                    }
+                    val models = parseModelList(responseBody)
+                    if (models.isNotEmpty()) {
+                        Log.i(TAG, "✓ Listed ${models.size} models from $url")
+                        return@withContext Result.success(models.sorted())
+                    }
+                    lastError = "响应没有可用模型"
+                }
             }
-
-            Log.i(TAG, "✓ Listed ${models.size} models")
-            Result.success(models.sorted())
+            Result.failure(ApiError.from(IOException("获取模型列表失败: $lastError")))
         } catch (e: Exception) {
             Log.e(TAG, "✗ listModels failed: ${e.message}", e)
             Result.failure(ApiError.from(e))
         }
+    }
+
+    private fun parseModelList(responseBody: String): List<String> {
+        val root = JSONObject(responseBody)
+        val models = linkedSetOf<String>()
+        root.optJSONArray("data")?.let { array ->
+            for (i in 0 until array.length()) {
+                val id = array.optJSONObject(i)?.optString("id", "").orEmpty()
+                if (id.isNotBlank()) models += id.removePrefix("models/")
+            }
+        }
+        root.optJSONArray("models")?.let { array ->
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val methods = item.optJSONArray("supportedGenerationMethods")
+                if (methods != null && !jsonArrayContains(methods, "generateContent")) continue
+                val id = item.optString("name", item.optString("id", ""))
+                if (id.isNotBlank()) models += id.removePrefix("models/")
+            }
+        }
+        return models.toList()
+    }
+
+    private fun jsonArrayContains(array: JSONArray, expected: String): Boolean {
+        for (i in 0 until array.length()) if (array.optString(i) == expected) return true
+        return false
     }
 
     // -- non-streaming --------------------------------------------------------
@@ -656,7 +694,7 @@ class OpenAiClient(
                 // Build final tool_calls list from accumulator
                 val toolCalls = tcAcc.values
                     .filter { it.id.isNotEmpty() && it.name.isNotEmpty() }
-                    .map { ToolCall(id = it.id, name = it.name, arguments = it.argsBuf.toString()) }
+                    .map { ToolCall(id = it.id, name = it.name, arguments = it.argsBuf.toString(), thoughtSignature = it.thoughtSignature) }
 
                 if (!sawTerminator) Log.w(TAG, "⚠ Agent SSE truncated: $tokenCount tokens, no [DONE]/finish_reason")
                 Log.i(TAG, "✓ Agent SSE complete: $tokenCount tokens, ${toolCalls.size} tool_calls")
@@ -1037,10 +1075,20 @@ class OpenAiClient(
     private fun JSONObject.optStr(key: String): String =
         if (isNull(key)) "" else optString(key, "")
 
+    /** Read Gemini's signature from direct, function, or OpenAI extra_content shapes. */
+    private fun JSONObject.optThoughtSignature(): String {
+        optStr("thought_signature").ifBlank {
+            val extra = optJSONObject("extra_content") ?: optJSONObject("extraContent")
+            val google = extra?.optJSONObject("google") ?: optJSONObject("google")
+            google?.optStr("thought_signature").orEmpty()
+        }
+    }
+
     /** Accumulates a single tool_call's fields across streaming SSE chunks. */
     private class ToolCallAccumulator {
         var id: String = ""
         var name: String = ""
+        var thoughtSignature: String = ""
         val argsBuf = StringBuilder()
     }
 
@@ -1131,6 +1179,7 @@ class OpenAiClient(
                         val id = tc.optString("id", "")
                         if (id.isNotEmpty()) acc.id = id
                     }
+                    tc.optThoughtSignature().takeIf { it.isNotBlank() }?.let { acc.thoughtSignature = it }
                     // function sub-object
                     val func = tc.optJSONObject("function")
                     if (func != null) {
@@ -1142,6 +1191,7 @@ class OpenAiClient(
                         if (!func.isNull("arguments")) {
                             acc.argsBuf.append(func.optString("arguments", ""))
                         }
+                        func.optThoughtSignature().takeIf { it.isNotBlank() }?.let { acc.thoughtSignature = it }
                     }
                 }
             }

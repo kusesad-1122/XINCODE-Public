@@ -53,6 +53,14 @@ object PrivilegedExecutor {
         return executeNormal(command)
     }
 
+    /** Best-effort hard stop for a terminal shell process and its process group. */
+    suspend fun terminate(pid: Long, context: Context? = null): ExecResult {
+        if (pid <= 1L) return ExecResult("", "拒绝终止非法 PID", -1, 0L, false)
+        val safePid = pid.toString()
+        val command = "kill -TERM -$safePid 2>/dev/null; kill -TERM $safePid 2>/dev/null; sleep 1; kill -KILL -$safePid 2>/dev/null; kill -KILL $safePid 2>/dev/null"
+        return execute(command, context)
+    }
+
     suspend fun executeStreaming(command: String, onLine: (String) -> Unit, context: Context? = null): ExecResult {
         if (RootShellManager.rootStatus == com.xincode.app.root.RootStatus.OK) {
             try {

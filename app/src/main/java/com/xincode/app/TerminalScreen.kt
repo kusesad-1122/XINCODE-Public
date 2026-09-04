@@ -43,7 +43,14 @@ private val TSub = Color(0xFF6B7089)
 fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var input by remember { mutableStateOf("") }
+    var quickInput by remember { mutableStateOf("") }
+    var inputExpanded by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
+    fun submitCommand(raw: String) {
+        val command = raw.trim()
+        if (command.isNotBlank() && !terminal.running) scope.launch { terminal.run(command) }
+    }
 
     // 新行到达时自动滚到底部。
     LaunchedEffect(terminal.lines.size) {
@@ -53,7 +60,7 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(TBg)) {
         // 顶栏
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("‹ 返回", fontSize = 13.sp, fontFamily = Mono, color = TSub,
@@ -64,6 +71,33 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
             Spacer(Modifier.weight(1f))
             Text("清屏", fontSize = 12.sp, fontFamily = Mono, color = TSub,
                 modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { terminal.clear() })
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("❯", fontSize = 14.sp, fontFamily = Mono, color = TGreen)
+            Spacer(Modifier.width(8.dp))
+            TextField(
+                value = quickInput,
+                onValueChange = { quickInput = it },
+                modifier = Modifier.weight(1f).heightIn(min = 42.dp, max = 48.dp),
+                enabled = !terminal.running,
+                singleLine = true,
+                placeholder = { Text("快捷命令", fontSize = 12.sp, fontFamily = Mono, color = TSub) },
+                textStyle = TextStyle(fontSize = 12.sp, fontFamily = Mono),
+                keyboardActions = KeyboardActions(onDone = { val c = quickInput; quickInput = ""; submitCommand(c) }),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color(0xFF161923), unfocusedContainerColor = Color(0xFF161923),
+                    cursorColor = TGreen, focusedTextColor = TInk, unfocusedTextColor = TInk,
+                    focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
+                )
+            )
+            Spacer(Modifier.width(8.dp))
+            Text("执行", fontSize = 12.sp, fontFamily = Mono, color = if (terminal.running) TSub else TGreen,
+                modifier = Modifier.clickable(enabled = !terminal.running, indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                    val c = quickInput; quickInput = ""; submitCommand(c)
+                }.padding(horizontal = 6.dp, vertical = 8.dp))
         }
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF20232E)))
 
@@ -83,41 +117,43 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
             }
         }
 
-        // 输入行
+        // 多行输入行:默认两行，需要时展开到更大的编辑区，回车保留换行。
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Bottom
         ) {
-            Text("❯", fontSize = 14.sp, fontFamily = Mono, color = TGreen)
+            Text("❯", fontSize = 14.sp, fontFamily = Mono, color = TGreen, modifier = Modifier.padding(bottom = 14.dp))
             Spacer(Modifier.width(8.dp))
             TextField(
                 value = input,
                 onValueChange = { input = it },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).heightIn(min = if (inputExpanded) 122.dp else 58.dp, max = 170.dp),
                 enabled = !terminal.running,
-                singleLine = true,
-                placeholder = { Text(if (terminal.running) "执行中…" else "输入命令,回车执行", fontSize = 12.sp, fontFamily = Mono, color = TSub) },
-                textStyle = TextStyle(fontSize = 12.sp, fontFamily = Mono),
-                keyboardActions = KeyboardActions(onDone = {
-                    val c = input; input = ""
-                    if (c.isNotBlank()) scope.launch { terminal.run(c) }
-                }),
+                singleLine = false,
+                maxLines = if (inputExpanded) 8 else 2,
+                placeholder = { Text(if (terminal.running) "执行中…" else "输入多行命令，点击执行", fontSize = 12.sp, fontFamily = Mono, color = TSub) },
+                textStyle = TextStyle(fontSize = 12.sp, fontFamily = Mono, lineHeight = 17.sp),
+                keyboardActions = KeyboardActions(onDone = { val c = input; input = ""; submitCommand(c) }),
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color(0xFF161923),
-                    unfocusedContainerColor = Color(0xFF161923),
+                    focusedContainerColor = Color(0xFF161923), unfocusedContainerColor = Color(0xFF161923),
                     cursorColor = TGreen, focusedTextColor = TInk, unfocusedTextColor = TInk,
                     focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
                 )
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(if (inputExpanded) "⌄" else "⌃", fontSize = 16.sp, fontFamily = Mono, color = TSub,
+                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { inputExpanded = !inputExpanded }
+                    .padding(horizontal = 5.dp, vertical = 12.dp))
+            Spacer(Modifier.width(4.dp))
             Box(
-                Modifier.clip(RoundedCornerShape(8.dp)).background(if (terminal.running) TGreen.copy(alpha = 0.4f) else TGreen)
-                    .clickable(enabled = !terminal.running, indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                        val c = input; input = ""
-                        if (c.isNotBlank()) scope.launch { terminal.run(c) }
+                Modifier.clip(RoundedCornerShape(10.dp))
+                    .background(if (terminal.running) Color(0xFFE0685C) else TGreen)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        if (terminal.running) scope.launch { terminal.stop() }
+                        else { val c = input; input = ""; submitCommand(c) }
                     }
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
-            ) { Text("运行", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = Color(0xFF0F1117)) }
+                    .padding(horizontal = 14.dp, vertical = 11.dp)
+            ) { Text(if (terminal.running) "终止" else "执行", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = Color(0xFF0F1117)) }
         }
     }
 }
