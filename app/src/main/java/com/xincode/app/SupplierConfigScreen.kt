@@ -142,6 +142,7 @@ fun SupplierConfigScreen(
     var showModelDropdown by remember { mutableStateOf(false) }
     var pendingActivateId by remember { mutableStateOf<Long?>(null) }  // warn before activating
     var editingApiKey by remember { mutableStateOf("") }  // decrypted stored key for live fetch during edit
+    var switchModelConfig by remember { mutableStateOf<ProviderConfigEntity?>(null) }
 
     val selectedSupplier = knownSuppliers.find { it.id == selectedSupplierId } ?: knownSuppliers.last()
     val isCustom = selectedSupplierId == "custom"
@@ -159,6 +160,18 @@ fun SupplierConfigScreen(
     fun activateConfig(id: Long) {
         if (id != activeId) {
             pendingActivateId = id  // show warning first
+        }
+    }
+
+    fun changeConfigModel(cfg: ProviderConfigEntity, newModel: String) {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                configDao.update(cfg.copy(model = newModel))
+            }
+            switchModelConfig = null
+            loadConfigs()
+            status = "✓ ${cfg.name} 已更换模型为 $newModel"
+            onConfigChanged()
         }
     }
 
@@ -342,8 +355,15 @@ fun SupplierConfigScreen(
                     Column(Modifier.weight(1f)) {
                         Text(cfg.name, fontSize = 12.sp, fontFamily = XinUiFont,
                             color = if (isActive) Ink else Sub)
-                        Text("${knownSuppliers.find{it.id==cfg.supplierId}?.name ?: cfg.supplierId} · ${cfg.model}",
-                            fontSize = 10.sp, fontFamily = XinUiFont, color = Faint)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("${knownSuppliers.find{it.id==cfg.supplierId}?.name ?: cfg.supplierId} · ${cfg.model}",
+                                fontSize = 10.sp, fontFamily = XinUiFont, color = Faint)
+                            Spacer(Modifier.width(6.dp))
+                            Text("更换模型", fontSize = 9.sp, fontFamily = XinUiFont, color = Green,
+                                modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                    switchModelConfig = cfg
+                                })
+                        }
                     }
                     if (isActive) Text("✓", fontSize = 12.sp, color = Green, modifier = Modifier.padding(end = 8.dp))
                     Text("✎", fontSize = 12.sp, fontFamily = XinUiFont, color = Sub,
@@ -645,6 +665,51 @@ fun SupplierConfigScreen(
             Spacer(Modifier.height(8.dp))
             Text(status, fontSize = 11.sp, fontFamily = XinUiFont,
                 color = if (status.contains("✓")) Green else if (status.contains("✗")) Red else Sub)
+        }
+
+        // ---- 更换模型对话框 ----
+        switchModelConfig?.let { targetCfg ->
+            val available = (targetCfg.enabledModelIds + listOf(targetCfg.model)).filter { it.isNotBlank() }.distinct()
+            AlertDialog(
+                onDismissRequest = { switchModelConfig = null },
+                title = { Text("更换模型 - ${targetCfg.name}", fontFamily = XinUiFont, color = Ink, fontSize = 14.sp) },
+                text = {
+                    Column(Modifier.fillMaxWidth().heightIn(max = 280.dp).verticalScroll(rememberScrollState())) {
+                        Text("点击选择该供应商的默认运行模型：", fontSize = 11.sp, fontFamily = XinUiFont, color = Sub)
+                        Spacer(Modifier.height(8.dp))
+                        available.forEach { m ->
+                            val isCurrent = m == targetCfg.model
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(if (isCurrent) LocalXinColors.current.activeBg else Bg)
+                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                        changeConfigModel(targetCfg, m)
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    m,
+                                    fontSize = 12.sp,
+                                    fontFamily = XinUiFont,
+                                    color = if (isCurrent) Ink else Sub,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (isCurrent) {
+                                    Text("✓ 当前", fontSize = 10.sp, fontFamily = XinUiFont, color = Green)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { switchModelConfig = null }) {
+                        Text("关闭", fontFamily = XinUiFont, color = Sub)
+                    }
+                },
+                containerColor = Bg
+            )
         }
 
         // ---- model switch warning dialog ----

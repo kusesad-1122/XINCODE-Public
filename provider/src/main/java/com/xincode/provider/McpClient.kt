@@ -234,22 +234,36 @@ class McpClient(
      * SSE lines come as: "data: {json}\n"
      */
     private fun parseResponse(body: String): JSONObject {
-        // Try plain JSON first
         val trimmed = body.trim()
+        if (trimmed.isEmpty()) {
+            // 部分基于 HTTP 的 MCP 实现（例如 202 Accepted 或仅建立 Session 返回空 Body）
+            return JSONObject().put("jsonrpc", JSONRPC_VERSION).put("result", JSONObject())
+        }
+
+        // Try plain JSON first
         if (trimmed.startsWith("{")) {
             return JSONObject(trimmed)
         }
 
-        // Try SSE format: extract JSON from "data: ..." lines
+        // Try SSE format: extract JSON from "data: ..." lines (优先取最后一行非空合法 JSON)
+        var lastJson: JSONObject? = null
         for (line in trimmed.lines()) {
             val dataLine = line.trim()
-            if (dataLine.startsWith("data: ")) {
-                val jsonStr = dataLine.removePrefix("data: ").trim()
+            if (dataLine.startsWith("data:")) {
+                val jsonStr = dataLine.removePrefix("data:").removePrefix("data: ").trim()
                 if (jsonStr.startsWith("{")) {
-                    return JSONObject(jsonStr)
+                    try {
+                        val parsed = JSONObject(jsonStr)
+                        // 优先包含 result 或 error 的有效 JSON-RPC 消息
+                        if (parsed.has("result") || parsed.has("error")) {
+                            return parsed
+                        }
+                        lastJson = parsed
+                    } catch (_: Exception) {}
                 }
             }
         }
+        if (lastJson != null) return lastJson
 
         throw McpException("MCP: cannot parse response: ${body.take(200)}")
     }

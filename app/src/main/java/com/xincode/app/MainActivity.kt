@@ -67,6 +67,14 @@ class MainActivity : ComponentActivity() {
             var terminalOrigin by remember { mutableStateOf("chat") }
             // 1.22: IDE 子页与构建环境变量的来源回退 (env_config <-> ide_xxx)
             var ideOrigin by remember { mutableStateOf("settings") }
+            // 记录一级功能模块（IDE / MCP / Skills / 群聊房间 / Goal 模式）的进入来源（从侧边栏进入时回退到首页 chat）
+            var featureOrigins by remember { mutableStateOf(mapOf(
+                "ide_dashboard" to "chat",
+                "mcp" to "chat",
+                "skills" to "chat",
+                "group_rooms" to "chat",
+                "goal" to "chat"
+            )) }
             var rootDiagResult by remember { mutableStateOf<RootDiagnosticResult?>(null) }
             var editingIdentityId by remember { mutableStateOf<Long?>(null) }
             val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -205,7 +213,8 @@ class MainActivity : ComponentActivity() {
             BackHandler(enabled = !drawerState.isOpen && currentPage != "chat") {
                 currentPage = when {
                     currentPage == "terminal" -> terminalOrigin
-                    currentPage.startsWith("ide_") -> ideOrigin
+                    currentPage.startsWith("ide_") && currentPage != "ide_dashboard" -> ideOrigin
+                    featureOrigins.containsKey(currentPage) -> featureOrigins[currentPage] ?: "chat"
                     else -> parentPageOf(currentPage)
                 }
             }
@@ -248,10 +257,10 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         onNavigateToSettings = { currentPage = "settings" },
-                        onNavigateToIde = { currentPage = "ide_dashboard" },
-                        onNavigateToGoal = { currentPage = "goal" },
-                        onNavigateToMcp = { currentPage = "mcp" },
-                        onNavigateToSkills = { currentPage = "skills" },
+                        onNavigateToIde = { featureOrigins = featureOrigins + ("ide_dashboard" to "chat"); ideOrigin = "chat"; currentPage = "ide_dashboard" },
+                        onNavigateToGoal = { featureOrigins = featureOrigins + ("goal" to "chat"); currentPage = "goal" },
+                        onNavigateToMcp = { featureOrigins = featureOrigins + ("mcp" to "chat"); currentPage = "mcp" },
+                        onNavigateToSkills = { featureOrigins = featureOrigins + ("skills" to "chat"); currentPage = "skills" },
                         onClose = { drawerScope.launch { drawerState.close() } },
                         onCreateProject = { name -> app.createProject(name) },
                         onCreateNewInProject = { projectId ->
@@ -274,9 +283,10 @@ class MainActivity : ComponentActivity() {
                         goalSessions = goalSessions,
                         goalLiveStatus = { id -> app.goalRunStatus[id] ?: "" },
                         groupRooms = groupRooms,
-                        onOpenGroupRooms = { currentPage = "group_rooms" },
+                        onOpenGroupRooms = { featureOrigins = featureOrigins + ("group_rooms" to "chat"); currentPage = "group_rooms" },
                         onOpenGroupRoom = { rid ->
                             openRoomId = rid
+                            featureOrigins = featureOrigins + ("group_rooms" to "chat")
                             currentPage = "group_rooms"
                         },
                         onCreateGoal = {
@@ -417,8 +427,8 @@ class MainActivity : ComponentActivity() {
                         onNavigateToGit = { currentPage = "git_config" },
                         onNavigateToAuditLog = { currentPage = "audit" },
                         onNavigateToMemoryStorage = { currentPage = "memory_storage" },
-                        onNavigateToSkills = { currentPage = "skills" },
-                        onNavigateToMcp = { currentPage = "mcp" },
+                        onNavigateToSkills = { featureOrigins = featureOrigins + ("skills" to "settings"); currentPage = "skills" },
+                        onNavigateToMcp = { featureOrigins = featureOrigins + ("mcp" to "settings"); currentPage = "mcp" },
                         onNavigateToCuratedMemory = { currentPage = "curated_memory" },
                         onNavigateToCron = { currentPage = "cron_jobs" },
                         onNavigateToContextCompress = { currentPage = "context_compress" },
@@ -431,11 +441,11 @@ class MainActivity : ComponentActivity() {
                         onNavigateToCodeIndex = { currentPage = "code_index" },
                         onNavigateToUsageStats = { currentPage = "usage_stats" },
                         onNavigateToKanban = { currentPage = "kanban" },
-                        onNavigateToGroupRooms = { currentPage = "group_rooms" },
+                        onNavigateToGroupRooms = { featureOrigins = featureOrigins + ("group_rooms" to "settings"); currentPage = "group_rooms" },
                         onNavigateToProfiles = { currentPage = "profiles" },
                         onNavigateToSubAgents = { currentPage = "sub_agents" },
                         onNavigateToEnvConfig = { currentPage = "env_config" },
-                        onNavigateToIdeDashboard = { currentPage = "ide_dashboard" },
+                        onNavigateToIdeDashboard = { featureOrigins = featureOrigins + ("ide_dashboard" to "settings"); ideOrigin = "settings"; currentPage = "ide_dashboard" },
                         onNavigateToAbout = { currentPage = "about" },
                         darkMode = app.darkMode,
                         onUpdateDarkMode = { app.updateDarkMode(it) },
@@ -508,7 +518,7 @@ class MainActivity : ComponentActivity() {
                     }
                     "goal" -> GoalScreen(
                         goalRunner = app.goalRunner,
-                        onBack = { currentPage = "chat" }
+                        onBack = { currentPage = featureOrigins["goal"] ?: "chat" }
                     )
                     "memory_storage" -> MemoryStorageScreen(
                         database = app.database,
@@ -516,11 +526,11 @@ class MainActivity : ComponentActivity() {
                     )
                     "skills" -> SkillScreen(
                         database = app.database,
-                        onBack = { currentPage = "settings" }
+                        onBack = { currentPage = featureOrigins["skills"] ?: "chat" }
                     )
                     "mcp" -> McpServerScreen(
                         mcpManager = app.mcpManager,
-                        onBack = { currentPage = "settings" }
+                        onBack = { currentPage = featureOrigins["mcp"] ?: "chat" }
                     )
                     "curated_memory" -> CuratedMemoryScreen(
                         database = app.database,
@@ -544,7 +554,7 @@ class MainActivity : ComponentActivity() {
                         initialRoomId = openRoomId,
                         onConsumedInitialRoom = { openRoomId = null },
                         // 成员工作台现在是群聊【内嵌】的一层,不再跳出到主对话页
-                        onBack = { openRoomId = null; currentPage = "chat" })
+                        onBack = { openRoomId = null; currentPage = featureOrigins["group_rooms"] ?: "chat" })
                     "profiles" -> ProfilesScreen(database = app.database, onBack = { currentPage = "settings" })
                     "function_models" -> FunctionModelsScreen(
                         database = app.database,
@@ -629,7 +639,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     "ide_dashboard" -> com.xincode.app.ide.IdeDashboardScreen(
-                        onBack = { currentPage = "settings" },
+                        onBack = { currentPage = featureOrigins["ide_dashboard"] ?: "chat" },
                         onNavigate = { id ->
                             // 1.22: IDE 子页与构建环境变量按来源回退，终端特殊处理。
                             if (id == "terminal") {
@@ -718,9 +728,10 @@ class MainActivity : ComponentActivity() {
 /** 各子页返回时的「上一页」映射:设置类子页回设置,其余回聊天。 */
 private fun parentPageOf(page: String): String = when (page) {
     "settings" -> "chat"
-    "supplier", "model_market", "git_config", "audit", "memory_storage", "skills", "mcp", "curated_memory",
+    "supplier", "model_market", "git_config", "audit", "memory_storage", "curated_memory",
     "cron_jobs", "aux_models", "function_models", "sub_agents", "env_config", "context_compress", "about",
-    "lan_devices", "logs", "usage_stats", "kanban", "group_rooms", "profiles", "code_index", "ide_dashboard" -> "settings"
+    "lan_devices", "logs", "usage_stats", "kanban", "profiles", "code_index" -> "settings"
+    "skills", "mcp", "group_rooms", "ide_dashboard", "goal" -> "chat"
     "ide_gradle", "ide_sdk", "ide_envvar", "ide_jdk", "ide_lsp", "ide_designer", "ide_translator", "ide_assets", "ide_plugin", "ide_git" -> "ide_dashboard"
     "replay" -> "workflow"
     "identity_edit" -> "identity_list"
