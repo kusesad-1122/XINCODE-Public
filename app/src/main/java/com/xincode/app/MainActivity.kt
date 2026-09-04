@@ -479,12 +479,13 @@ class MainActivity : ComponentActivity() {
                         onUpdateSearchApiKey = { key -> app.updateSearchApiKey(key) },
                         onOpenDrawer = { drawerScope.launch { drawerState.open() } }
                     )
-                    "model_market" -> ModelMarketScreen(
+                    "model_market" -> SupplierHubScreen(
                         database = app.database,
                         keystore = app.keystore,
                         openAiClient = app.openAiClient,
                         onBack = { currentPage = "settings" },
-                        onConfigChanged = { app.refreshProviderRuntime() }
+                        onConfigChanged = { app.refreshProviderRuntime() },
+                        initialTab = 1
                     )
                     "git_config" -> GitConfigScreen(
                         database = app.database,

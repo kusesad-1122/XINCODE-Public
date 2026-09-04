@@ -335,10 +335,83 @@ fun SupplierConfigScreen(
             Spacer(Modifier.height(12.dp))
         }
 
+        // 顶部操作行：无论是否隐藏 header，始终露出「+ 新建配置」按钮
+        if (!showForm) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        "已保存配置 (${savedConfigs.size})",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = XinUiFont,
+                        color = Ink
+                    )
+                    Text(
+                        "点击条目即可直接切换为当前全局运行配置",
+                        fontSize = 11.sp,
+                        fontFamily = XinUiFont,
+                        color = Faint
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(17.dp))
+                        .background(Green)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { startNew() }
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "+ 新建配置",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = XinUiFont,
+                        color = Bg
+                    )
+                }
+            }
+        }
+
         // Config list
-        if (savedConfigs.isEmpty()) {
-            Text("暂无配置，点「+ 新建」创建", fontSize = 12.sp, fontFamily = XinUiFont,
-                color = Faint, modifier = Modifier.padding(vertical = 24.dp))
+        if (savedConfigs.isEmpty() && !showForm) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(LocalXinColors.current.bgElevated)
+                    .border(1.dp, Border, RoundedCornerShape(18.dp))
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("尚未添加任何供应商配置", fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = XinUiFont, color = Ink)
+                Spacer(Modifier.height(6.dp))
+                Text("支持 OpenAI、DeepSeek、Claude、通义千问及本地 Ollama 等接入", fontSize = 11.sp, fontFamily = XinUiFont, color = Sub)
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(19.dp))
+                        .background(Green)
+                        .clickable(
+                            indication = null,
+                            interactionSource = remember { MutableInteractionSource() }
+                        ) { startNew() }
+                        .padding(horizontal = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("+ 立即添加配置", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Bg, fontFamily = XinUiFont)
+                }
+            }
         } else {
             savedConfigs.forEach { cfg ->
                 val isActive = cfg.id == activeId

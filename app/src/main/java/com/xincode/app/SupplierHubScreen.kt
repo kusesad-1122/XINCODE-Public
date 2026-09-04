@@ -36,8 +36,8 @@ fun SupplierHubScreen(
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
         XinPageHeader(
-            title = "供应商",
-            subtitle = "管理配置与发现模型供应商",
+            title = "模型与供应商",
+            subtitle = "管理 API 密钥、运行模型与探索供应商市场",
             onBack = onBack,
             modifier = Modifier.padding(horizontal = 12.dp)
         )
@@ -46,10 +46,11 @@ fun SupplierHubScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(14.dp))
                 .background(xc.bgElevated)
-                .padding(3.dp),
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                .border(0.5.dp, xc.border, RoundedCornerShape(14.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             SupplierHubTab(
                 title = "我的配置",
@@ -98,8 +99,8 @@ private fun SupplierHubTab(
     val xc = LocalXinColors.current
     Box(
         modifier
-            .heightIn(min = 40.dp)
-            .clip(RoundedCornerShape(8.dp))
+            .heightIn(min = 38.dp)
+            .clip(RoundedCornerShape(10.dp))
             .background(if (selected) xc.activeBg else xc.bgElevated)
             .clickable(
                 indication = null,
@@ -110,10 +111,10 @@ private fun SupplierHubTab(
     ) {
         Text(
             title,
-            fontSize = 12.sp,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             fontFamily = XinUiFont,
-            color = if (selected) xc.ink else xc.sub
+            color = if (selected) xc.green else xc.sub
         )
     }
 }

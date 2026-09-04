@@ -26,10 +26,11 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 
 /**
- * XINCODE palette — terminal aesthetic, brand-neutral tokens.
+ * XINCODE Claude-inspired aesthetic palette — warm parchment, literary serif typography,
+ * terracotta amber accents and refined, low-contrast borders.
  *
- * Two variants: [XinLight] (default parchment) and [XinDark] (near-black terminal).
- * Read via `LocalXinColors.current` inside a Composable, wrapped by [XinTheme].
+ * Two variants: [XinLight] (warm parchment cream) and [XinDark] (warm obsidian charcoal).
+ * Read via LocalXinColors.current inside a Composable, wrapped by [XinTheme].
  */
 @Immutable
 data class XinColors(
@@ -38,9 +39,9 @@ data class XinColors(
     val ink: Color,
     val sub: Color,
     val faint: Color,
-    val green: Color,
+    val green: Color,       // Brand primary accent: warm terracotta coral (Claude style)
     val red: Color,
-    val yellow: Color,
+    val yellow: Color,      // Secondary accent: golden amber
     val border: Color,
     val activeBg: Color,
     val activeBar: Color,
@@ -49,47 +50,46 @@ data class XinColors(
 )
 
 val XinLight = XinColors(
-    bg = Color(0xFFF9F9F6),
-    bgElevated = Color(0xFFFDFDFB),
-    ink = Color(0xFF1A1A17),
-    sub = Color(0xFF86857B),
-    faint = Color(0xFFB7B6AB),
-    green = Color(0xFF6E8050),
-    red = Color(0xFFA8514A),
-    yellow = Color(0xFFB88B3A),
-    border = Color(0xFFE6E4DC),
-    activeBg = Color(0x1A6E8050),
-    activeBar = Color(0xFF6E8050),
-    divider = Color(0x141A1A17),
+    bg = Color(0xFFFAF8F5),          // Claude Warm Parchment / Cream
+    bgElevated = Color(0xFFFFFFFF),  // Pure warm elevated surface
+    ink = Color(0xFF201E1C),         // Deep warm espresso
+    sub = Color(0xFF6B6760),         // Refined charcoal stone
+    faint = Color(0xFF9E9A91),       // Gentle mute
+    green = Color(0xFFCC6644),       // Claude Iconic Terracotta Coral
+    red = Color(0xFFBF4842),         // Brick red
+    yellow = Color(0xFFD97706),      // Warm Amber
+    border = Color(0xFFEBE6DD),      // Feather-light warm border
+    activeBg = Color(0x1ACC6644),    // Tinted terracotta wash
+    activeBar = Color(0xFFCC6644),
+    divider = Color(0x14201E1C),
     isDark = false
 )
 
 val XinDark = XinColors(
-    bg = Color(0xFF141412),
-    bgElevated = Color(0xFF1C1C1A),
-    ink = Color(0xFFE8E6DC),
-    sub = Color(0xFF8F8E85),
-    faint = Color(0xFF585754),
-    green = Color(0xFF8FA36A),
-    red = Color(0xFFC77469),
-    yellow = Color(0xFFD9A85B),
-    border = Color(0xFF2A2A26),
-    activeBg = Color(0x338FA36A),
-    activeBar = Color(0xFF8FA36A),
-    divider = Color(0x22E8E6DC),
+    bg = Color(0xFF181715),          // Deep warm obsidian
+    bgElevated = Color(0xFF22201D),  // Warm dark stone surface
+    ink = Color(0xFFEDE8E1),         // Soft warm ivory
+    sub = Color(0xFF9E988E),         // Muted stone gray
+    faint = Color(0xFF635F57),       // Subtle mute
+    green = Color(0xFFE07A5F),       // Luminous warm terracotta
+    red = Color(0xFFD96B6B),
+    yellow = Color(0xFFE5A84B),      // Warm Amber Dark
+    border = Color(0xFF2E2B27),      // Low-contrast warm border
+    activeBg = Color(0x33E07A5F),
+    activeBar = Color(0xFFE07A5F),
+    divider = Color(0x22EDE8E1),
     isDark = true
 )
 
 val LocalXinColors = compositionLocalOf { XinLight }
 
 /**
- * Root theme wrapper — provides `LocalXinColors` for the entire tree.
- * Uses a 300ms animated color transition so switching light↔dark is smooth.
+ * Root theme wrapper — provides LocalXinColors for the entire tree.
+ * Uses a 300ms animated color transition so switching light<->dark is smooth.
  */
 @Composable
 fun XinTheme(dark: Boolean, content: @Composable () -> Unit) {
     val target = if (dark) XinDark else XinLight
-    // Animate the 4 most-visible tokens so the switch is buttery instead of a hard cut.
     val bg by animateColorAsState(target.bg, tween(300), label = "themeBg")
     val ink by animateColorAsState(target.ink, tween(300), label = "themeInk")
     val bgElevated by animateColorAsState(target.bgElevated, tween(300), label = "themeBgE")
@@ -156,10 +156,13 @@ fun XinTheme(dark: Boolean, content: @Composable () -> Unit) {
     }
 }
 
-/** Humanist system sans for navigation, settings, forms and conversation copy. */
+/** Classical literary serif font for Claude-style titles, headers, brand, and editorial prompts. */
+val XinSerifFont: FontFamily = FontFamily.Serif
+
+/** Clean humanist system sans for UI buttons, forms, and conversation body. */
 val XinUiFont: FontFamily = FontFamily.SansSerif
 
-/** Monospace is intentionally reserved for commands, code and terminal output. */
+/** Monospace for code, tokens, commands, and terminals. */
 val XinCodeFont: FontFamily = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
 
 /** Compatibility alias used by existing UI while screens migrate to shared components. */
@@ -167,19 +170,21 @@ val XinFont: FontFamily = XinUiFont
 
 val XinTypography = Typography(
     displaySmall = androidx.compose.ui.text.TextStyle(
-        fontFamily = XinUiFont,
+        fontFamily = XinSerifFont,
         fontWeight = FontWeight.SemiBold,
         fontSize = 32.sp,
-        lineHeight = 40.sp
+        lineHeight = 40.sp,
+        letterSpacing = (-0.5).sp
     ),
     headlineSmall = androidx.compose.ui.text.TextStyle(
-        fontFamily = XinUiFont,
+        fontFamily = XinSerifFont,
         fontWeight = FontWeight.SemiBold,
         fontSize = 24.sp,
-        lineHeight = 32.sp
+        lineHeight = 32.sp,
+        letterSpacing = (-0.3).sp
     ),
     titleLarge = androidx.compose.ui.text.TextStyle(
-        fontFamily = XinUiFont,
+        fontFamily = XinSerifFont,
         fontWeight = FontWeight.SemiBold,
         fontSize = 21.sp,
         lineHeight = 28.sp
@@ -187,37 +192,28 @@ val XinTypography = Typography(
     titleMedium = androidx.compose.ui.text.TextStyle(
         fontFamily = XinUiFont,
         fontWeight = FontWeight.Medium,
-        fontSize = 17.sp,
+        fontSize = 16.sp,
         lineHeight = 24.sp
     ),
     bodyLarge = androidx.compose.ui.text.TextStyle(
         fontFamily = XinUiFont,
-        fontSize = 17.sp,
-        lineHeight = 26.sp
+        fontSize = 16.sp,
+        lineHeight = 25.sp
     ),
     bodyMedium = androidx.compose.ui.text.TextStyle(
         fontFamily = XinUiFont,
-        fontSize = 15.sp,
-        lineHeight = 22.sp
-    ),
-    labelLarge = androidx.compose.ui.text.TextStyle(
-        fontFamily = XinUiFont,
-        fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
-        lineHeight = 20.sp
+        lineHeight = 21.sp
     ),
-    labelMedium = androidx.compose.ui.text.TextStyle(
+    labelSmall = androidx.compose.ui.text.TextStyle(
         fontFamily = XinUiFont,
-        fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
+        fontSize = 11.sp,
         lineHeight = 16.sp
     )
 )
 
 val XinShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
+    small = RoundedCornerShape(10.dp),
     medium = RoundedCornerShape(18.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(30.dp)
+    large = RoundedCornerShape(26.dp)
 )

@@ -535,7 +535,7 @@ fun ChatScreen(
                     conversationTitle,
                     fontSize = 22.sp,
                     lineHeight = 26.sp,
-                    fontFamily = XinUiFont,
+                    fontFamily = XinSerifFont,
                     fontWeight = FontWeight.SemiBold,
                     color = Ink,
                     maxLines = 1,

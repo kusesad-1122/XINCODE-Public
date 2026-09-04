@@ -739,9 +739,9 @@ private fun SidebarFeatureRow(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = xc.ink,
-                fontFamily = FontFamily.Serif, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(desc, fontSize = 11.sp, color = xc.faint, fontFamily = FontFamily.Serif,
-                maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 14.sp)
+                fontFamily = XinSerifFont, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(desc, fontSize = 11.sp, color = xc.sub, fontFamily = XinUiFont,
+                maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
         }
         Text("›", fontSize = 18.sp, color = xc.faint, fontFamily = FontFamily.Serif,
             modifier = Modifier.padding(start = 8.dp))

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowBack
@@ -29,7 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Shared page chrome for every non-immersive XINCODE screen. */
+/** Shared page chrome for every non-immersive XINCODE screen, crafted with Claude aesthetic. */
 @Composable
 fun XinPageHeader(
     title: String,
@@ -48,8 +49,10 @@ fun XinPageHeader(
     ) {
         Row(
             modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(colors.bgElevated)
+                .border(0.5.dp, colors.border, CircleShape)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -62,18 +65,18 @@ fun XinPageHeader(
                 imageVector = Icons.Outlined.ArrowBack,
                 contentDescription = "返回",
                 tint = colors.ink,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(20.dp)
             )
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 text = title,
                 color = colors.ink,
-                fontFamily = XinUiFont,
+                fontFamily = XinSerifFont,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 20.sp,
-                lineHeight = 26.sp,
+                fontSize = 21.sp,
+                lineHeight = 27.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -93,7 +96,7 @@ fun XinPageHeader(
     }
 }
 
-/** Consistent text action for page headers, with a full-size touch target. */
+/** Consistent pill text action for page headers, styled in Claude terracotta pill. */
 @Composable
 fun XinHeaderAction(
     label: String,
@@ -109,16 +112,17 @@ fun XinHeaderAction(
     }
     Row(
         modifier = Modifier
-            .heightIn(min = 44.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .heightIn(min = 36.dp)
+            .clip(RoundedCornerShape(18.dp))
             .background(if (enabled) colors.activeBg else colors.bg)
+            .border(0.5.dp, if (enabled) colors.green.copy(alpha = 0.35f) else colors.border, RoundedCornerShape(18.dp))
             .clickable(
                 enabled = enabled,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -126,7 +130,7 @@ fun XinHeaderAction(
             color = contentColor,
             fontFamily = XinUiFont,
             fontWeight = FontWeight.Medium,
-            fontSize = 13.sp
+            fontSize = 12.sp
         )
     }
 }
@@ -141,8 +145,8 @@ fun XinSectionSurface(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(colors.bgElevated, RoundedCornerShape(20.dp))
-            .border(1.dp, colors.border, RoundedCornerShape(20.dp)),
+            .background(colors.bgElevated, RoundedCornerShape(22.dp))
+            .border(1.dp, colors.border, RoundedCornerShape(22.dp)),
     ) {
         content()
     }

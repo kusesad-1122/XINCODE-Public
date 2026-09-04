@@ -193,8 +193,8 @@ fun SettingsScreen(
         SectionHeader(title = "账户与模型", icon = Icons.Outlined.AccountCircle, expanded = expanded["账户与模型"] == true, onToggle = { toggle("账户与模型") })
         AnimatedVisibility(visible = expanded["账户与模型"] == true) {
             Column {
-                SettingRow("免费模型 / 供应商", "预置免费与付费供应商,带官网入口,一键添加", icon = Icons.Outlined.Extension) { onNavigateToModelMarket() }
-                SettingRow("供应商配置", "管理 API 供应商、密钥和模型", icon = Icons.Outlined.Settings) { onNavigateToSupplierConfig() }
+                // 统一收敛为「模型与供应商」单一入口，内部通过双 Tab 切换「我的配置」与「供应商市场」，避免双重入口困惑
+                SettingRow("模型与供应商", "管理 API 密钥、切换默认模型与探索供应商市场", icon = Icons.Outlined.Tune) { onNavigateToSupplierConfig() }
             }
         }
 
