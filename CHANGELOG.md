@@ -1,5 +1,12 @@
 # 更新日志
 
+## [Unreleased]
+
+### 生图兼容性修复
+- 仅使用供应商实际公开的生图模型，失败后停止 Agent 盲目改猜聊天模型。
+- 兼容 GPT Image 的 `output_format`、DALL-E 的 `response_format`、Responses `image_generation` 返回格式。
+- 生图成功后工具卡直接显示原始图片字节，历史消息也可恢复显示；下载图片时不向第三方 URL 转发 API Key。
+
 ## [1.13.2] - 2026-09-05
 
 ### 侧边栏 / 终端 / 设置 / 计费 / 生图集中修复

@@ -98,10 +98,11 @@ fun AgentTurnBlock(
                     )
                 }
                 if (message.content.isNotBlank()) {
-                    MarkdownContent(
-                        message.content,
-                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                    )
+                    val visibleText = stripGeneratedImageMarkers(message.content)
+                    Column(Modifier.padding(top = 12.dp, bottom = 4.dp)) {
+                        GeneratedImagePreview(message.content)
+                        if (visibleText.isNotBlank()) MarkdownContent(visibleText)
+                    }
                 }
             }
 
@@ -142,6 +143,14 @@ fun AgentTurnBlock(
                                     else -> Unit
                                 }
                             }
+                        }
+                    }
+                } else {
+                    // 生图步骤折叠时仍显示成品，避免用户必须展开工具卡才能看到图片。
+                    group.toolMessages.forEach { tool ->
+                        val block = tool.contentBlock as? MessageContent.ToolCall
+                        if (block?.toolName == "generate_image" && block.stdout.isNotBlank()) {
+                            GeneratedImagePreview(block.stdout)
                         }
                     }
                 }

@@ -2226,6 +2226,55 @@ private fun McpPickerDialog(mcpNames: List<String>, onPick: (String) -> Unit, on
     )
 }
 
+private val GeneratedImageMarkerRegex = Regex("""###\s*([^(]+)\(图片,路径:([^)]+)\)""")
+
+fun stripGeneratedImageMarkers(content: String): String =
+    GeneratedImageMarkerRegex.replace(content, "").replace(Regex("""\n{3,}"""), "\n\n").trim()
+
+/** Render image files returned by generate_image without re-encoding them. */
+@Composable
+fun GeneratedImagePreview(content: String) {
+    val matches = remember(content) { GeneratedImageMarkerRegex.findAll(content).toList() }
+    if (matches.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        matches.forEach { match ->
+            val fileName = match.groupValues[1].trim()
+            val path = match.groupValues[2].trim()
+            val file = remember(path) { java.io.File(path) }
+            val bitmap = remember(path, file.lastModified(), file.length()) {
+                if (file.exists()) {
+                    try {
+                        // Full-resolution decode: the bitmap is only fitted on screen; the source file is untouched.
+                        // Only subsample absurdly large images (>4096px) to avoid OOM; normal outputs stay pixel-exact.
+                        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        android.graphics.BitmapFactory.decodeFile(path, bounds)
+                        val sample = when {
+                            bounds.outWidth <= 0 || bounds.outHeight <= 0 -> 1
+                            maxOf(bounds.outWidth, bounds.outHeight) > 4096 -> 2
+                            else -> 1
+                        }
+                        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                        android.graphics.BitmapFactory.decodeFile(path, opts)
+                    } catch (_: Exception) { null }
+                } else null
+            }
+            if (bitmap != null) {
+                androidx.compose.foundation.Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = fileName,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                )
+            } else {
+                Text("[图片未找到: " + fileName + "]", fontSize = 12.sp, color = LocalXinColors.current.sub)
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean = false, onRetry: (() -> Unit)? = null, onDelete: (() -> Unit)? = null, onRegenerate: (() -> Unit)? = null) {
@@ -2344,41 +2393,12 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
         Box(bubbleModifier) {
         // Content (Markdown for assistant, plain text for user/tool)
         if (msg.role == "assistant") {
-            // 生图/附件图片标记:### 文件名(图片,路径:绝对路径) —— 直接渲染出图(文件本身不压缩,只按需降采样显示)。
-            val genImageRegex = remember { Regex("""###\s*([^(]+)\(图片,路径:([^)]+)\)""") }
-            val genImages = remember(msg.content) { genImageRegex.findAll(msg.content).toList() }
             val textWithoutImages = remember(msg.content) {
-                msg.content.replace(genImageRegex, "").replace(Regex("""\n{3,}"""), "\n\n").trim()
+                GeneratedImageMarkerRegex.replace(msg.content, "").replace(Regex("""\n{3,}"""), "\n\n").trim()
             }
             if (msg.content.isNotEmpty()) {
                 Column {
-                    for (match in genImages) {
-                        val fileName = match.groupValues[1].trim()
-                        val path = match.groupValues[2].trim()
-                        val file = remember(path) { java.io.File(path) }
-                        val bitmap = remember(path) {
-                            if (file.exists()) {
-                                try {
-                                    // 大文件才降采样(省内存),8MB 内全分辨率显示,不降清晰度。
-                                    val sample = if (file.length() < 8L * 1024 * 1024) 1 else 2
-                                    val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
-                                    android.graphics.BitmapFactory.decodeFile(path, opts)
-                                } catch (_: Exception) { null }
-                            } else null
-                        }
-                        if (bitmap != null) {
-                            androidx.compose.foundation.Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = fileName,
-                                modifier = Modifier
-                                    .padding(bottom = 8.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .fillMaxWidth()
-                                    .heightIn(max = 320.dp),
-                                contentScale = androidx.compose.ui.layout.ContentScale.Fit
-                            )
-                        }
-                    }
+                    GeneratedImagePreview(msg.content)
                     if (textWithoutImages.isNotBlank()) {
                         MarkdownContent(textWithoutImages)
                     }
@@ -2402,16 +2422,34 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
                 )
             }
         } else {
-            Text(
-                msg.content.ifEmpty {
-                    if (isTool) "(empty)" else ""
-                },
-                fontSize = if (isTool) 11.sp else 13.sp,
-                fontFamily = JetBrainsMono,
-                color = contentColor,
-                lineHeight = if (isTool) 16.sp else 20.sp
-            )
-        }
+            val toolTextWithoutImages = remember(msg.content) {
+                GeneratedImageMarkerRegex.replace(msg.content, "").replace(Regex("""\n{3,}"""), "\n\n").trim()
+            }
+            val hasGeneratedImages = GeneratedImageMarkerRegex.containsMatchIn(msg.content)
+            if (isTool && hasGeneratedImages) {
+                Column {
+                    GeneratedImagePreview(msg.content)
+                    if (toolTextWithoutImages.isNotBlank()) {
+                        Text(
+                            toolTextWithoutImages,
+                            fontSize = 11.sp,
+                            fontFamily = JetBrainsMono,
+                            color = contentColor,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    msg.content.ifEmpty {
+                        if (isTool) "(empty)" else ""
+                    },
+                    fontSize = if (isTool) 11.sp else 13.sp,
+                    fontFamily = JetBrainsMono,
+                    color = contentColor,
+                    lineHeight = if (isTool) 16.sp else 20.sp
+                )
+            }
         }   // 气泡 Box 结束
 
         // 常驻操作行。工具消息不给(它自己有展开/折叠),流式进行中也不给。

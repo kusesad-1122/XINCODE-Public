@@ -40,6 +40,7 @@ object ToolLabels {
         "cronjob" to "设定定时任务",
         "current_time" to "查询当前时间",
         "describe_image" to "识别图片",
+        "generate_image" to "生成图片",
         "ask_reasoning" to "深度推理",
         "translate_text" to "翻译",
         "transcribe_audio" to "语音转写"
@@ -71,6 +72,7 @@ object ToolLabels {
         "skill_manage" to listOf("name"),
         "cronjob" to listOf("schedule", "prompt"),
         "describe_image" to listOf("path", "url"),
+        "generate_image" to listOf("prompt", "model", "size"),
         "ask_reasoning" to listOf("question", "prompt"),
         "translate_text" to listOf("text"),
         "dispatch_agents" to listOf("task", "tasks")

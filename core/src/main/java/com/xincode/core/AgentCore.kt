@@ -726,6 +726,9 @@ class AgentCore(
                     toolRegistry.execute(call)
                 }
                 val durationMs = System.currentTimeMillis() - startTime
+                // 生图是外部能力边界：失败后禁止 Agent 继续猜测聊天模型并重复调用。
+                // 工具卡已经收到失败结果，下面仍会写入工具消息并 checkpoint。
+                val stopAfterToolFailure = call.name == "generate_image" && toolResult is ToolResult.Error
                 // gap-24 post_tool hook
                 fireHook("post_tool", mapOf(
                     "tool" to call.name,
@@ -821,6 +824,16 @@ class AgentCore(
                 pendingToolCallJson = null  // fed back, clear pending
                 pendingToolResultJson = null
                 checkpointCursor()  // tool result fed back
+
+                if (stopAfterToolFailure) {
+                    _state.value = AgentState.Error(
+                        "生图未完成，已停止自动更换模型重试。最后错误: " +
+                            (toolResult as ToolResult.Error).message,
+                        iteration
+                    )
+                    clearCursor()
+                    return
+                }
             }
             // → loop back to Thinking for next iteration
         }

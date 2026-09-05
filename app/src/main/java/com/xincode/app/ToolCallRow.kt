@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Terminal
@@ -41,7 +42,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +56,7 @@ private fun toolIcon(toolName: String): ImageVector = when (toolName) {
     "web_search", "web_search_batch" -> Icons.Outlined.Search
     "web_fetch" -> Icons.Outlined.Public
     "agent_plan" -> Icons.Outlined.CheckCircle
+    "generate_image" -> Icons.Outlined.Image
     else -> Icons.Outlined.Terminal
 }
 
@@ -153,13 +154,13 @@ fun ToolCallRow(toolCall: MessageContent.ToolCall, modifier: Modifier = Modifier
                     Box(
                         modifier = Modifier
                             .size(34.dp)
-                            .background(Color(0xFF292A28), RoundedCornerShape(8.dp)),
+                            .background(xc.activeBg, RoundedCornerShape(8.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = toolIcon(toolCall.toolName),
                             contentDescription = null,
-                            tint = Color(0xFFB3CE6F),
+                            tint = xc.green,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -205,9 +206,18 @@ fun ToolCallRow(toolCall: MessageContent.ToolCall, modifier: Modifier = Modifier
                             .border(1.dp, xc.border.copy(alpha = 0.75f), RoundedCornerShape(12.dp))
                             .padding(12.dp)
                     ) {
-                        if (toolCall.stdout.isNotBlank()) {
+                        // generate_image 返回的路径标记由工具卡直接渲染，不能依赖 Agent 复述到 assistant 文本。
+                        if (toolCall.toolName == "generate_image" && toolCall.stdout.isNotBlank()) {
+                            GeneratedImagePreview(toolCall.stdout)
+                        }
+                        val visibleStdout = if (toolCall.toolName == "generate_image") {
+                            stripGeneratedImageMarkers(toolCall.stdout)
+                        } else {
+                            toolCall.stdout
+                        }
+                        if (visibleStdout.isNotBlank()) {
                             Text(
-                                toolCall.stdout.trimEnd(),
+                                visibleStdout.trimEnd(),
                                 fontSize = 12.sp,
                                 lineHeight = 18.sp,
                                 fontFamily = XinCodeFont,
