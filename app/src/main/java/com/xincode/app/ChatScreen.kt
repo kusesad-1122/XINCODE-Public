@@ -2450,6 +2450,7 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
                     lineHeight = if (isTool) 16.sp else 20.sp
                 )
             }
+        }
         }   // 气泡 Box 结束
 
         // 常驻操作行。工具消息不给(它自己有展开/折叠),流式进行中也不给。
