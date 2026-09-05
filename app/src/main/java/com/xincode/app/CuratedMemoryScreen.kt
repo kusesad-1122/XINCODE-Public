@@ -52,6 +52,8 @@ fun CuratedMemoryScreen(
     var memoryText by remember { mutableStateOf("") }
     var loaded by remember { mutableStateOf(false) }
     var savedHint by remember { mutableStateOf("") }
+    // 协程里不能调 t(),格式串先在组合作用域取好
+    val fmtSaved = t("已保存 ✓")
 
     LaunchedEffect(Unit) {
         userText = withContext(Dispatchers.IO) { CuratedMemory.read(database, "user") }
@@ -101,7 +103,7 @@ fun CuratedMemoryScreen(
                                 database.settingDao().put(CuratedMemory.keyFor("user"), userText.trim())
                                 database.settingDao().put(CuratedMemory.keyFor("memory"), memoryText.trim())
                             }
-                            savedHint = t("已保存 ✓")
+                            savedHint = fmtSaved
                         }
                     }
                     .padding(horizontal = 18.dp, vertical = 8.dp)
