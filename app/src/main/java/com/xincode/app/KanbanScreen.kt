@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -154,11 +155,18 @@ fun KanbanScreen(
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             columns.forEach { (status, label, color) ->
                 val items = tasks.filter { it.status == status }
-                Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(label, fontSize = 12.sp, fontFamily = Mono, fontWeight = FontWeight.Bold, color = color)
-                    Spacer(Modifier.width(6.dp))
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(7.dp).background(color, CircleShape))
+                    Spacer(Modifier.width(7.dp))
+                    Text(label, fontSize = 12.sp, fontFamily = Mono, fontWeight = FontWeight.SemiBold, color = color)
+                    Spacer(Modifier.width(8.dp))
                     Text("${items.size}", fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
-                        modifier = Modifier.weight(1f))
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(xc.bgElevated)
+                            .padding(horizontal = 7.dp, vertical = 1.dp)
+                    )
+                    Spacer(Modifier.weight(1f))
                     if (status == STATUS_DONE && items.isNotEmpty()) {
                         Text("清空", fontSize = 10.sp, fontFamily = Mono, color = xc.red,
                             modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
@@ -167,21 +175,24 @@ fun KanbanScreen(
                     }
                 }
                 if (items.isEmpty()) {
-                    Text("—", fontSize = 11.sp, fontFamily = Mono, color = xc.faint,
-                        modifier = Modifier.padding(bottom = 4.dp))
+                    Text("· 空 ·", fontSize = 10.sp, fontFamily = Mono, color = xc.faint.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(bottom = 4.dp, start = 2.dp))
                 }
                 items.forEach { task ->
                     Row(
-                        Modifier.fillMaxWidth().padding(vertical = 3.dp)
-                            .clip(RoundedCornerShape(8.dp)).background(xc.bgElevated).padding(10.dp),
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(xc.bgElevated)
+                            .border(0.5.dp, xc.border, RoundedCornerShape(14.dp))
+                            .padding(horizontal = 4.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("‹", fontSize = 15.sp, fontFamily = Mono,
-                            color = if (status == STATUS_TODO) xc.bgElevated else xc.sub,
+                        Text("‹", fontSize = 16.sp, fontFamily = Mono,
+                            color = if (status == STATUS_TODO) xc.border else xc.sub,
                             modifier = Modifier
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() },
                                     enabled = status != STATUS_TODO) { move(task, false) }
-                                .padding(horizontal = 6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp))
                         Column(
                             Modifier.weight(1f)
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { editing = task }
@@ -228,12 +239,12 @@ fun KanbanScreen(
                                 )
                             }
                         }
-                        Text("›", fontSize = 15.sp, fontFamily = Mono,
-                            color = if (status == STATUS_DONE) xc.bgElevated else xc.sub,
+                        Text("›", fontSize = 16.sp, fontFamily = Mono,
+                            color = if (status == STATUS_DONE) xc.border else xc.sub,
                             modifier = Modifier
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() },
                                     enabled = status != STATUS_DONE) { move(task, true) }
-                                .padding(horizontal = 6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp))
                     }
                 }
             }
@@ -249,7 +260,7 @@ fun KanbanScreen(
                 TextField(
                     value = newTitle, onValueChange = { newTitle = it },
                     placeholder = { Text("要做什么", fontSize = 12.sp, fontFamily = Mono, color = xc.faint) },
-                    modifier = Modifier.fillMaxWidth().border(0.5.dp, xc.border, RoundedCornerShape(4.dp)),
+                    modifier = Modifier.fillMaxWidth().border(0.5.dp, xc.border, RoundedCornerShape(12.dp)),
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
                         cursorColor = xc.ink, focusedTextColor = xc.ink, unfocusedTextColor = xc.ink,
@@ -288,7 +299,7 @@ fun KanbanScreen(
                 Column {
                     TextField(
                         value = title, onValueChange = { title = it },
-                        modifier = Modifier.fillMaxWidth().border(0.5.dp, xc.border, RoundedCornerShape(4.dp)),
+                        modifier = Modifier.fillMaxWidth().border(0.5.dp, xc.border, RoundedCornerShape(12.dp)),
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
                             cursorColor = xc.ink, focusedTextColor = xc.ink, unfocusedTextColor = xc.ink,
@@ -301,7 +312,7 @@ fun KanbanScreen(
                         value = note, onValueChange = { note = it },
                         placeholder = { Text("备注(可选)", fontSize = 12.sp, fontFamily = Mono, color = xc.faint) },
                         modifier = Modifier.fillMaxWidth().heightIn(min = 70.dp)
-                            .border(0.5.dp, xc.border, RoundedCornerShape(4.dp)),
+                            .border(0.5.dp, xc.border, RoundedCornerShape(12.dp)),
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
                             cursorColor = xc.ink, focusedTextColor = xc.ink, unfocusedTextColor = xc.ink,

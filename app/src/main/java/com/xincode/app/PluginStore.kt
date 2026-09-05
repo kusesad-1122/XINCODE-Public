@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.Extension
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Storage
@@ -38,6 +39,8 @@ data class PluginDescriptor(
     val summary: String,
     val kind: PluginKind,
     val icon: ImageVector,
+    /** 品牌官方图标(res/drawable),有官方 logo 的插件优先用它,不再用通用图标凑数 */
+    val brandRes: Int? = null,
     /** 安装前是否需要网页授权(点击安装先弹跳转授权弹窗) */
     val requiresAuth: Boolean = false,
     /** MCP 服务默认地址(空 = 安装时向用户询问,如 Composio) */
@@ -47,7 +50,9 @@ data class PluginDescriptor(
     /** SKILL 形态对应的技能名(assets/skills 目录名) */
     val skillName: String = "",
     /** MCP 地址需要用户自填时的占位提示 */
-    val urlPlaceholder: String = ""
+    val urlPlaceholder: String = "",
+    /** 指引用户去哪拿地址/密钥的控制台地址(弹窗里会给出直达链接) */
+    val consoleUrl: String = ""
 )
 
 /** 内置插件清单。MCP 地址连接成功才记为已安装;技能以 state 判定;连接器以 token 判定。 */
@@ -58,9 +63,10 @@ object PluginCatalog {
         PluginDescriptor(
             id = "github_connector",
             name = "GitHub 连接器",
-            summary = "OAuth 设备流登录 GitHub(免手动建 Token)。Token 加密存本机,Git 接入与远程 MCP 复用同一授权。",
+            summary = "OAuth 设备流登录 GitHub(免手动建 Token)。Token 加密存本机,远程 MCP 与 git 操作复用同一授权。",
             kind = PluginKind.CONNECTOR,
             icon = Icons.Outlined.Code,
+            brandRes = R.drawable.ic_brand_github,
             requiresAuth = true
         ),
         // ── MCP 服务 ──
@@ -70,9 +76,27 @@ object PluginCatalog {
             summary = "官方远程 MCP(免 root/免 node):AI 直接用 GitHub API 管仓库/PR/Issue/文件。未登录时安装会先弹授权。",
             kind = PluginKind.MCP,
             icon = Icons.Outlined.Code,
+            brandRes = R.drawable.ic_brand_github,
             requiresAuth = true,
             defaultUrl = "https://api.githubcopilot.com/mcp/",
             needsGitToken = true
+        ),
+        PluginDescriptor(
+            id = "microsoft_learn_mcp",
+            name = "Microsoft Learn",
+            summary = "微软官方文档 MCP(免鉴权):.NET / Azure / Microsoft 365 的一手文档与代码示例即查即用。",
+            kind = PluginKind.MCP,
+            icon = Icons.Outlined.Storage,
+            brandRes = R.drawable.ic_brand_microsoft,
+            defaultUrl = "https://learn.microsoft.com/api/mcp"
+        ),
+        PluginDescriptor(
+            id = "context7_mcp",
+            name = "Context7",
+            summary = "主流框架/库的实时官方文档直接注入上下文,写代码不再靠模型记忆(免鉴权,限流更宽松可自配 Key)。",
+            kind = PluginKind.MCP,
+            icon = Icons.Outlined.MenuBook,
+            defaultUrl = "https://mcp.context7.com/mcp"
         ),
         PluginDescriptor(
             id = "deepwiki_mcp",
@@ -85,10 +109,11 @@ object PluginCatalog {
         PluginDescriptor(
             id = "composio_mcp",
             name = "Composio",
-            summary = "500+ SaaS 应用(Gmail/Notion/Slack…)由 Composio 托管 OAuth 后接入。安装时粘贴 Composio 控制台生成的 MCP 地址。",
+            summary = "500+ SaaS 应用(Gmail/Notion/Slack…)由 Composio 托管 OAuth 后接入。装前需在控制台生成属于你账号的 MCP 地址。",
             kind = PluginKind.MCP,
             icon = Icons.Outlined.Extension,
-            urlPlaceholder = "https://mcp.composio.dev/…"
+            urlPlaceholder = "https://mcp.composio.dev/…",
+            consoleUrl = "https://app.composio.dev"
         ),
         // ── 技能包(assets/skills) ──
         PluginDescriptor(
@@ -153,7 +178,7 @@ class PluginStoreManager(
 ) {
     companion object {
         private fun mcpKey(id: String) = "plugin_${id}_url"
-        private const val GIT_TOKEN_KEY = "git_token_enc" // 与 GitConfigScreen 共用
+        private const val GIT_TOKEN_KEY = "git_token_enc" // 沿用历史 key,老版本登录过的 token 直接复用
     }
 
     /** 各插件当前安装状态(从真实数据源推导,供页面渲染)。 */
@@ -188,7 +213,7 @@ class PluginStoreManager(
         database.settingDao().put(GIT_TOKEN_KEY, enc)
     }
 
-    /** 卸载连接器 = 清除 token(置空,GitConfigScreen 把空串视作未登录)。 */
+    /** 卸载连接器 = 清除 token(置空视作未登录)。 */
     suspend fun clearGitToken() = withContext(Dispatchers.IO) {
         database.settingDao().put(GIT_TOKEN_KEY, "")
     }

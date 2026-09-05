@@ -79,7 +79,6 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onNavigateToSupplierConfig: () -> Unit,
     onNavigateToModelMarket: () -> Unit = {},
-    onNavigateToGit: () -> Unit = {},
     onNavigateToAuditLog: () -> Unit,
     onNavigateToMemoryStorage: () -> Unit = {},
     rootDetector: RootDetector? = null,
@@ -87,8 +86,6 @@ fun SettingsScreen(
     onUpdatePermissionMode: (PermissionMode) -> Unit = {},
     onRootDiagnostic: (() -> Unit)? = null,
     rootDiagnosticResult: RootDiagnosticResult? = null,
-    searchApiKey: String = "",
-    onUpdateSearchApiKey: (String) -> Unit = {},
     onOpenDrawer: () -> Unit = {},
     darkMode: Boolean = false,
     onUpdateDarkMode: (Boolean) -> Unit = {},
@@ -460,9 +457,8 @@ fun SettingsScreen(
         }
 
         // ── Section: Agent 工具 ──
-        if (!SettingsStateHolder.hiddenSections.contains("Agent工具") && (searchQuery.isBlank() || "Agent工具 工作区 环境配置 配置环境 功能模型 模型委托 子智能体 看板 用量分析 日志 代码索引 Git 搜索 Key 插件 plugins agent tools".contains(searchQuery.trim(), ignoreCase = true))) {
+        if (!SettingsStateHolder.hiddenSections.contains("Agent工具") && (searchQuery.isBlank() || "Agent工具 工作区 环境配置 配置环境 功能模型 模型委托 子智能体 看板 用量分析 日志 代码索引 插件 plugins agent tools".contains(searchQuery.trim(), ignoreCase = true))) {
             SectionDivider()
-            var showSearchKeyDialog by remember { mutableStateOf(false) }
             var showWorkspaceDialog by remember { mutableStateOf(false) }
             SectionHeader(title = t("Agent 工具"), icon = Icons.Outlined.Build, expanded = expanded["Agent工具"] == true, onToggle = { toggle("Agent工具") })
             AnimatedVisibility(visible = expanded["Agent工具"] == true) {
@@ -491,45 +487,6 @@ fun SettingsScreen(
                     SettingRow(t("用量分析"), t("30 天趋势、模型分布、缓存命中率与成本估算"), icon = Icons.Outlined.Storage) { onNavigateToUsageStats() }
                     SettingRow(t("日志"), t("崩溃与运行日志,按级别/关键词过滤,可复制反馈"), icon = Icons.Outlined.BugReport) { onNavigateToLogs() }
                     SettingRow(t("代码索引"), t("把工作区代码结构抽进本地索引,AI 查符号定义与调用关系不再靠读文件"), icon = Icons.Outlined.Code) { onNavigateToCodeIndex() }
-                    SettingRow(t("Git 接入"), t("OAuth 登录 GitHub + 远程/本地 MCP(免 root 也能用)"), icon = Icons.Outlined.Code) { onNavigateToGit() }
-                    SettingRow(t("插件"), t("插件商店:安装/卸载连接器、MCP 服务与技能包"), icon = Icons.Outlined.Extension) { onNavigateToPlugins() }
-                    SettingRow(t("搜索 API Key"), if (searchApiKey.isNotBlank()) "••••••••••" else t("未配置"), icon = Icons.Outlined.Extension) { showSearchKeyDialog = true }
-                    if (showSearchKeyDialog) {
-                        var tempKey by remember { mutableStateOf(searchApiKey) }
-                        AlertDialog(
-                            onDismissRequest = { showSearchKeyDialog = false },
-                            title = { Text(t("搜索 API Key"), fontFamily = JetBrainsMono, color = Ink) },
-                            text = {
-                                Column {
-                                    Text(t("输入 Tavily Search API Key"), fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub)
-                                    Spacer(Modifier.height(8.dp))
-                                    TextField(
-                                        value = tempKey,
-                                        onValueChange = { tempKey = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        placeholder = { Text("tavily-...", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
-                                        colors = TextFieldDefaults.colors(
-                                            focusedContainerColor = Color.Transparent,
-                                            unfocusedContainerColor = Color.Transparent,
-                                            cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink
-                                        ),
-                                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontFamily = JetBrainsMono)
-                                    )
-                                }
-                            },
-                            confirmButton = {
-                                TextButton(onClick = { onUpdateSearchApiKey(tempKey); showSearchKeyDialog = false }) {
-                                    Text(t("保存"), fontFamily = JetBrainsMono, color = Green)
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showSearchKeyDialog = false }) {
-                                    Text(t("取消"), fontFamily = JetBrainsMono, color = Sub)
-                                }
-                            },
-                            containerColor = Bg
-                        )
-                    }
                 }
             }
         }

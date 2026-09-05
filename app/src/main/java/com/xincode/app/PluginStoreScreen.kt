@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -172,6 +173,15 @@ fun PluginStoreScreen(
                 modifier = Modifier.padding(bottom = 8.dp))
         }
 
+        // 市场总览:全部插件可见、装了多少一目了然
+        val totalCount = PluginCatalog.all.size
+        val installedCount = installed.count { it.value }
+        Text(
+            tx("共 %s 个插件 · 已安装 %s 个", totalCount.toString(), installedCount.toString()),
+            fontSize = 11.sp, fontFamily = JetBrainsMono, color = Faint,
+            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+        )
+
         listOf(PluginKind.CONNECTOR, PluginKind.MCP, PluginKind.SKILL).forEach { kind ->
             val items = PluginCatalog.all.filter { it.kind == kind }
             Text(
@@ -272,7 +282,12 @@ private fun PluginCard(
             Modifier.size(36.dp).background(xc.activeBg, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(p.icon, null, Modifier.size(18.dp), tint = xc.sub)
+            if (p.brandRes != null) {
+                // 官方品牌图标(GitHub octocat 等),比通用图标更有辨识度
+                Icon(painterResource(p.brandRes), null, Modifier.size(20.dp), tint = xc.ink)
+            } else {
+                Icon(p.icon, null, Modifier.size(18.dp), tint = xc.sub)
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -393,7 +408,8 @@ private fun PluginMcpUrlDialog(
 ) {
     var url by remember { mutableStateOf("") }
     var auth by remember { mutableStateOf("") }
-    val fmtHint = t("粘贴服务商控制台生成的 MCP 地址(HTTP);如需鉴权可填 Authorization 头(可选)。")
+    val ctx = LocalContext.current
+    val fmtHint = t("三步接入:① 打开控制台生成你的 MCP 地址 → ② 复制粘贴到下面 → ③ 点安装。如需鉴权可再填 Authorization 头(可选)。")
     val valid = url.trim().startsWith("http://") || url.trim().startsWith("https://")
 
     Dialog(onDismissRequest = onDismiss) {
@@ -401,6 +417,19 @@ private fun PluginMcpUrlDialog(
             Text(tx("安装 %s", plugin.name), fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
             Spacer(Modifier.height(8.dp))
             Text(fmtHint, fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
+            if (plugin.consoleUrl.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(t("打开控制台获取 MCP 地址 ›"), fontSize = 11.sp, fontFamily = JetBrainsMono, color = Green,
+                    modifier = Modifier.clickable(indication = null,
+                        interactionSource = remember { MutableInteractionSource() }) {
+                        try {
+                            ctx.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(plugin.consoleUrl))
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        } catch (_: Exception) {}
+                    })
+            }
             Spacer(Modifier.height(12.dp))
             Text("MCP URL", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
             TextField(

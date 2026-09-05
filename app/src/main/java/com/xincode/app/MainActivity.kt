@@ -477,7 +477,6 @@ class MainActivity : ComponentActivity() {
                         onBack = { currentPage = "chat" },
                         onNavigateToSupplierConfig = { currentPage = "supplier" },
                         onNavigateToModelMarket = { currentPage = "model_market" },
-                        onNavigateToGit = { currentPage = "git_config" },
                         onNavigateToAuditLog = { currentPage = "audit" },
                         onNavigateToMemoryStorage = { currentPage = "memory_storage" },
                         onNavigateToSkills = { featureOrigins = featureOrigins + ("skills" to "settings"); currentPage = "skills" },
@@ -530,8 +529,6 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         rootDiagnosticResult = rootDiagResult,
-                        searchApiKey = app.webSearchTool.apiKey,
-                        onUpdateSearchApiKey = { key -> app.updateSearchApiKey(key) },
                         onOpenDrawer = { drawerScope.launch { drawerState.open() } }
                     )
                     "model_market" -> SupplierHubScreen(
@@ -541,11 +538,6 @@ class MainActivity : ComponentActivity() {
                         onBack = { currentPage = "settings" },
                         onConfigChanged = { app.refreshProviderRuntime() },
                         initialTab = 1
-                    )
-                    "git_config" -> GitConfigScreen(
-                        database = app.database,
-                        keystore = app.keystore,
-                        onBack = { currentPage = "settings" }
                     )
                     "supplier" -> SupplierHubScreen(
                         database = app.database,
@@ -791,7 +783,7 @@ class MainActivity : ComponentActivity() {
 /** 各子页返回时的「上一页」映射:设置类子页回设置,其余回聊天。 */
 private fun parentPageOf(page: String): String = when (page) {
     "settings" -> "chat"
-    "supplier", "model_market", "git_config", "audit", "memory_storage", "curated_memory",
+    "supplier", "model_market", "audit", "memory_storage", "curated_memory",
     "cron_jobs", "aux_models", "function_models", "sub_agents", "env_config", "context_compress", "about",
     "lan_devices", "logs", "usage_stats", "kanban", "profiles", "code_index", "plugins" -> "settings"
     "skills", "mcp", "group_rooms", "ide_dashboard", "goal", "projects" -> "chat"

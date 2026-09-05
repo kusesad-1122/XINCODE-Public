@@ -377,6 +377,7 @@ fun ChatScreen(
     var showEffortSheet by remember { mutableStateOf(false) }
     var showToolAccessSheet by remember { mutableStateOf(false) }
     var showAddToProjectSheet by remember { mutableStateOf(false) }
+    var showArtifactsSheet by remember { mutableStateOf(false) }
     var renameSessionDialog by remember { mutableStateOf(false) }
     var renameSessionTitle by remember { mutableStateOf("") }
     var toolAccessMode by remember { mutableStateOf("Always available") }
@@ -633,6 +634,19 @@ fun ChatScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Outlined.Add, contentDescription = "新建聊天", tint = xc.ink, modifier = Modifier.size(18.dp))
+            }
+            Spacer(Modifier.width(8.dp))
+            // 对话产出:仿 Claude 顶栏文件入口,点开列出本会话生成的 MD/文件/图片
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(xc.bgElevated)
+                    .border(BorderStroke(0.8.dp, xc.border), CircleShape)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showArtifactsSheet = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.Description, contentDescription = "对话产出文件", tint = xc.ink, modifier = Modifier.size(18.dp))
             }
             Spacer(Modifier.width(8.dp))
             Box {
@@ -959,6 +973,23 @@ fun ChatScreen(
                         showSkillPicker = true
                     }
                 )
+            }
+        }
+
+        // ---- 「对话产出」底部抽屉:本会话生成的 MD/文件/图片 ----
+        if (showArtifactsSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showArtifactsSheet = false },
+                containerColor = xc.bgElevated,
+                scrimColor = Color.Black.copy(alpha = 0.35f),
+                dragHandle = {
+                    Box(Modifier.padding(top = 10.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(xc.border))
+                }
+            ) {
+                val sessionArtifacts = remember(showArtifactsSheet, chatState.messages.size) {
+                    collectSessionArtifacts(chatState.messages.toList())
+                }
+                ArtifactsSheet(artifacts = sessionArtifacts, onClose = { showArtifactsSheet = false })
             }
         }
 

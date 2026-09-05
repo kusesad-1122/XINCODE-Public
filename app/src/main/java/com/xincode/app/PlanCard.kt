@@ -43,7 +43,7 @@ private val JetBrainsMono = XinUiFont
 fun PlanCard(planState: PlanState, modifier: Modifier = Modifier) {
     val xc = LocalXinColors.current
     val visible = planState.visible && planState.steps.isNotEmpty()
-    var expanded by remember(planState.title) { mutableStateOf(true) }
+    var expanded by remember(planState.title) { mutableStateOf(false) }
 
     AnimatedVisibility(
         visible = visible,

@@ -1,16 +1,19 @@
 package com.xincode.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -23,6 +26,7 @@ import com.xincode.app.R
 import com.xincode.data.IdentityEntity
 
 private val Bg: Color @Composable get() = LocalXinColors.current.bg
+private val BgElevated: Color @Composable get() = LocalXinColors.current.bgElevated
 private val Ink: Color @Composable get() = LocalXinColors.current.ink
 private val Sub: Color @Composable get() = LocalXinColors.current.sub
 private val Faint: Color @Composable get() = LocalXinColors.current.faint
@@ -32,7 +36,8 @@ private val Border: Color @Composable get() = LocalXinColors.current.border
 private val JetBrainsMono = XinUiFont
 
 /**
- * Identity card management list — P1 pure list, no chat container.
+ * Identity card management list — 卡片式列表:头像字 + 名称/预览 + 使用中徽章,
+ * 与全 app 的 18dp 圆角卡片风格统一。
  */
 @Composable
 fun IdentityListScreen(
@@ -57,6 +62,14 @@ fun IdentityListScreen(
         }
         Spacer(Modifier.height(8.dp))
 
+        if (identities.isEmpty()) {
+            Text(
+                t("还没有身份卡,点右上角「新建」创建第一个"),
+                fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint,
+                modifier = Modifier.padding(vertical = 24.dp, horizontal = 4.dp)
+            )
+        }
+
         LazyColumn(Modifier.weight(1f)) {
             items(identities, key = { it.id }) { identity ->
                 IdentityRow(
@@ -68,7 +81,6 @@ fun IdentityListScreen(
                     onRename = { renameTarget = identity; renameText = identity.name },
                     onDelete = { deleteTarget = identity }
                 )
-                Box(Modifier.fillMaxWidth().height(0.5.dp).background(Border))
             }
         }
     }
@@ -129,31 +141,68 @@ private fun IdentityRow(
 ) {
     var showMenu by remember { mutableStateOf(false) }
     Row(
-        Modifier.fillMaxWidth().clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onSelect() }.padding(vertical = 10.dp),
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 5.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (isActive) Green.copy(alpha = 0.08f) else BgElevated)
+            .border(1.dp, if (isActive) Green.copy(alpha = 0.4f) else Border, RoundedCornerShape(18.dp))
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onSelect() }
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            if (isActive) "▓" else "▢",
-            fontSize = 14.sp, fontFamily = JetBrainsMono, color = if (isActive) Green else Faint,
-            modifier = Modifier
-                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onSetActive() }
-                .padding(end = 10.dp)
-        )
-        Column(Modifier.weight(1f)) {
-            Text(identity.name, fontSize = 13.sp, fontFamily = JetBrainsMono, color = Ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // 头像字:点按=设为使用中
+        Box(
+            Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(if (isActive) Green else LocalXinColors.current.activeBg)
+                .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onSetActive() },
+            contentAlignment = Alignment.Center
+        ) {
             Text(
-                identity.systemPrompt.take(30) + if (identity.systemPrompt.length > 30) "…" else "",
-                fontSize = 11.sp, fontFamily = JetBrainsMono, color = Faint, maxLines = 1, overflow = TextOverflow.Ellipsis
+                identity.name.firstOrNull()?.toString() ?: "?",
+                fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                color = if (isActive) Color.White else Sub
             )
         }
-        if (identity.isStarred) {
-            Text("★", fontSize = 12.sp, color = Green, modifier = Modifier.padding(end = 8.dp))
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    identity.name, fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (isActive) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        t("● 使用中"),
+                        fontSize = 10.sp, fontFamily = JetBrainsMono, color = Green
+                    )
+                }
+                if (identity.isStarred) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("★", fontSize = 11.sp, color = Green)
+                }
+            }
+            val preview = identity.systemPrompt.take(40) + if (identity.systemPrompt.length > 40) "…" else ""
+            if (preview.isNotBlank()) {
+                Text(
+                    preview,
+                    fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
         }
         Box {
-            Text("⋯", fontSize = 14.sp, color = Sub,
+            Text(
+                "⋯", fontSize = 15.sp, color = Sub,
                 modifier = Modifier
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showMenu = true }
-                    .padding(horizontal = 8.dp, vertical = 4.dp))
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            )
             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, offset = DpOffset(0.dp, 0.dp)) {
                 DropdownMenuItem(text = { Text(if (identity.isStarred) t("取消收藏") else t("收藏"), fontSize = 12.sp) }, onClick = { showMenu = false; onToggleStar() })
                 DropdownMenuItem(text = { Text(t("重命名"), fontSize = 12.sp) }, onClick = { showMenu = false; onRename() })

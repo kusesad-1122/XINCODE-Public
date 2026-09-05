@@ -89,7 +89,8 @@ fun ToolCallRow(toolCall: MessageContent.ToolCall, modifier: Modifier = Modifier
     val context = LocalContext.current
     val xc = LocalXinColors.current
     var expanded by remember(toolCall.toolName, toolCall.paramsSummary) {
-        mutableStateOf(toolCall.status == ToolStatus.SUCCESS)
+        // 默认收起:工具卡只留一行摘要,不再每张成功卡自动展开撑爆对话。
+        mutableStateOf(false)
     }
     val attention = toolCall.status == ToolStatus.RUNNING || toolCall.status == ToolStatus.FAILED
     val statusColor = when {
@@ -112,21 +113,21 @@ fun ToolCallRow(toolCall: MessageContent.ToolCall, modifier: Modifier = Modifier
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) { expanded = !expanded }
-                .padding(horizontal = 10.dp, vertical = 10.dp),
+                .padding(horizontal = 10.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 Modifier
-                    .size(16.dp)
-                    .border(2.dp, statusColor, RoundedCornerShape(8.dp))
-                    .padding(3.dp)
-                    .background(statusColor, RoundedCornerShape(5.dp))
+                    .size(14.dp)
+                    .border(2.dp, statusColor, RoundedCornerShape(7.dp))
+                    .padding(2.5.dp)
+                    .background(statusColor, RoundedCornerShape(4.dp))
             )
             Spacer(Modifier.width(10.dp))
             Text(
                 title,
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
                 fontFamily = XinCodeFont,
                 fontWeight = FontWeight.Medium,
                 color = xc.ink,
@@ -138,7 +139,7 @@ fun ToolCallRow(toolCall: MessageContent.ToolCall, modifier: Modifier = Modifier
                 if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
                 contentDescription = if (expanded) "收起命令" else "展开命令",
                 tint = xc.sub,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(16.dp)
             )
         }
 
@@ -146,34 +147,17 @@ fun ToolCallRow(toolCall: MessageContent.ToolCall, modifier: Modifier = Modifier
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .border(1.dp, xc.border, RoundedCornerShape(18.dp))
-                    .background(xc.bgElevated, RoundedCornerShape(18.dp))
-                    .padding(12.dp)
+                    .border(1.dp, xc.border, RoundedCornerShape(14.dp))
+                    .background(xc.bgElevated, RoundedCornerShape(14.dp))
+                    .padding(10.dp)
             ) {
+                // 精简面板:一行状态 + 复制命令,去掉重复的大图标和标题(标题已在收起行里)。
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .background(xc.activeBg, RoundedCornerShape(8.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = toolIcon(toolCall.toolName),
-                            contentDescription = null,
-                            tint = xc.green,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(Modifier.width(10.dp))
                     Text(
-                        title,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
+                        statusLabel(toolCall.status, toolCall.exitCode),
+                        fontSize = 11.sp,
                         fontFamily = XinCodeFont,
-                        fontWeight = FontWeight.SemiBold,
-                        color = xc.ink,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        color = statusColor,
                         modifier = Modifier.weight(1f)
                     )
                     Icon(
@@ -181,30 +165,22 @@ fun ToolCallRow(toolCall: MessageContent.ToolCall, modifier: Modifier = Modifier
                         contentDescription = "复制命令",
                         tint = xc.sub,
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(28.dp)
                             .clickable {
                                 copyToClipboard(context, "xincode-command", toolCall.paramsSummary)
                                 Toast.makeText(context, "已复制命令", Toast.LENGTH_SHORT).show()
                             }
-                            .padding(7.dp)
+                            .padding(6.dp)
                     )
                 }
-
-                Text(
-                    statusLabel(toolCall.status, toolCall.exitCode),
-                    fontSize = 12.sp,
-                    fontFamily = XinCodeFont,
-                    color = statusColor,
-                    modifier = Modifier.padding(start = 44.dp, top = 6.dp, bottom = 8.dp)
-                )
 
                 if (toolCall.stdout.isNotBlank() || toolCall.stderr.isNotBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Column(
                         Modifier
                             .fillMaxWidth()
-                            .border(1.dp, xc.border.copy(alpha = 0.75f), RoundedCornerShape(12.dp))
-                            .padding(12.dp)
+                            .border(1.dp, xc.border.copy(alpha = 0.75f), RoundedCornerShape(10.dp))
+                            .padding(10.dp)
                     ) {
                         // generate_image 返回的路径标记由工具卡直接渲染，不能依赖 Agent 复述到 assistant 文本。
                         if (toolCall.toolName == "generate_image" && toolCall.stdout.isNotBlank()) {
@@ -218,8 +194,8 @@ fun ToolCallRow(toolCall: MessageContent.ToolCall, modifier: Modifier = Modifier
                         if (visibleStdout.isNotBlank()) {
                             Text(
                                 visibleStdout.trimEnd(),
-                                fontSize = 12.sp,
-                                lineHeight = 18.sp,
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
                                 fontFamily = XinCodeFont,
                                 color = xc.ink
                             )
@@ -227,8 +203,8 @@ fun ToolCallRow(toolCall: MessageContent.ToolCall, modifier: Modifier = Modifier
                         if (toolCall.stderr.isNotBlank()) {
                             Text(
                                 toolCall.stderr.trimEnd(),
-                                fontSize = 12.sp,
-                                lineHeight = 18.sp,
+                                fontSize = 11.sp,
+                                lineHeight = 16.sp,
                                 fontFamily = XinCodeFont,
                                 color = xc.red,
                                 modifier = Modifier.padding(top = if (toolCall.stdout.isBlank()) 0.dp else 8.dp)
