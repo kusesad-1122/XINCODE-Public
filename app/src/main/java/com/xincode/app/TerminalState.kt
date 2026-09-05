@@ -77,12 +77,13 @@ class TerminalState {
      */
     private fun autoYes(cmd: String): String {
         val t = cmd.trim()
-        val aptInstall = Regex("""^(sudo\s+)?apt(-get)?\s+.*\binstall\b""").containsMatchIn(t) ||
-            Regex("""^(sudo\s+)?apt(-get)?\s+.*\b(remove|upgrade|dist-upgrade|autoremove|purge)\b""").containsMatchIn(t)
-        if (!aptInstall) return cmd
+        val aptOp = Regex("""^(sudo\s+)?apt(-get)?\s+.*\b(install|remove|upgrade|dist-upgrade|autoremove|purge)\b""")
+            .containsMatchIn(t)
+        if (!aptOp) return cmd
         if (Regex("""(^|\s)-[a-zA-Z]*y""").containsMatchIn(t)) return cmd
-        return cmd.replaceFirst(Regex("""^(sudo\s+)?apt(-get)?"""), "$0 -y")
-            .let { "DEBIAN_FRONTEND=noninteractive $it" }
+        val head = Regex("""^(sudo\s+)?apt(-get)?""").find(t) ?: return cmd
+        val injected = t.substring(0, head.range.last + 1) + " -y" + t.substring(head.range.last + 1)
+        return "DEBIAN_FRONTEND=noninteractive $injected"
     }
 
     /**

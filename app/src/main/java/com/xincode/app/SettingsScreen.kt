@@ -338,15 +338,18 @@ fun SettingsScreen(
                 Column {
                     var showNicknameDialog by remember { mutableStateOf(false) }
                     var nicknameDraft by remember { mutableStateOf("") }
+                    // 注意：SettingRow 的 onClick 是普通回调，里面不能调 LocalContext.current，
+                    // 所以 app 引用必须提前在组合作用域里取好。
+                    val appCtxAccount = LocalContext.current.applicationContext as XincodeApplication
                     // 统一收敛为「模型与供应商」单一入口，内部通过双 Tab 切换「我的配置」与「供应商市场」，避免双重入口困惑
                     SettingRow(t("模型与供应商"), t("管理 API 密钥、切换默认模型与探索供应商市场"), icon = Icons.Outlined.Settings) { onNavigateToSupplierConfig() }
                     SettingRow(t("身份卡"), t("为不同场景配置独立助手"), icon = Icons.Outlined.Face) { onNavigateToIdentityList() }
                     SettingRow(
                         t("个人昵称"),
-                        (LocalContext.current.applicationContext as XincodeApplication).profileNickname.ifBlank { t("显示在侧边栏头像与对话页，空=默认") },
+                        appCtxAccount.profileNickname.ifBlank { t("显示在侧边栏头像与对话页，空=默认") },
                         icon = Icons.Outlined.Person
                     ) {
-                        nicknameDraft = (LocalContext.current.applicationContext as XincodeApplication).profileNickname
+                        nicknameDraft = appCtxAccount.profileNickname
                         showNicknameDialog = true
                     }
                     if (showNicknameDialog) {
