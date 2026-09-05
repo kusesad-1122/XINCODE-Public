@@ -98,6 +98,10 @@ object FunctionModels {
         Feature(
             "reason", "深度推理",
             "ask_reasoning 把难题转交更强的推理模型。"
+        ),
+        Feature(
+            "image", "图像生成",
+            "generate_image 文生图(OpenAI /images/generations 兼容)。给它单独指定带生图能力的供应商/模型,图片原图保存并直接发给用户。"
         )
     )
 

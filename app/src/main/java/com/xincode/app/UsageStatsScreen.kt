@@ -77,8 +77,8 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
         XinPageHeader(
-            title = "用量分析",
-            subtitle = "模型、Token、缓存和成本趋势",
+            title = t("用量分析"),
+            subtitle = t("30 天趋势、模型分布、缓存命中率与成本估算"),
             onBack = onBack,
             modifier = Modifier.padding(horizontal = 12.dp)
         )
@@ -86,7 +86,7 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 12.dp)) {
-                listOf(7 to "7 天", 30 to "30 天", 60 to "60 天").forEach { (d, label) ->
+                listOf(7 to t("7 天"), 30 to t("30 天"), 60 to t("60 天")).forEach { (d, label) ->
                     Box(
                         Modifier.clip(RoundedCornerShape(12.dp))
                             .background(if (d == days) xc.green.copy(alpha = 0.15f) else xc.bgElevated)
@@ -100,7 +100,7 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
             }
 
             if (loading) {
-                Text("统计中…", fontSize = 12.sp, fontFamily = Mono, color = xc.faint,
+                Text(t("统计中…"), fontSize = 12.sp, fontFamily = Mono, color = xc.faint,
                     modifier = Modifier.padding(vertical = 24.dp))
             } else if (daily.isEmpty()) {
                 // 分两种情况说清楚。光说「没有记录」的话,用户没法判断是「压根没记上」
@@ -128,31 +128,31 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
             } else {
                 // 总览
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatBox("输入", fmtTokens(totalInput), xc, Modifier.weight(1f))
-                    StatBox("输出", fmtTokens(totalOutput), xc, Modifier.weight(1f))
+                    StatBox(t("输入"), fmtTokens(totalInput), xc, Modifier.weight(1f))
+                    StatBox(t("输出"), fmtTokens(totalOutput), xc, Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatBox("调用次数", calls.toString(), xc, Modifier.weight(1f))
-                    StatBox("缓存命中", String.format("%.1f%%", hitRate), xc, Modifier.weight(1f))
+                    StatBox(t("调用次数"), calls.toString(), xc, Modifier.weight(1f))
+                    StatBox(t("缓存命中"), String.format("%.1f%%", hitRate), xc, Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(8.dp))
                 val avgPerDay = if (daily.isNotEmpty()) (totalInput + totalOutput) / daily.size else 0L
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatBox("日均 token", fmtTokens(avgPerDay), xc, Modifier.weight(1f))
-                    StatBox("缓存读", fmtTokens(totalCacheRead), xc, Modifier.weight(1f))
+                    StatBox(t("日均 token"), fmtTokens(avgPerDay), xc, Modifier.weight(1f))
+                    StatBox(t("缓存读"), fmtTokens(totalCacheRead), xc, Modifier.weight(1f))
                 }
 
                 // 趋势
                 Spacer(Modifier.height(20.dp))
-                Text("每日 token(输入 + 输出)", fontSize = 12.sp, fontFamily = Mono,
+                Text(t("每日 token(输入 + 输出)"), fontSize = 12.sp, fontFamily = Mono,
                     fontWeight = FontWeight.Bold, color = xc.ink)
                 Spacer(Modifier.height(8.dp))
                 DailyBars(daily, xc)
 
                 // 模型分布
                 Spacer(Modifier.height(20.dp))
-                Text("模型分布", fontSize = 12.sp, fontFamily = Mono,
+                Text(t("模型分布"), fontSize = 12.sp, fontFamily = Mono,
                     fontWeight = FontWeight.Bold, color = xc.ink)
                 Spacer(Modifier.height(8.dp))
                 val grand = byModel.sumOf { it.input + it.output }.coerceAtLeast(1)
@@ -178,18 +178,18 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
 
                 // 成本
                 Spacer(Modifier.height(20.dp))
-                Text("成本估算", fontSize = 12.sp, fontFamily = Mono,
+                Text(t("成本估算"), fontSize = 12.sp, fontFamily = Mono,
                     fontWeight = FontWeight.Bold, color = xc.ink)
                 Text(
-                    "按各模型公开价目粗算,仅供参考。未收录的模型不计入,实际以供应商账单为准。",
+                    t("按 2026-01 各家官方价目(美元价×7.2,国产为人民币官价)粗算,仅供参考。未收录的模型不计入,实际以供应商账单为准。"),
                     fontSize = 10.sp, fontFamily = Mono, color = xc.faint, lineHeight = 14.sp,
                     modifier = Modifier.padding(top = 2.dp, bottom = 6.dp)
                 )
                 val cost = byModel.sumOf { estimateCostCny(it) }
                 val known = byModel.count { PRICES.keys.any { k -> it.model.contains(k, true) } }
-                StatBox("估算(人民币)", String.format("¥ %.2f", cost), xc, Modifier.fillMaxWidth())
+                StatBox(t("估算(人民币)"), String.format("¥ %.2f", cost), xc, Modifier.fillMaxWidth())
                 Text(
-                    "$known / ${byModel.size} 个模型有价目数据",
+                    tx("有价目数据 %s / %s 个模型", known, byModel.size),
                     fontSize = 9.sp, fontFamily = Mono, color = xc.faint,
                     modifier = Modifier.padding(top = 4.dp)
                 )
@@ -249,24 +249,69 @@ private fun fmtTokens(n: Long): String = when {
 /**
  * 粗略价目表(人民币 / 每百万 token,输入 to 输出)。
  *
- * 只收录常见的几家,按模型名【包含】匹配。价格会变,这里只求量级正确——
- * 页面上也明说了「仅供参考,以账单为准」,不做精确账。
+ * 按模型名【包含】匹配,Map 遍历顺序即优先级,细粒度 key 必须在前
+ * (如 gpt-5-mini 在 gpt-5 前,否则 mini 会命中 gpt-5 的价)。
+ * 欧美为 2026-01 各家官方美元价 ×7.2,国产为官方 RMB 价。
+ * 价格会变,这里只求量级正确——页面上也明说了「仅供参考,以账单为准」,不做精确账。
  */
 private val PRICES: Map<String, Pair<Double, Double>> = mapOf(
-    "deepseek-chat" to (2.0 to 8.0),
-    "deepseek-reasoner" to (4.0 to 16.0),
+    // —— DeepSeek(官方 RMB)——
+    "deepseek-reasoner" to (1.0 to 2.0),
+    "deepseek-chat" to (1.0 to 2.0),
+    "deepseek" to (1.0 to 2.0),
+    // —— OpenAI(2026-01 官价)——
+    "gpt-5-mini" to (1.8 to 14.4),
+    "gpt-5-nano" to (0.36 to 2.88),
+    "gpt-5" to (9.0 to 72.0),
+    "gpt-4.1-mini" to (2.88 to 11.52),
+    "gpt-4.1-nano" to (0.72 to 2.88),
+    "gpt-4.1" to (14.4 to 57.6),
     "gpt-4o-mini" to (1.1 to 4.3),
     "gpt-4o" to (18.0 to 72.0),
+    "o1-mini" to (7.9 to 31.7),
+    "o1" to (108.0 to 432.0),
+    "o3-mini" to (7.9 to 31.7),
+    "o4-mini" to (7.9 to 31.7),
+    "o3" to (14.4 to 57.6),
+    // —— Anthropic(2026-01 官价)——
+    "claude-3-opus" to (108.0 to 540.0),
+    "opus-4" to (108.0 to 540.0),
+    "claude-3-5-sonnet" to (21.6 to 108.0),
+    "sonnet-4" to (21.6 to 108.0),
+    "sonnet-3" to (21.6 to 108.0),
     "claude-sonnet" to (21.0 to 108.0),
-    "claude-opus" to (108.0 to 540.0),
+    "haiku-4" to (7.2 to 36.0),
+    "claude-3-5-haiku" to (5.76 to 28.8),
     "claude-haiku" to (1.8 to 9.0),
+    "claude" to (21.0 to 108.0),
+    // —— Google Gemini(2026-01 官价)——
+    "gemini-2.5-flash-lite" to (0.72 to 2.88),
+    "gemini-2.5-flash" to (2.16 to 18.0),
+    "gemini-2.5-pro" to (9.0 to 72.0),
+    "gemini-2.0-flash" to (0.72 to 2.88),
+    "gemini-1.5-pro" to (9.0 to 36.0),
+    "gemini-1.5-flash" to (0.54 to 2.16),
+    "gemini" to (2.16 to 18.0),
+    // —— xAI / Mistral(2026-01 官价)——
+    "grok-code-fast" to (1.44 to 10.8),
+    "grok" to (21.6 to 108.0),
+    "mistral-small" to (0.72 to 2.16),
+    "mistral-medium" to (2.88 to 14.4),
+    "mistral-large" to (14.4 to 43.2),
+    "llama-3.3-70b" to (4.2 to 5.7),
+    "mixtral" to (1.7 to 1.7),
+    // —— 国产(官方 RMB)——
     "glm-4-flash" to (0.0 to 0.0),
     "glm-4" to (3.6 to 3.6),
     "qwen-turbo" to (0.3 to 0.6),
     "qwen-plus" to (0.8 to 2.0),
     "qwen-max" to (2.4 to 9.6),
+    "qwen" to (0.3 to 0.6),
     "moonshot-v1-8k" to (12.0 to 12.0),
     "moonshot-v1-32k" to (24.0 to 24.0),
+    "moonshot" to (12.0 to 12.0),
+    "kimi" to (12.0 to 12.0),
+    "ernie" to (0.4 to 0.8),
     "mimo" to (0.0 to 0.0)
 )
 

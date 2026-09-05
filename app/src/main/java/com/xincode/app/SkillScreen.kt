@@ -61,12 +61,12 @@ fun SkillScreen(
 
     Column(Modifier.fillMaxSize().background(SkBg)) {
         XinPageHeader(
-            title = "Skills 技能",
-            subtitle = "创建和管理可复用提示词模板",
+            title = t("Skills 技能"),
+            subtitle = t("创建和管理可复用提示词模板"),
             onBack = onBack,
             modifier = Modifier.padding(horizontal = 12.dp)
         ) {
-            XinHeaderAction(label = "新建", onClick = {
+            XinHeaderAction(label = t("新建"), onClick = {
                 editing = null
                 showCreate = true
             })
@@ -90,7 +90,7 @@ fun SkillScreen(
             }
             skills.isEmpty() -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("还没有技能\n点右上角 + 创建一个", fontFamily = SkMono, fontSize = 13.sp,
+                    Text(t("还没有技能\n点右上角 + 创建一个"), fontFamily = SkMono, fontSize = 13.sp,
                         color = SkSub, lineHeight = 20.sp)
                 }
             }
@@ -128,8 +128,8 @@ private fun SkillCard(skill: SkillEntity, onClick: () -> Unit, onDelete: () -> U
                 modifier = Modifier.weight(1f))
             // Hermes-① 出处标记:内置(只读)/ 自建(后台复盘生成)/ 用户自建不显示。
             val badge = when (skill.source) {
-                "bundled" -> "内置"
-                "agent" -> "自建"
+                "bundled" -> t("内置")
+                "agent" -> t("自建")
                 else -> ""
             }
             if (badge.isNotEmpty()) {
@@ -156,16 +156,16 @@ private fun SkillCard(skill: SkillEntity, onClick: () -> Unit, onDelete: () -> U
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("删除技能", fontFamily = SkMono, color = SkInk) },
-            text = { Text("确定删除「${skill.name}」？此操作不可撤回。", fontFamily = SkMono, fontSize = 12.sp, color = SkInk) },
+            title = { Text(t("删除技能"), fontFamily = SkMono, color = SkInk) },
+            text = { Text(tx("确定删除「%s」？此操作不可撤回。", skill.name), fontFamily = SkMono, fontSize = 12.sp, color = SkInk) },
             confirmButton = {
                 TextButton(onClick = { confirmDelete = false; onDelete() }) {
-                    Text("删除", fontFamily = SkMono, color = Color(0xFFA8514A))
+                    Text(t("删除"), fontFamily = SkMono, color = Color(0xFFA8514A))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDelete = false }) {
-                    Text("取消", fontFamily = SkMono, color = SkSub)
+                    Text(t("取消"), fontFamily = SkMono, color = SkSub)
                 }
             },
             containerColor = SkBg
@@ -195,29 +195,29 @@ private fun SkillEditor(initial: SkillEntity, isNew: Boolean, onSave: (SkillEnti
         Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Text(if (isNew) "新建技能" else "编辑技能", fontSize = 13.sp, fontFamily = SkMono, color = SkInk)
+        Text(if (isNew) t("新建技能") else t("编辑技能"), fontSize = 13.sp, fontFamily = SkMono, color = SkInk)
         Box(Modifier.fillMaxWidth().height(0.5.dp).background(SkBorder))
 
-        Text("名称", fontSize = 10.sp, fontFamily = SkMono, color = SkSub)
+        Text(t("名称"), fontSize = 10.sp, fontFamily = SkMono, color = SkSub)
         TextField(value = name, onValueChange = { name = it }, singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = SkMono),
             colors = fieldColors())
 
-        Text("描述（可选）", fontSize = 10.sp, fontFamily = SkMono, color = SkSub)
+        Text(t("描述（可选）"), fontSize = 10.sp, fontFamily = SkMono, color = SkSub)
         TextField(value = desc, onValueChange = { desc = it }, singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = SkMono),
             colors = fieldColors())
 
-        Text("内容（Markdown 指令，注入系统提示）", fontSize = 10.sp, fontFamily = SkMono, color = SkSub)
+        Text(t("内容（Markdown 指令，注入系统提示）"), fontSize = 10.sp, fontFamily = SkMono, color = SkSub)
         TextField(value = content, onValueChange = { content = it },
             modifier = Modifier.fillMaxWidth().weight(1f),
             textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontFamily = SkMono, lineHeight = 18.sp),
             colors = fieldColors())
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onCancel) { Text("取消", fontFamily = SkMono, color = SkSub) }
+            TextButton(onClick = onCancel) { Text(t("取消"), fontFamily = SkMono, color = SkSub) }
             Spacer(Modifier.width(8.dp))
             TextButton(onClick = {
                 if (name.isNotBlank()) {
@@ -228,7 +228,7 @@ private fun SkillEditor(initial: SkillEntity, isNew: Boolean, onSave: (SkillEnti
                         updatedAt = System.currentTimeMillis()
                     ))
                 }
-            }) { Text("保存", fontFamily = SkMono, color = SkInk) }
+            }) { Text(t("保存"), fontFamily = SkMono, color = SkInk) }
         }
     }
 }

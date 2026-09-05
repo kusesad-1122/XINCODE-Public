@@ -23,10 +23,7 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Star
-import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Terminal
-import androidx.compose.material.icons.outlined.Extension
-import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,9 +39,6 @@ import com.xincode.data.GroupRoomEntity
 import com.xincode.data.IdentityEntity
 import com.xincode.data.ProjectEntity
 import com.xincode.data.SessionEntity
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /** A single matched message returned by search. */
 data class SearchHit(
@@ -97,6 +91,8 @@ fun SidebarContent(
     onNavigateToChats: () -> Unit = {},
     onNavigateToTerminal: () -> Unit = {},
     onNavigateToAgentScene: () -> Unit = {},
+    /** 个人昵称：为空时头像显示默认"苦"。设置页可改（账号个性化）。 */
+    nickname: String = "",
     onClose: () -> Unit,
     onSearchMessages: suspend (String) -> List<SearchHit> = { emptyList() },
     goalSessions: List<SessionEntity> = emptyList(),
@@ -121,8 +117,7 @@ fun SidebarContent(
     val Sub = xc.sub
     val Divider = xc.divider
 
-    // Format timestamp like 2026年8月3日
-    val dateFormat = remember { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
+    // 日期随界面语言切换：2026年8月3日 / Aug 3, 2026
 
     Column(
         Modifier
@@ -140,7 +135,7 @@ fun SidebarContent(
             lineHeight = 38.sp,
             color = Ink,
             letterSpacing = (-0.3).sp,
-            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 28.dp, bottom = 18.dp)
+            modifier = Modifier.padding(start = 22.dp, end = 22.dp, top = 12.dp, bottom = 10.dp)
         )
 
         // ── Primary Navigation Items (original XINCODE entries, Claude styling only) ──
@@ -168,54 +163,23 @@ fun SidebarContent(
                 enabled = true,
                 onClick = { onNavigateToIde(); onClose() }
             )
-        }
-
-        Spacer(Modifier.height(14.dp))
-        Box(Modifier.fillMaxWidth().height(0.5.dp).background(Divider))
-        Spacer(Modifier.height(8.dp))
-
-        // ── Workspace: original feature entries (pixel control room, terminal, goal, rooms, MCP, Skills) ──
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 10.dp)
-        ) {
-            ClaudeSidebarSectionTitle("工作台")
             ClaudeSidebarNavRow(
                 icon = Icons.Outlined.Star,
-                label = "像素指挥室",
+                label = t("像素指挥室"),
                 selected = false,
                 onClick = { onNavigateToAgentScene(); onClose() }
             )
             ClaudeSidebarNavRow(
                 icon = Icons.Outlined.Terminal,
-                label = "终端",
+                label = t("终端"),
                 selected = false,
                 onClick = { onNavigateToTerminal(); onClose() }
             )
             ClaudeSidebarNavRow(
-                icon = Icons.Outlined.StarBorder,
-                label = "目标模式",
-                selected = false,
-                onClick = { onNavigateToGoal(); onClose() }
-            )
-            ClaudeSidebarNavRow(
                 icon = Icons.Outlined.FolderOpen,
-                label = "群聊房间",
+                label = t("群聊房间"),
                 selected = false,
                 onClick = { onOpenGroupRooms(); onClose() }
-            )
-            ClaudeSidebarNavRow(
-                icon = Icons.Outlined.Extension,
-                label = "MCP",
-                selected = false,
-                onClick = { onNavigateToMcp(); onClose() }
-            )
-            ClaudeSidebarNavRow(
-                icon = Icons.Outlined.Lightbulb,
-                label = "Skills",
-                selected = false,
-                onClick = { onNavigateToSkills(); onClose() }
             )
         }
 
@@ -255,7 +219,7 @@ fun SidebarContent(
                     ClaudeSidebarRecentItem(
                         session = session,
                         isActive = session.id == currentSessionId,
-                        dateStr = dateFormat.format(Date(session.updatedAt.takeIf { it > 0 } ?: session.createdAt)),
+                        dateStr = chatDate(session.updatedAt.takeIf { it > 0 } ?: session.createdAt),
                         isPinned = true,
                         onSelect = { onSelectSession(session.id); onClose() },
                         onRename = { renameTarget = session; renameText = session.title },
@@ -279,7 +243,7 @@ fun SidebarContent(
                     ClaudeSidebarRecentItem(
                         session = session,
                         isActive = session.id == currentSessionId,
-                        dateStr = dateFormat.format(Date(session.updatedAt.takeIf { it > 0 } ?: session.createdAt)),
+                        dateStr = chatDate(session.updatedAt.takeIf { it > 0 } ?: session.createdAt),
                         isPinned = false,
                         onSelect = { onSelectSession(session.id); onClose() },
                         onRename = { renameTarget = session; renameText = session.title },
@@ -332,7 +296,7 @@ fun SidebarContent(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "苦",
+                        nickname.firstOrNull()?.toString() ?: "苦",
                         color = Color.White,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium,
@@ -342,7 +306,7 @@ fun SidebarContent(
                 Spacer(Modifier.width(10.dp))
                 Icon(
                     Icons.Outlined.Settings,
-                    contentDescription = "设置",
+                    contentDescription = t("设置"),
                     tint = Ink,
                     modifier = Modifier.size(18.dp)
                 )
@@ -382,7 +346,7 @@ fun SidebarContent(
     if (renameTarget != null) {
         AlertDialog(
             onDismissRequest = { renameTarget = null },
-            title = { Text("重命名", color = Ink, fontFamily = XinSerifFont) },
+            title = { Text(t("重命名"), color = Ink, fontFamily = XinSerifFont) },
             text = {
                 TextField(
                     value = renameText,
@@ -402,10 +366,10 @@ fun SidebarContent(
                 TextButton(onClick = {
                     renameTarget?.let { onRenameSession(it.id, renameText) }
                     renameTarget = null
-                }) { Text("保存", color = xc.green) }
+                }) { Text(t("保存"), color = xc.green) }
             },
             dismissButton = {
-                TextButton(onClick = { renameTarget = null }) { Text("取消", color = Sub) }
+                TextButton(onClick = { renameTarget = null }) { Text(t("取消"), color = Sub) }
             },
             containerColor = Bg
         )
@@ -414,10 +378,10 @@ fun SidebarContent(
     if (deleteTarget != null) {
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("删除会话", color = Ink, fontFamily = XinSerifFont) },
+            title = { Text(t("删除会话"), color = Ink, fontFamily = XinSerifFont) },
             text = {
                 Text(
-                    "删除「${deleteTarget?.title}」及其所有记录？",
+                    tx("删除「%s」及其所有记录？", deleteTarget?.title.orEmpty()),
                     fontSize = 13.sp,
                     color = Sub,
                     fontFamily = XinUiFont
@@ -427,10 +391,10 @@ fun SidebarContent(
                 TextButton(onClick = {
                     deleteTarget?.let { onDeleteSession(it.id) }
                     deleteTarget = null
-                }) { Text("删除", color = xc.red) }
+                }) { Text(t("删除"), color = xc.red) }
             },
             dismissButton = {
-                TextButton(onClick = { deleteTarget = null }) { Text("取消", color = Sub) }
+                TextButton(onClick = { deleteTarget = null }) { Text(t("取消"), color = Sub) }
             },
             containerColor = Bg
         )
@@ -564,7 +528,7 @@ private fun ClaudeSidebarRecentItem(
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    session.title.ifBlank { "新对话" },
+                    session.title.ifBlank { t("新对话") },
                     fontSize = 14.sp,
                     fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal,
                     fontFamily = XinUiFont,
@@ -577,7 +541,7 @@ private fun ClaudeSidebarRecentItem(
                     Spacer(Modifier.width(6.dp))
                     Icon(
                         Icons.Outlined.PushPin,
-                        contentDescription = "置顶",
+                        contentDescription = t("置顶"),
                         tint = xc.sub,
                         modifier = Modifier.size(13.dp)
                     )
@@ -596,15 +560,15 @@ private fun ClaudeSidebarRecentItem(
                 onDismissRequest = { showMenu = false }
             ) {
                 DropdownMenuItem(
-                    text = { Text(if (isPinned) "取消置顶" else "置顶会话", fontFamily = XinUiFont) },
+                    text = { Text(if (isPinned) t("取消置顶") else t("置顶会话"), fontFamily = XinUiFont) },
                     onClick = { showMenu = false; onTogglePin() }
                 )
                 DropdownMenuItem(
-                    text = { Text("重命名", fontFamily = XinUiFont) },
+                    text = { Text(t("重命名"), fontFamily = XinUiFont) },
                     onClick = { showMenu = false; onRename() }
                 )
                 DropdownMenuItem(
-                    text = { Text("删除", color = xc.red, fontFamily = XinUiFont) },
+                    text = { Text(t("删除"), color = xc.red, fontFamily = XinUiFont) },
                     onClick = { showMenu = false; onDelete() }
                 )
             }

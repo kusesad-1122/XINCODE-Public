@@ -55,7 +55,7 @@ fun JdkManagerScreen(onBack: () -> Unit, onOpenTerminal: () -> Unit = {}) {
             return@Column
         }
         Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF0F1117)).padding(12.dp)) {
-            Text("当前: ${activeVer.ifBlank { "未知" }}  JAVA_HOME: ${list.firstOrNull { it.active }?.home ?: "未设置"}", fontSize = 11.sp, fontFamily = Mono, color = Color(0xFF7BE0A4))
+            Text("当前: ${activeVer.ifBlank { "未知" }}  JAVA_HOME: ${list.firstOrNull { it.active }?.home ?: "未设置"}", fontSize = 11.sp, fontFamily = Mono, color = xc.green)
         }
         Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             list.forEach { jdk ->
@@ -63,7 +63,7 @@ fun JdkManagerScreen(onBack: () -> Unit, onOpenTerminal: () -> Unit = {}) {
                     Column(Modifier.weight(1f)) {
                         Text("OpenJDK ${jdk.version}", fontSize = 13.sp, fontFamily = Mono, color = xc.ink)
                         Text(jdk.home, fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
-                        Text(if(jdk.installed) (if(jdk.active) "已安装 · 当前" else "已安装") else "未安装", fontSize = 10.sp, fontFamily = Mono, color = if(jdk.installed) Color(0xFF7BE0A4) else xc.faint)
+                        Text(if(jdk.installed) (if(jdk.active) "已安装 · 当前" else "已安装") else "未安装", fontSize = 10.sp, fontFamily = Mono, color = if(jdk.installed) xc.green else xc.faint)
                     }
                     if (jdk.installed) {
                         if (jdk.active) {

@@ -18,6 +18,8 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -38,7 +40,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import com.xincode.data.AppDatabase
 import com.xincode.data.ModelProfile
 import com.xincode.data.ModelProfileCodec
@@ -356,11 +357,11 @@ fun SupplierConfigScreen(
     Column(Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 24.dp)) {
         if (showHeader) {
             XinPageHeader(
-                title = "供应商配置",
-                subtitle = "管理 API、密钥和可用模型",
+                title = t("供应商配置"),
+                subtitle = t("管理 API、密钥和可用模型"),
                 onBack = onBack
             ) {
-                XinHeaderAction(label = "新建", onClick = { startNew() })
+                XinHeaderAction(label = t("新建"), onClick = { startNew() })
             }
             Spacer(Modifier.height(12.dp))
         }
@@ -423,9 +424,9 @@ fun SupplierConfigScreen(
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("尚未添加任何供应商配置", fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = XinUiFont, color = Ink)
+                Text(t("尚未添加任何供应商配置"), fontSize = 14.sp, fontWeight = FontWeight.Medium, fontFamily = XinUiFont, color = Ink)
                 Spacer(Modifier.height(6.dp))
-                Text("支持 OpenAI、DeepSeek、Claude、通义千问及本地 Ollama 等接入", fontSize = 11.sp, fontFamily = XinUiFont, color = Sub)
+                Text(t("支持 OpenAI、DeepSeek、Claude、通义千问及本地 Ollama 等接入"), fontSize = 11.sp, fontFamily = XinUiFont, color = Sub)
                 Spacer(Modifier.height(14.dp))
                 Row(
                     modifier = Modifier
@@ -439,7 +440,7 @@ fun SupplierConfigScreen(
                         .padding(horizontal = 18.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("+ 立即添加配置", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Bg, fontFamily = XinUiFont)
+                    Text(t("+ 立即添加配置"), fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Bg, fontFamily = XinUiFont)
                 }
             }
         } else {
@@ -494,16 +495,19 @@ fun SupplierConfigScreen(
             Text(if (editingConfig != null) "编辑配置" else "新建配置", fontSize = 13.sp, fontFamily = XinUiFont, color = Ink)
             Spacer(Modifier.height(12.dp))
 
-            Label("名称")
+            Label(t("名称"))
             TextField(value = configName, onValueChange = { configName = it },
                 modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors(), textStyle = fieldTextStyle(),
                 placeholder = { Text("例如: 我的DeepSeek", color = Faint, fontSize = 12.sp, fontFamily = XinUiFont) })
             Spacer(Modifier.height(12.dp))
 
-            // Supplier selector
-            Label("供应商")
-            Box(Modifier.fillMaxWidth().zIndex(10f)) {
-                Row(Modifier.fillMaxWidth().border(1.dp, Border, RoundedCornerShape(16.dp)).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Supplier selector — 用覆盖层 DropdownMenu，下拉再长也不跟外层整页抢滚动。
+            Label(t("供应商"))
+            Box(Modifier.fillMaxWidth()) {
+                Row(Modifier.fillMaxWidth().border(1.dp, Border, RoundedCornerShape(16.dp)).padding(8.dp)
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                        showSupplierDropdown = !showSupplierDropdown
+                    }, verticalAlignment = Alignment.CenterVertically) {
                     ProviderAvatar(
                         supplierId = selectedSupplier.id,
                         size = 32.dp,
@@ -511,40 +515,42 @@ fun SupplierConfigScreen(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(selectedSupplier.name, fontSize = 13.sp, fontFamily = XinUiFont, color = Ink,
-                        modifier = Modifier.weight(1f).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                            showSupplierDropdown = !showSupplierDropdown
-                        }.padding(horizontal = 8.dp, vertical = 4.dp))
-                    Text("▼", fontSize = 10.sp, color = Faint, modifier = Modifier.padding(end = 8.dp))
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 4.dp))
+                    Text(if (showSupplierDropdown) "▲" else "▼", fontSize = 10.sp, color = Faint, modifier = Modifier.padding(end = 8.dp))
                 }
-                if (showSupplierDropdown) {
-                    Column(Modifier.fillMaxWidth().offset(y = 56.dp).background(Bg, RoundedCornerShape(16.dp)).border(1.dp, Border, RoundedCornerShape(16.dp))
-                        .padding(vertical = 4.dp).heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
-                        knownSuppliers.forEach { sup ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth()
-                                    .background(if (sup.id == selectedSupplierId) LocalXinColors.current.activeBg else Bg)
-                                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                        selectedSupplierId = sup.id; showSupplierDropdown = false
-                                        model = sup.defaultModel; models = emptyList()
-                                        selectedApiPathType = sup.apiPathType
-                                        if (sup.id != "custom") baseUrl = sup.baseUrl else baseUrl = ""
-                                    }.padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                ProviderAvatar(
-                                    supplierId = sup.id,
-                                    size = 30.dp,
-                                    contentDescription = "${sup.name} 图标"
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(
-                                    sup.name,
-                                    fontSize = 12.sp,
-                                    fontFamily = XinUiFont,
-                                    color = if (sup.id == selectedSupplierId) Ink else Sub
-                                )
-                            }
-                        }
+                DropdownMenu(
+                    expanded = showSupplierDropdown,
+                    onDismissRequest = { showSupplierDropdown = false },
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)
+                        .background(Bg, RoundedCornerShape(16.dp))
+                        .border(1.dp, Border, RoundedCornerShape(16.dp))
+                ) {
+                    knownSuppliers.forEach { sup ->
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    ProviderAvatar(
+                                        supplierId = sup.id,
+                                        size = 30.dp,
+                                        contentDescription = "${sup.name} 图标"
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Text(
+                                        sup.name,
+                                        fontSize = 12.sp,
+                                        fontFamily = XinUiFont,
+                                        color = if (sup.id == selectedSupplierId) Ink else Sub
+                                    )
+                                }
+                            },
+                            onClick = {
+                                selectedSupplierId = sup.id; showSupplierDropdown = false
+                                model = sup.defaultModel; models = emptyList()
+                                selectedApiPathType = sup.apiPathType
+                                if (sup.id != "custom") baseUrl = sup.baseUrl else baseUrl = ""
+                            },
+                            modifier = Modifier.background(if (sup.id == selectedSupplierId) LocalXinColors.current.activeBg else Bg)
+                        )
                     }
                 }
             }
@@ -574,50 +580,55 @@ fun SupplierConfigScreen(
                     placeholder = { Text("https://api.xxx.com", color = Faint, fontSize = 12.sp, fontFamily = XinUiFont) })
                 Spacer(Modifier.height(12.dp))
 
-                Label("API 路径类型")
-                Box(Modifier.fillMaxWidth().zIndex(9f)) {
+                Label(t("API 路径类型"))
+                Box(Modifier.fillMaxWidth()) {
                     val apiPathLabel = when (selectedApiPathType) {
                         "openai" -> "OpenAI 兼容 (自动追加 /v1/chat/completions)"
                         "responses" -> "OpenAI Responses (自动追加 /v1/responses)"
                         "anthropic" -> "Anthropic 兼容 (自动追加 /v1/messages)"
                         else -> "自定义 (完整 URL，不追加)"
                     }
-                    Row(Modifier.fillMaxWidth().border(1.dp, Faint).padding(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().border(1.dp, Border, RoundedCornerShape(16.dp)).padding(8.dp)
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                            showApiPathDropdown = !showApiPathDropdown
+                        }, verticalAlignment = Alignment.CenterVertically) {
                         Text(apiPathLabel, fontSize = 12.sp, fontFamily = XinUiFont, color = Ink,
-                            modifier = Modifier.weight(1f).clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                showApiPathDropdown = !showApiPathDropdown
-                            }.padding(horizontal = 8.dp, vertical = 4.dp))
-                        Text("▼", fontSize = 10.sp, color = Faint, modifier = Modifier.padding(end = 8.dp))
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp, vertical = 4.dp))
+                        Text(if (showApiPathDropdown) "▲" else "▼", fontSize = 10.sp, color = Faint, modifier = Modifier.padding(end = 8.dp))
                     }
-                    if (showApiPathDropdown) {
-                        Column(Modifier.fillMaxWidth().offset(y = 42.dp).background(Bg).border(1.dp, Faint)
-                            .padding(vertical = 4.dp)) {
-                            listOf("openai" to "OpenAI 兼容\n自动追加 /v1/chat/completions",
-                                   "responses" to "OpenAI Responses\n自动追加 /v1/responses",
-                                   "anthropic" to "Anthropic 兼容\n自动追加 /v1/messages",
-                                   "custom" to "自定义\n完整 URL，不追加").forEach { (id, label) ->
-                                Text(label, fontSize = 11.sp, fontFamily = XinUiFont,
-                                    color = if (id == selectedApiPathType) Ink else Sub,
-                                    modifier = Modifier.fillMaxWidth()
-                                        .background(if (id == selectedApiPathType) LocalXinColors.current.activeBg else Bg)
-                                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                                            selectedApiPathType = id; showApiPathDropdown = false
-                                        }.padding(horizontal = 12.dp, vertical = 7.dp))
-                            }
+                    DropdownMenu(
+                        expanded = showApiPathDropdown,
+                        onDismissRequest = { showApiPathDropdown = false },
+                        modifier = Modifier.fillMaxWidth()
+                            .background(Bg, RoundedCornerShape(16.dp))
+                            .border(1.dp, Border, RoundedCornerShape(16.dp))
+                    ) {
+                        listOf("openai" to "OpenAI 兼容\n自动追加 /v1/chat/completions",
+                               "responses" to "OpenAI Responses\n自动追加 /v1/responses",
+                               "anthropic" to "Anthropic 兼容\n自动追加 /v1/messages",
+                               "custom" to "自定义\n完整 URL，不追加").forEach { (id, label) ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(label, fontSize = 11.sp, fontFamily = XinUiFont,
+                                        color = if (id == selectedApiPathType) Ink else Sub)
+                                },
+                                onClick = { selectedApiPathType = id; showApiPathDropdown = false },
+                                modifier = Modifier.background(if (id == selectedApiPathType) LocalXinColors.current.activeBg else Bg)
+                            )
                         }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
             }
 
-            Label("api_key")
+            Label(t("api_key"))
             TextField(value = apiKey, onValueChange = { apiKey = it },
                 modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors(), textStyle = fieldTextStyle(),
                 visualTransformation = PasswordVisualTransformation(),
                 placeholder = { Text(if (editingConfig != null && apiKey.isEmpty()) "留空则保留原 Key" else "sk-...", color = Faint, fontSize = 12.sp, fontFamily = XinUiFont) })
             Spacer(Modifier.height(12.dp))
 
-            Label("启用模型（多选）")
+            Label(t("启用模型（多选）"))
             // 手填入口:中转站不给 /models 时的唯一出路,所以放在列表【上方】常驻,
             // 而不是藏在「拉取失败」之后才出现——拉取成功但列表不全的情况同样需要它。
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -635,7 +646,7 @@ fun SupplierConfigScreen(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { addManualModel() })
                 )
-                Text("+ 添加", fontSize = 12.sp, fontFamily = XinUiFont,
+                Text(t("+ 添加"), fontSize = 12.sp, fontFamily = XinUiFont,
                     color = if (newModelId.isBlank()) Faint else Green,
                     modifier = Modifier
                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { addManualModel() }
@@ -643,9 +654,9 @@ fun SupplierConfigScreen(
             }
             Spacer(Modifier.height(6.dp))
             Box(Modifier.fillMaxWidth()) {
-                Column(Modifier.fillMaxWidth().border(1.dp, Faint).padding(4.dp).heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
+                Column(Modifier.fillMaxWidth().border(1.dp, Border, RoundedCornerShape(16.dp)).padding(4.dp).heightIn(max = 240.dp).verticalScroll(rememberScrollState())) {
                     if (modelsLoading) {
-                        Text("加载中…", fontSize = 12.sp, fontFamily = XinUiFont, color = Faint,
+                        Text(t("加载中…"), fontSize = 12.sp, fontFamily = XinUiFont, color = Faint,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                     } else if (displayModels.isEmpty()) {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
@@ -659,7 +670,7 @@ fun SupplierConfigScreen(
                         // Refresh header
                         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("↻ 刷新", fontSize = 10.sp, fontFamily = XinUiFont, color = Sub,
+                            Text(t("↻ 刷新"), fontSize = 10.sp, fontFamily = XinUiFont, color = Sub,
                                 modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { fetchModels() })
                             Text(if (model.isNotEmpty()) "当前: $model" else "未选", fontSize = 10.sp, fontFamily = XinUiFont, color = Faint)
                         }
@@ -734,7 +745,7 @@ fun SupplierConfigScreen(
             Spacer(Modifier.height(16.dp))
 
             // ---- 能力声明 ----
-            Label("模型能力")
+            Label(t("模型能力"))
             CapabilityRow(
                 "模型支持识图", "启用后图片直接发给该模型;关闭则交由 describe_image 转给视觉副模型",
                 capVision
@@ -764,10 +775,10 @@ fun SupplierConfigScreen(
             Spacer(Modifier.height(16.dp))
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Text("取消", fontSize = 13.sp, fontFamily = XinUiFont, color = Sub,
+                Text(t("取消"), fontSize = 13.sp, fontFamily = XinUiFont, color = Sub,
                     modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showForm = false }.padding(horizontal = 12.dp, vertical = 8.dp))
                 Spacer(Modifier.width(12.dp))
-                Text("保存配置", fontSize = 13.sp, fontFamily = XinUiFont, color = Ink,
+                Text(t("保存配置"), fontSize = 13.sp, fontFamily = XinUiFont, color = Ink,
                     modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { saveConfig() }.padding(horizontal = 12.dp, vertical = 8.dp))
             }
             Spacer(Modifier.height(64.dp))  // 底部留白:配合整页可滚动,保存按钮完整露出、不贴屏幕/导航栏底边
@@ -809,7 +820,7 @@ fun SupplierConfigScreen(
                                     modifier = Modifier.weight(1f)
                                 )
                                 if (isCurrent) {
-                                    Text("✓ 当前", fontSize = 10.sp, fontFamily = XinUiFont, color = Green)
+                                    Text(t("✓ 当前"), fontSize = 10.sp, fontFamily = XinUiFont, color = Green)
                                 }
                             }
                         }

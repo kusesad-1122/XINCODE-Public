@@ -52,8 +52,8 @@ fun IdentityListScreen(
     var deleteTarget by remember { mutableStateOf<IdentityEntity?>(null) }
 
     Column(Modifier.fillMaxSize().background(Bg).padding(16.dp)) {
-        XinPageHeader(title = "身份卡", subtitle = "为不同场景配置独立助手", onBack = onBack) {
-            XinHeaderAction(label = "新建", onClick = onCreateNew)
+        XinPageHeader(title = t("身份卡"), subtitle = t("为不同场景配置独立助手"), onBack = onBack) {
+            XinHeaderAction(label = t("新建"), onClick = onCreateNew)
         }
         Spacer(Modifier.height(8.dp))
 
@@ -76,7 +76,7 @@ fun IdentityListScreen(
     if (renameTarget != null) {
         AlertDialog(
             onDismissRequest = { renameTarget = null },
-            title = { Text("重命名身份卡", fontFamily = JetBrainsMono, color = Ink) },
+            title = { Text(t("重命名身份卡"), fontFamily = JetBrainsMono, color = Ink) },
             text = {
                 TextField(value = renameText, onValueChange = { renameText = it }, singleLine = true,
                     colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent, cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink),
@@ -86,9 +86,9 @@ fun IdentityListScreen(
                 TextButton(onClick = {
                     renameTarget?.let { onRename(it.id, renameText) }
                     renameTarget = null
-                }) { Text("保存", fontFamily = JetBrainsMono, color = Green) }
+                }) { Text(t("保存"), fontFamily = JetBrainsMono, color = Green) }
             },
-            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text("取消", fontFamily = JetBrainsMono, color = Sub) } },
+            dismissButton = { TextButton(onClick = { renameTarget = null }) { Text(t("取消"), fontFamily = JetBrainsMono, color = Sub) } },
             containerColor = Bg
         )
     }
@@ -98,20 +98,20 @@ fun IdentityListScreen(
         val affected = sessionCountForIdentity(target.id)
         AlertDialog(
             onDismissRequest = { deleteTarget = null },
-            title = { Text("删除身份卡", fontFamily = JetBrainsMono, color = Ink) },
+            title = { Text(t("删除身份卡"), fontFamily = JetBrainsMono, color = Ink) },
             text = {
                 Text(
                     if (affected > 0)
-                        "「${target.name}」将被删除。已用过这张身份卡的 $affected 个对话会失去关联,但对话内容不会丢失。"
+                        tx("「%s」将被删除。已用过这张身份卡的 %s 个对话会失去关联,但对话内容不会丢失。", target.name, affected)
                     else
-                        "「${target.name}」将被删除。",
+                        tx("「%s」将被删除。", target.name),
                     fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub
                 )
             },
             confirmButton = {
-                TextButton(onClick = { onDelete(target.id); deleteTarget = null }) { Text("删除", fontFamily = JetBrainsMono, color = Red) }
+                TextButton(onClick = { onDelete(target.id); deleteTarget = null }) { Text(t("删除"), fontFamily = JetBrainsMono, color = Red) }
             },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("取消", fontFamily = JetBrainsMono, color = Sub) } },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(t("取消"), fontFamily = JetBrainsMono, color = Sub) } },
             containerColor = Bg
         )
     }
@@ -155,9 +155,9 @@ private fun IdentityRow(
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showMenu = true }
                     .padding(horizontal = 8.dp, vertical = 4.dp))
             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }, offset = DpOffset(0.dp, 0.dp)) {
-                DropdownMenuItem(text = { Text(if (identity.isStarred) "取消收藏" else "收藏", fontSize = 12.sp) }, onClick = { showMenu = false; onToggleStar() })
-                DropdownMenuItem(text = { Text("重命名", fontSize = 12.sp) }, onClick = { showMenu = false; onRename() })
-                DropdownMenuItem(text = { Text("删除", fontSize = 12.sp, color = Red) }, onClick = { showMenu = false; onDelete() })
+                DropdownMenuItem(text = { Text(if (identity.isStarred) t("取消收藏") else t("收藏"), fontSize = 12.sp) }, onClick = { showMenu = false; onToggleStar() })
+                DropdownMenuItem(text = { Text(t("重命名"), fontSize = 12.sp) }, onClick = { showMenu = false; onRename() })
+                DropdownMenuItem(text = { Text(t("删除"), fontSize = 12.sp, color = Red) }, onClick = { showMenu = false; onDelete() })
             }
         }
     }

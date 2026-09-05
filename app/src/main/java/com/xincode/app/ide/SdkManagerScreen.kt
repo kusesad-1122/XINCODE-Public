@@ -70,7 +70,7 @@ fun SdkManagerScreen(onBack: () -> Unit, onOpenTerminal: () -> Unit = {}) {
         // 根信息卡
         Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF0F1117)).border(1.dp, Color(0xFF20232E), RoundedCornerShape(12.dp)).padding(12.dp)) {
             Column {
-                Text("SDK Root: ${SdkManager.SDK_ROOT}  ${if (ready) "✓ 已安装" else "未安装"}", fontSize = 11.sp, fontFamily = Mono, color = if(ready) Color(0xFF7BE0A4) else xc.faint)
+                Text("SDK Root: ${SdkManager.SDK_ROOT}  ${if (ready) "✓ 已安装" else "未安装"}", fontSize = 11.sp, fontFamily = Mono, color = if(ready) xc.green else xc.faint)
                 Spacer(Modifier.height(6.dp))
                 Text(info.take(900), fontSize = 10.sp, fontFamily = Mono, color = Color(0xFFD7DAE0), lineHeight = 13.sp)
             }
@@ -109,7 +109,7 @@ fun SdkManagerScreen(onBack: () -> Unit, onOpenTerminal: () -> Unit = {}) {
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(xc.bgElevated).border(1.dp, xc.border, RoundedCornerShape(12.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(path, fontSize = 12.sp, fontFamily = Mono, color = xc.ink)
-                        Text(desc + if (installedExact) " · 已安装" else " · 未安装", fontSize = 10.sp, fontFamily = Mono, color = if(installedExact) Color(0xFF7BE0A4) else xc.faint)
+                        Text(desc + if (installedExact) " · 已安装" else " · 未安装", fontSize = 10.sp, fontFamily = Mono, color = if(installedExact) xc.green else xc.faint)
                     }
                     if (busyPkg==path) {
                         Text("执行中...", fontSize = 11.sp, fontFamily = Mono, color = xc.faint)

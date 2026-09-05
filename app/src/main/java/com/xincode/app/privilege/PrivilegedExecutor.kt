@@ -62,13 +62,39 @@ object PrivilegedExecutor {
         return executeNormal(command)
     }
 
+    /**
+     * 向当前流式进程的 stdin 写一行（apt Y/N 确认等交互用）。
+     * 普通/Shizuku 路径直写；Root/libsu 路径无 stdin 句柄时返回 false。
+     */
+    fun sendInput(line: String): Boolean {
+        var delivered = false
+        try {
+            val p = normalStreamingProcess
+            if (p != null && p.isAlive) {
+                p.outputStream.write(line.toByteArray())
+                p.outputStream.flush()
+                delivered = true
+            }
+        } catch (_: Exception) {}
+        if (!delivered) {
+            delivered = ShizukuShell.sendInput(line)
+        }
+        return delivered
+    }
+
     /** Best-effort hard stop for a terminal shell process and its process group. */
     suspend fun terminate(pid: Long, context: Context? = null): ExecResult {
         if (pid <= 1L) return ExecResult("", "拒绝终止非法 PID", -1, 0L, false)
         terminateNormalStreamingProcess()
         ShizukuShell.terminateCurrentProcess()
         val safePid = pid.toString()
-        val command = "kill -TERM -$safePid 2>/dev/null; kill -TERM $safePid 2>/dev/null; sleep 1; kill -KILL -$safePid 2>/dev/null; kill -KILL $safePid 2>/dev/null"
+        // 先温柔 TERM 整组+子进程,再 KILL 整组+子进程+本体。libsu 路径拿不到 Job 句柄,
+        // 只能靠 side-channel 多补几刀:进程组、父子关系、短 sleep 后再补 KILL。
+        val command = "kill -TERM -$safePid 2>/dev/null; kill -TERM $safePid 2>/dev/null; " +
+            "pkill -TERM -P $safePid 2>/dev/null; sleep 1; " +
+            "kill -KILL -$safePid 2>/dev/null; kill -KILL $safePid 2>/dev/null; " +
+            "pkill -KILL -P $safePid 2>/dev/null; sleep 1; " +
+            "kill -KILL -$safePid 2>/dev/null; kill -KILL $safePid 2>/dev/null; true"
         return execute(command, context)
     }
 

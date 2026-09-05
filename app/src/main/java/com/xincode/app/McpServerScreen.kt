@@ -54,11 +54,18 @@ fun McpServerScreen(
 
     LaunchedEffect(Unit) { refresh() }
 
+    // 协程里拼的状态文案：格式串先按当前语言取好，协程内只做 format。
+    val fmtConnecting = t("连接中...")
+    val fmtConnOk = t("连接成功: %s (%s 个工具)")
+    val fmtConnFail = t("连接失败: %s")
+    val fmtDisconnected = t("已断开: %s")
+    val fmtDeleted = t("已删除: %s")
+
     Column(
         Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)
     ) {
-        XinPageHeader(title = "MCP 服务器", subtitle = "连接和管理外部工具", onBack = onBack) {
-            XinHeaderAction(label = "添加", onClick = { showAddDialog = true })
+        XinPageHeader(title = t("MCP 服务器"), subtitle = t("连接和管理外部工具"), onBack = onBack) {
+            XinHeaderAction(label = t("添加"), onClick = { showAddDialog = true })
         }
         Spacer(Modifier.height(12.dp))
 
@@ -71,7 +78,7 @@ fun McpServerScreen(
 
         // Server list
         if (servers.isEmpty()) {
-            Text("尚未添加 MCP 服务器", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint,
+            Text(t("尚未添加 MCP 服务器"), fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint,
                 modifier = Modifier.padding(vertical = 16.dp))
         }
 
@@ -80,7 +87,7 @@ fun McpServerScreen(
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(server.name, fontSize = 13.sp, fontFamily = JetBrainsMono, color = Ink)
-                        val statusText = if (server.connected) "● 已连接" else "○ 未连接"
+                        val statusText = if (server.connected) t("● 已连接") else t("○ 未连接")
                         Text(statusText, fontSize = 11.sp, fontFamily = JetBrainsMono,
                             color = if (server.connected) Green else Faint)
                     }
@@ -94,7 +101,7 @@ fun McpServerScreen(
                     Spacer(Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (server.connected) {
-                            Text("断开", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Red,
+                            Text(t("断开"), fontSize = 11.sp, fontFamily = JetBrainsMono, color = Red,
                                 modifier = Modifier.clickable(indication = null,
                                     interactionSource = remember { MutableInteractionSource() }) {
                                     scope.launch {
@@ -105,19 +112,19 @@ fun McpServerScreen(
                                     }
                                 })
                         } else {
-                            Text("连接", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Green,
+                            Text(t("连接"), fontSize = 11.sp, fontFamily = JetBrainsMono, color = Green,
                                 modifier = Modifier.clickable(indication = null,
                                     interactionSource = remember { MutableInteractionSource() }) {
                                     scope.launch {
-                                        statusMessage = "连接中..."
+                                        statusMessage = fmtConnecting
                                         isError = false
                                         when (val result = mcpManager.connectServer(server.name, server.url, server.authHeader)) {
                                             is McpConnectResult.Success -> {
-                                                statusMessage = "连接成功: ${result.serverName} (${result.toolCount} 个工具)"
+                                                statusMessage = fmtConnOk.format(result.serverName, result.toolCount)
                                                 isError = false
                                             }
                                             is McpConnectResult.Error -> {
-                                                statusMessage = "连接失败: ${result.message}"
+                                                statusMessage = fmtConnFail.format(result.message)
                                                 isError = true
                                             }
                                         }
@@ -125,12 +132,12 @@ fun McpServerScreen(
                                     }
                                 })
                         }
-                        Text("删除", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Faint,
+                        Text(t("删除"), fontSize = 11.sp, fontFamily = JetBrainsMono, color = Faint,
                             modifier = Modifier.clickable(indication = null,
                                 interactionSource = remember { MutableInteractionSource() }) {
                                 scope.launch {
                                     mcpManager.deleteServer(server.url)
-                                    statusMessage = "已删除: ${server.name}"
+                                    statusMessage = fmtDeleted.format(server.name)
                                     isError = false
                                     refresh()
                                 }
@@ -149,16 +156,16 @@ fun McpServerScreen(
             onAdd = { name, url, auth ->
                 showAddDialog = false
                 scope.launch {
-                    statusMessage = "连接中..."
+                    statusMessage = fmtConnecting
                     isError = false
                     when (val result = mcpManager.connectServer(name, url, auth)) {
                         is McpConnectResult.Success -> {
-                            statusMessage = "连接成功: ${result.serverName} (${result.toolCount} 个工具)"
+                            statusMessage = fmtConnOk.format(result.serverName, result.toolCount)
                             isError = false
                         }
                         is McpConnectResult.Error -> {
                             // Still save the entry even if connection fails
-                            statusMessage = "连接失败: ${result.message}"
+                            statusMessage = fmtConnFail.format(result.message)
                             isError = true
                         }
                     }
@@ -182,14 +189,14 @@ private fun McpAddServerDialog(
         Column(
             Modifier.background(Bg).padding(16.dp)
         ) {
-            Text("添加 MCP 服务器", fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
+            Text(t("添加 MCP 服务器"), fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
             Spacer(Modifier.height(12.dp))
 
-            Text("名称", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
+            Text(t("名称"), fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
             androidx.compose.material3.TextField(
                 value = name, onValueChange = { name = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("示例: GitHub MCP", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
+                placeholder = { Text(t("示例: GitHub MCP"), fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
                 textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontFamily = JetBrainsMono)
             )
             Spacer(Modifier.height(8.dp))
@@ -203,7 +210,7 @@ private fun McpAddServerDialog(
             )
             Spacer(Modifier.height(8.dp))
 
-            Text("Auth Header (可选)", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
+            Text(t("Auth Header (可选)"), fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
             androidx.compose.material3.TextField(
                 value = auth, onValueChange = { auth = it },
                 modifier = Modifier.fillMaxWidth(),
@@ -213,11 +220,11 @@ private fun McpAddServerDialog(
             Spacer(Modifier.height(16.dp))
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Text("取消", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
+                Text(t("取消"), fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
                     modifier = Modifier.clickable(indication = null,
                         interactionSource = remember { MutableInteractionSource() }) { onDismiss() })
                 Spacer(Modifier.width(16.dp))
-                Text("添加", fontSize = 12.sp, fontFamily = JetBrainsMono, color = if (name.isNotBlank() && url.isNotBlank()) Ink else Faint,
+                Text(t("添加"), fontSize = 12.sp, fontFamily = JetBrainsMono, color = if (name.isNotBlank() && url.isNotBlank()) Ink else Faint,
                     modifier = Modifier.clickable(indication = null,
                         interactionSource = remember { MutableInteractionSource() }) {
                         if (name.isNotBlank() && url.isNotBlank()) onAdd(name, url, auth)

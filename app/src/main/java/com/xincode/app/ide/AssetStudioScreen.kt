@@ -162,9 +162,9 @@ fun AssetStudioScreen(
         Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 12.dp, vertical = 8.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF0F1117)).padding(12.dp)) {
             val xml = if (selectedShape=="vector") generateVectorXml() else generateDrawableXml()
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                Text("预览 XML", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF7BE0A4))
+                Text("预览 XML", fontSize = 10.sp, fontFamily = Mono, color = xc.green)
                 Text(xml, fontSize = 9.sp, fontFamily = Mono, color = Color(0xFFD7DAE0), lineHeight = 11.sp)
-                if (status.isNotBlank()) Text(status, fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF7BE0A4), modifier = Modifier.padding(top = 8.dp))
+                if (status.isNotBlank()) Text(status, fontSize = 10.sp, fontFamily = Mono, color = xc.green, modifier = Modifier.padding(top = 8.dp))
             }
         }
     }

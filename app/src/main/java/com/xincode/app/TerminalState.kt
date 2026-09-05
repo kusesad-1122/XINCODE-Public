@@ -71,9 +71,35 @@ class TerminalState {
         else mainHandler.post { lines.clear() }
     }
 
+    /**
+     * 给 apt 类命令自动加 -y + 非交互环境,避免卡在 Y/N 确认上
+     * （终端页同样支持运行中手动输入 Y/N,见 [sendInput]）。
+     */
+    private fun autoYes(cmd: String): String {
+        val t = cmd.trim()
+        val aptInstall = Regex("""^(sudo\s+)?apt(-get)?\s+.*\binstall\b""").containsMatchIn(t) ||
+            Regex("""^(sudo\s+)?apt(-get)?\s+.*\b(remove|upgrade|dist-upgrade|autoremove|purge)\b""").containsMatchIn(t)
+        if (!aptInstall) return cmd
+        if (Regex("""(^|\s)-[a-zA-Z]*y""").containsMatchIn(t)) return cmd
+        return cmd.replaceFirst(Regex("""^(sudo\s+)?apt(-get)?"""), "$0 -y")
+            .let { "DEBIAN_FRONTEND=noninteractive $it" }
+    }
+
+    /**
+     * 向正在运行的命令 stdin 发送一行输入（如 apt 的 Y/N 确认）。
+     * 普通/Shizuku 路径直写进程 stdin；Root/libsu 路径无 stdin 句柄,返回 false。
+     */
+    fun sendInput(text: String): Boolean {
+        if (!running) return false
+        val line = text.trimEnd() + "\n"
+        return try {
+            com.xincode.app.privilege.PrivilegedExecutor.sendInput(line)
+        } catch (_: Exception) { false }
+    }
+
     /** 执行一条命令:环境就绪→在 Ubuntu 内,否则→ Root>Shizuku>普通 自动降级。输出流式上屏。 */
     suspend fun run(cmd: String) {
-        val c = cmd.trim()
+        val c = autoYes(cmd.trim())
         if (c.isEmpty()) return
         withContext(Dispatchers.Main) { running = true }
         activePid = null

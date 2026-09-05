@@ -49,12 +49,14 @@ import org.json.JSONArray
 
 private val Mono = FontFamily(Font(R.font.jetbrains_mono, FontWeight.Normal))
 
-// 终端固定深色配色(专属终端观感)
-private val TBg = Color(0xFF0F1117)
-private val TInk = Color(0xFFD7DAE0)
-private val TGreen = Color(0xFF7BE0A4)
-private val TSub = Color(0xFF6B7089)
-private val TCard = Color(0xFF161923)
+// 终端配色跟随整体橙色系主题(浅色羊皮纸 / 深色暖黑)，不再使用固定的蓝黑+薄荷绿。
+private val TBg: Color @Composable get() = LocalXinColors.current.bg
+private val TInk: Color @Composable get() = LocalXinColors.current.ink
+private val TGreen: Color @Composable get() = LocalXinColors.current.green
+private val TSub: Color @Composable get() = LocalXinColors.current.sub
+private val TCard: Color @Composable get() = LocalXinColors.current.bgElevated
+private val TBorder: Color @Composable get() = LocalXinColors.current.border
+private val TErr: Color @Composable get() = LocalXinColors.current.red
 
 private const val PREFS_TERMINAL = "xincode_terminal_prefs"
 private const val KEY_SAVED_COMMANDS = "saved_commands"
@@ -77,6 +79,13 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
     val savedCommands = remember { mutableStateListOf<String>() }
     var deleteCandidate by remember { mutableStateOf<String?>(null) }
 
+    // 非组合作用域（Toast/appendChunk）用的文案先取好，保证语言秒切。
+    val strNeedInputFirst = t("请先在下方输入要收藏的命令")
+    val strSavedToShortcuts = t("已收藏到快捷指令栏")
+    val strAlreadySaved = t("该指令已在快捷列表中")
+    val strNoInteractive = t("当前通道不支持交互输入")
+    val strNoInteractiveHint = t("运行中…可直接输入回答进程提问（如 Y/N）")
+
     LaunchedEffect(Unit) {
         val sp = context.getSharedPreferences(PREFS_TERMINAL, Context.MODE_PRIVATE)
         val raw = sp.getString(KEY_SAVED_COMMANDS, "[]") ?: "[]"
@@ -96,21 +105,30 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
     fun saveCurrentToShortcuts() {
         val c = input.trim()
         if (c.isBlank()) {
-            Toast.makeText(context, "请先在下方输入要收藏的命令", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, strNeedInputFirst, Toast.LENGTH_SHORT).show()
             return
         }
         if (!savedCommands.contains(c) && !defaultShortcuts.contains(c)) {
             savedCommands.add(0, c)
             persistSavedCommands()
-            Toast.makeText(context, "已收藏到快捷指令栏", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, strSavedToShortcuts, Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(context, "该指令已在快捷列表中", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, strAlreadySaved, Toast.LENGTH_SHORT).show()
         }
     }
 
     fun submitCommand(raw: String) {
         val command = raw.trim()
-        if (command.isNotBlank() && !terminal.running) {
+        if (command.isBlank()) return
+        if (terminal.running) {
+            // 运行中输入 → 直接发给进程 stdin（如 apt 的 Y/N 确认），不新开命令。
+            input = ""
+            val ok = terminal.sendInput(command)
+            if (!ok) {
+                terminal.appendChunk("[提示] $strNoInteractive")
+                Toast.makeText(context, strNoInteractive, Toast.LENGTH_SHORT).show()
+            }
+        } else {
             scope.launch { terminal.run(command) }
         }
     }
@@ -127,11 +145,11 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = TSub)
+                Icon(Icons.Outlined.ArrowBack, contentDescription = t("返回"), tint = TSub)
             }
             Spacer(Modifier.weight(1f))
             Text(
-                if (LinuxEnvironment.isReady()) "终端 · Ubuntu" else "终端 · root shell",
+                if (LinuxEnvironment.isReady()) t("终端 · Ubuntu") else t("终端 · root shell"),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 fontFamily = Mono,
@@ -139,7 +157,7 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
             )
             Spacer(Modifier.weight(1f))
             Text(
-                "清屏",
+                t("清屏"),
                 fontSize = 13.sp,
                 fontFamily = Mono,
                 color = TSub,
@@ -154,7 +172,7 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF13161F))
+                .background(TCard)
                 .padding(vertical = 6.dp)
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 12.dp),
@@ -165,16 +183,16 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF222736))
+                    .background(TGreen.copy(alpha = 0.14f))
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                         saveCurrentToShortcuts()
                     }
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Outlined.BookmarkAdd, contentDescription = "收藏当前指令", tint = TGreen, modifier = Modifier.size(14.dp))
+                Icon(Icons.Outlined.BookmarkAdd, contentDescription = t("收藏当前"), tint = TGreen, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(4.dp))
-                Text("收藏当前", fontSize = 11.sp, fontFamily = Mono, color = TGreen)
+                Text(t("收藏当前"), fontSize = 11.sp, fontFamily = Mono, color = TGreen)
             }
 
             // 用户自定义保存的快捷指令
@@ -182,8 +200,8 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
                 Row(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFF252B3C))
-                        .border(0.8.dp, Color(0xFF384059), RoundedCornerShape(12.dp))
+                        .background(TBg)
+                        .border(0.8.dp, TBorder, RoundedCornerShape(12.dp))
                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                             input = cmd
                             submitCommand(cmd)
@@ -195,7 +213,7 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
                     Spacer(Modifier.width(4.dp))
                     Icon(
                         Icons.Outlined.Close,
-                        contentDescription = "删除收藏",
+                        contentDescription = t("删除"),
                         tint = TSub,
                         modifier = Modifier
                             .size(14.dp)
@@ -223,7 +241,7 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
             }
         }
 
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF20232E)))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(TBorder))
 
         // ── 滚动输出区 ──
         LazyColumn(
@@ -234,7 +252,7 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
                 val color = when {
                     line.startsWith("$ ") -> TGreen
                     line.startsWith("[exit 0]") -> TSub
-                    line.startsWith("[exit ") || line.startsWith("[错误]") || line.startsWith("[异常]") -> Color(0xFFE0685C)
+                    line.startsWith("[exit ") || line.startsWith("[错误]") || line.startsWith("[异常]") -> TErr
                     else -> TInk
                 }
                 Text(line, fontSize = 12.sp, fontFamily = Mono, color = color, lineHeight = 16.sp)
@@ -245,8 +263,8 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF13161F))
-                .border(1.dp, Color(0xFF20232E))
+                .background(TCard)
+                .border(1.dp, TBorder)
                 .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Column {
@@ -263,10 +281,10 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = if (inputExpanded) 120.dp else 52.dp, max = 180.dp),
-                        enabled = !terminal.running,
+                        enabled = true,
                         singleLine = false,
                         maxLines = if (inputExpanded) 8 else 2,
-                        placeholder = { Text(if (terminal.running) "命令执行中…" else "输入命令，点击右侧运行", fontSize = 13.sp, fontFamily = Mono, color = TSub) },
+                        placeholder = { Text(if (terminal.running) strNoInteractiveHint else t("输入命令，点击右侧运行"), fontSize = 13.sp, fontFamily = Mono, color = TSub) },
                         textStyle = TextStyle(fontSize = 13.sp, fontFamily = Mono, lineHeight = 18.sp),
                         keyboardActions = KeyboardActions(onDone = { val c = input; input = ""; submitCommand(c) }),
                         colors = TextFieldDefaults.colors(
@@ -304,7 +322,7 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
                             .height(48.dp)
                             .widthIn(min = 72.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(if (terminal.running) Color(0xFFD34F44) else TGreen)
+                            .background(if (terminal.running) TErr else TGreen)
                             .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
                                 if (terminal.running) {
                                     scope.launch { terminal.stop() }
@@ -321,16 +339,16 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
                             Icon(
                                 imageVector = if (terminal.running) Icons.Outlined.Stop else Icons.Outlined.PlayArrow,
                                 contentDescription = null,
-                                tint = if (terminal.running) Color.White else Color(0xFF0F1117),
+                                tint = Color.White,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
-                                if (terminal.running) "终止" else "运行",
+                                if (terminal.running) t("终止") else t("运行"),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = Mono,
-                                color = if (terminal.running) Color.White else Color(0xFF0F1117)
+                                color = Color.White
                             )
                         }
                     }
@@ -342,17 +360,17 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
     if (deleteCandidate != null) {
         AlertDialog(
             onDismissRequest = { deleteCandidate = null },
-            title = { Text("删除快捷指令", fontFamily = Mono, color = TInk) },
-            text = { Text("确认从快捷栏移除指令「${deleteCandidate}」？", fontFamily = Mono, fontSize = 13.sp, color = TSub) },
+            title = { Text(t("删除快捷指令"), fontFamily = Mono, color = TInk) },
+            text = { Text(tx("确认从快捷栏移除指令「%s」？", deleteCandidate.orEmpty()), fontFamily = Mono, fontSize = 13.sp, color = TSub) },
             confirmButton = {
                 TextButton(onClick = {
                     savedCommands.remove(deleteCandidate)
                     persistSavedCommands()
                     deleteCandidate = null
-                }) { Text("删除", color = Color(0xFFE0685C), fontFamily = Mono) }
+                }) { Text(t("删除"), color = TErr, fontFamily = Mono) }
             },
             dismissButton = {
-                TextButton(onClick = { deleteCandidate = null }) { Text("取消", color = TSub, fontFamily = Mono) }
+                TextButton(onClick = { deleteCandidate = null }) { Text(t("取消"), color = TSub, fontFamily = Mono) }
             },
             containerColor = TCard
         )

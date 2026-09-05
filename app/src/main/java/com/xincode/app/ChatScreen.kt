@@ -655,7 +655,7 @@ fun ChatScreen(
                     )
                     Box(Modifier.fillMaxWidth().height(0.5.dp).background(xc.border))
                     DropdownMenuItem(
-                        text = { Text("Share", fontFamily = XinUiFont) },
+                        text = { Text(t("Share"), fontFamily = XinUiFont) },
                         leadingIcon = { Icon(Icons.Outlined.Share, contentDescription = null, tint = xc.ink, modifier = Modifier.size(18.dp)) },
                         onClick = {
                             showTopMenu = false
@@ -668,7 +668,7 @@ fun ChatScreen(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Rename", fontFamily = XinUiFont) },
+                        text = { Text(t("Rename"), fontFamily = XinUiFont) },
                         leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null, tint = xc.ink, modifier = Modifier.size(18.dp)) },
                         onClick = {
                             showTopMenu = false
@@ -677,7 +677,7 @@ fun ChatScreen(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text(if (isStarred) "Unpin" else "Pin", fontFamily = XinUiFont) },
+                        text = { Text(if (isStarred) t("Unpin") else t("Pin"), fontFamily = XinUiFont) },
                         leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null, tint = xc.ink, modifier = Modifier.size(18.dp)) },
                         onClick = {
                             showTopMenu = false
@@ -685,7 +685,7 @@ fun ChatScreen(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Add to project", fontFamily = XinUiFont) },
+                        text = { Text(t("Add to project"), fontFamily = XinUiFont) },
                         leadingIcon = { Icon(Icons.Outlined.Folder, contentDescription = null, tint = xc.ink, modifier = Modifier.size(18.dp)) },
                         onClick = {
                             showTopMenu = false
@@ -693,7 +693,7 @@ fun ChatScreen(
                         }
                     )
                     DropdownMenuItem(
-                        text = { Text("Delete", fontFamily = XinUiFont, color = xc.red) },
+                        text = { Text(t("Delete"), fontFamily = XinUiFont, color = xc.red) },
                         leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = xc.red, modifier = Modifier.size(18.dp)) },
                         onClick = {
                             showTopMenu = false
@@ -708,7 +708,7 @@ fun ChatScreen(
         if (renameSessionDialog) {
             AlertDialog(
                 onDismissRequest = { renameSessionDialog = false },
-                title = { Text("重命名会话", fontFamily = XinSerifFont, color = xc.ink) },
+                title = { Text(t("重命名会话"), fontFamily = XinSerifFont, color = xc.ink) },
                 text = {
                     TextField(
                         value = renameSessionTitle,
@@ -730,10 +730,10 @@ fun ChatScreen(
                             onRenameSession(currentSessionId, renameSessionTitle.trim())
                         }
                         renameSessionDialog = false
-                    }) { Text("保存", color = xc.green, fontFamily = XinUiFont) }
+                    }) { Text(t("保存"), color = xc.green, fontFamily = XinUiFont) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { renameSessionDialog = false }) { Text("取消", color = xc.sub, fontFamily = XinUiFont) }
+                    TextButton(onClick = { renameSessionDialog = false }) { Text(t("取消"), color = xc.sub, fontFamily = XinUiFont) }
                 },
                 containerColor = xc.bgElevated
             )
@@ -1266,8 +1266,8 @@ fun ChatScreen(
                                 Row(
                                     Modifier
                                         .height(28.dp)
-                                        .border(1.dp, Color(0x1A1A1A17), RoundedCornerShape(6.dp))
-                                        .background(Color(0x0D1A1A17), RoundedCornerShape(6.dp))
+                                        .border(1.dp, Border, RoundedCornerShape(6.dp))
+                                        .background(xc.bg, RoundedCornerShape(6.dp))
                                         .padding(horizontal = 10.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -1340,8 +1340,8 @@ fun ChatScreen(
                     placeholder = {
                         Text(
                             when {
-                                chatState.isStreaming.value -> "插话给正在工作的 AI(不打断)…"
-                                isGoalSession && !goalRunning -> "输入目标,让 XINCODE 自主完成…"
+                                chatState.isStreaming.value -> t("插话给正在工作的 AI(不打断)…")
+                                isGoalSession && !goalRunning -> t("输入目标,让 XINCODE 自主完成…")
                                 else -> "Reply to Claude..."
                             },
                             color = Sub, fontSize = 16.sp, fontFamily = XinUiFont
@@ -1726,30 +1726,51 @@ private fun PlusRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label
     }
 }
 
-/** 技能选择对话框:列出可用技能,点选插入。 */
+/** 技能选择对话框:列出可用技能,点选插入。统一样式:圆角卡片 + 行圆角选中态。 */
 @Composable
 private fun SkillPickerDialog(skillNames: List<String>, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     val xc = LocalXinColors.current
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择技能", fontSize = 14.sp, fontFamily = JetBrainsMono, color = xc.ink) },
+        shape = RoundedCornerShape(20.dp),
+        title = { Text(t("选择技能"), fontSize = 15.sp, fontFamily = XinSerifFont, color = xc.ink) },
         text = {
             if (skillNames.isEmpty()) {
-                Text("暂无技能(可在 设置→Skills 管理)", fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.faint)
+                Text(t("暂无技能(可在 设置→Skills 管理)"), fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.faint)
             } else {
                 Column(Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                     skillNames.forEach { name ->
-                        Text(name, fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink,
+                        Row(
                             modifier = Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(xc.bg)
+                                .border(0.5.dp, xc.border, RoundedCornerShape(12.dp))
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onPick(name) }
-                                .padding(vertical = 10.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier.size(30.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(xc.activeBg),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    name.firstOrNull()?.uppercase() ?: "S",
+                                    fontSize = 13.sp, fontFamily = XinUiFont, color = xc.green
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text(name, fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        }
+                        Spacer(Modifier.height(6.dp))
                     }
                 }
             }
         },
         confirmButton = {},
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("关闭", fontFamily = JetBrainsMono, color = xc.sub) } },
-        containerColor = xc.bg
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(t("关闭"), fontFamily = JetBrainsMono, color = xc.sub) } },
+        containerColor = xc.bgElevated
     )
 }
 
@@ -2164,26 +2185,44 @@ private fun McpPickerDialog(mcpNames: List<String>, onPick: (String) -> Unit, on
     val xc = LocalXinColors.current
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择 MCP 服务器", fontSize = 14.sp, fontFamily = JetBrainsMono, color = xc.ink) },
+        shape = RoundedCornerShape(20.dp),
+        title = { Text(t("选择 MCP 服务器"), fontSize = 15.sp, fontFamily = XinSerifFont, color = xc.ink) },
         text = {
             if (mcpNames.isEmpty()) {
-                Text("暂无 MCP 服务器(点下方「管理」去添加)", fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.faint)
+                Text(t("暂无 MCP 服务器(点下方「管理」去添加)"), fontSize = 12.sp, fontFamily = JetBrainsMono, color = xc.faint)
             } else {
                 Column(Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                     mcpNames.forEach { name ->
-                        Text("@$name", fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink,
+                        Row(
                             modifier = Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(xc.bg)
+                                .border(0.5.dp, xc.border, RoundedCornerShape(12.dp))
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onPick(name) }
-                                .padding(vertical = 10.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier.size(30.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(xc.activeBg),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("@", fontSize = 14.sp, fontFamily = JetBrainsMono, color = xc.green)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            Text("@$name", fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        }
+                        Spacer(Modifier.height(6.dp))
                     }
                 }
             }
         },
         confirmButton = {
-            androidx.compose.material3.TextButton(onClick = onManage) { Text("管理", fontFamily = JetBrainsMono, color = xc.green) }
+            androidx.compose.material3.TextButton(onClick = onManage) { Text(t("管理"), fontFamily = JetBrainsMono, color = xc.green) }
         },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("关闭", fontFamily = JetBrainsMono, color = xc.sub) } },
-        containerColor = xc.bg
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(t("关闭"), fontFamily = JetBrainsMono, color = xc.sub) } },
+        containerColor = xc.bgElevated
     )
 }
 
@@ -2305,9 +2344,44 @@ private fun MessageBubble(msg: ChatState.MessageUi, isStreamingMessage: Boolean 
         Box(bubbleModifier) {
         // Content (Markdown for assistant, plain text for user/tool)
         if (msg.role == "assistant") {
+            // 生图/附件图片标记:### 文件名(图片,路径:绝对路径) —— 直接渲染出图(文件本身不压缩,只按需降采样显示)。
+            val genImageRegex = remember { Regex("""###\s*([^(]+)\(图片,路径:([^)]+)\)""") }
+            val genImages = remember(msg.content) { genImageRegex.findAll(msg.content).toList() }
+            val textWithoutImages = remember(msg.content) {
+                msg.content.replace(genImageRegex, "").replace(Regex("""\n{3,}"""), "\n\n").trim()
+            }
             if (msg.content.isNotEmpty()) {
                 Column {
-                    MarkdownContent(msg.content)
+                    for (match in genImages) {
+                        val fileName = match.groupValues[1].trim()
+                        val path = match.groupValues[2].trim()
+                        val file = remember(path) { java.io.File(path) }
+                        val bitmap = remember(path) {
+                            if (file.exists()) {
+                                try {
+                                    // 大文件才降采样(省内存),8MB 内全分辨率显示,不降清晰度。
+                                    val sample = if (file.length() < 8L * 1024 * 1024) 1 else 2
+                                    val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }
+                                    android.graphics.BitmapFactory.decodeFile(path, opts)
+                                } catch (_: Exception) { null }
+                            } else null
+                        }
+                        if (bitmap != null) {
+                            androidx.compose.foundation.Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = fileName,
+                                modifier = Modifier
+                                    .padding(bottom = 8.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .fillMaxWidth()
+                                    .heightIn(max = 320.dp),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                            )
+                        }
+                    }
+                    if (textWithoutImages.isNotBlank()) {
+                        MarkdownContent(textWithoutImages)
+                    }
                     if (isStreamingMessage) {
                         Text(
                             "▊",
@@ -2789,10 +2863,10 @@ private fun AddToChatSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Outlined.Close, contentDescription = "关闭", tint = xc.ink)
+                Icon(Icons.Outlined.Close, contentDescription = t("关闭"), tint = xc.ink)
             }
             Spacer(Modifier.weight(1f))
-            Text("Add to chat", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Text(t("Add to chat"), fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.width(36.dp))
         }
@@ -2801,9 +2875,9 @@ private fun AddToChatSheet(
 
         // Row of 3 square cards: Camera, Photos, Files
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.PhotoCamera, "Camera", onCamera)
-            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.Image, "Photos", onPhotos)
-            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.Description, "Files", onFiles)
+            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.PhotoCamera, t("Camera"), onCamera)
+            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.Image, t("Photos"), onPhotos)
+            AddSheetMediaCard(Modifier.weight(1f), Icons.Outlined.Description, t("Files"), onFiles)
         }
 
         Spacer(Modifier.height(18.dp))
@@ -2811,7 +2885,7 @@ private fun AddToChatSheet(
         // Toggle row 1: Web search
         AddSheetToggleRow(
             icon = Icons.Outlined.Public,
-            title = "Web search",
+            title = t("Web search"),
             subtitle = "",
             checked = webSearchOn,
             enabled = true,
@@ -2821,8 +2895,8 @@ private fun AddToChatSheet(
         // Toggle row 2: Memory
         AddSheetToggleRow(
             icon = Icons.Outlined.Refresh,
-            title = "Memory",
-            subtitle = "Can't be changed for this chat",
+            title = t("Memory"),
+            subtitle = t("Can't be changed for this chat"),
             checked = true,
             enabled = false,
             onCheckedChange = {}
@@ -2831,7 +2905,7 @@ private fun AddToChatSheet(
         // Action row 3: Add to project
         AddSheetActionRow(
             icon = Icons.Outlined.Folder,
-            title = "Add to project",
+            title = t("Add to project"),
             subtitle = projectName,
             onClick = onAddProject
         )
@@ -2839,24 +2913,24 @@ private fun AddToChatSheet(
         // Action row 4: MCP (original entry name kept)
         AddSheetActionRow(
             icon = Icons.Outlined.Extension,
-            title = "MCP",
-            subtitle = if (mcpNames.isEmpty()) "连接本地或远程工具服务" else "已配置 ${mcpNames.size} 个服务",
+            title = t("MCP"),
+            subtitle = if (mcpNames.isEmpty()) t("连接本地或远程工具服务") else tx("已配置 %s 个服务", mcpNames.size),
             onClick = onMcp
         )
 
         // Action row 5: Skills (original entry name kept)
         AddSheetActionRow(
             icon = Icons.Outlined.Lightbulb,
-            title = "Skills",
-            subtitle = if (skillNames.isEmpty()) "将技能指令添加到输入框" else "已配置 ${skillNames.size} 个技能",
+            title = t("Skills"),
+            subtitle = if (skillNames.isEmpty()) t("将技能指令添加到输入框") else tx("已配置 %s 个技能", skillNames.size),
             onClick = onSkill
         )
 
         // Action row 6: 工具权限
         AddSheetActionRow(
             icon = Icons.Outlined.Settings,
-            title = "工具权限",
-            subtitle = toolAccessMode,
+            title = t("工具权限"),
+            subtitle = t(toolAccessMode),
             onClick = onToolAccess
         )
 
@@ -2924,10 +2998,10 @@ private fun SelectModelBottomSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onClose, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Outlined.Close, contentDescription = "关闭", tint = xc.ink)
+                Icon(Icons.Outlined.Close, contentDescription = t("关闭"), tint = xc.ink)
             }
             Spacer(Modifier.weight(1f))
-            Text("Select model", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Text(t("Select model"), fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.width(36.dp))
         }
@@ -2966,10 +3040,10 @@ private fun SelectModelBottomSheet(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(6.dp))
-                                        .background(Color(0xFFE5EDFF))
+                                        .background(xc.activeBg)
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
-                                    Text(item.badge, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color(0xFF1E50C0))
+                                    Text(item.badge, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = xc.green)
                                 }
                             }
                         }
@@ -2981,7 +3055,7 @@ private fun SelectModelBottomSheet(
                         Icon(
                             Icons.Outlined.Check,
                             contentDescription = "当前选中",
-                            tint = Color(0xFF1E50C0),
+                            tint = xc.green,
                             modifier = Modifier.size(20.dp)
                         )
                     }
@@ -3013,7 +3087,7 @@ private fun SelectModelBottomSheet(
             }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
-                Text("Effort", fontFamily = XinUiFont, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+                Text(t("Effort"), fontFamily = XinUiFont, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = xc.ink)
                 Text(effortLabel, fontFamily = XinUiFont, fontSize = 13.sp, color = xc.sub)
             }
             Icon(Icons.Outlined.KeyboardArrowRight, contentDescription = null, tint = xc.sub, modifier = Modifier.size(20.dp))
@@ -3026,26 +3100,26 @@ private fun SelectModelBottomSheet(
         // ── 更多设置：原有核心功能入口（对应 Claude 样式多出的入口行） ──
         AddSheetActionRow(
             icon = Icons.Outlined.Settings,
-            title = "访问权限",
-            subtitle = permissionLabel,
+            title = t("访问权限"),
+            subtitle = t(permissionLabel),
             onClick = onOpenMode
         )
         AddSheetActionRow(
             icon = Icons.Outlined.Info,
-            title = "上下文用量",
+            title = t("上下文用量"),
             subtitle = contextLabel,
             onClick = onOpenStats
         )
         AddSheetActionRow(
             icon = Icons.Outlined.Lightbulb,
-            title = "增强提示词",
-            subtitle = "优化当前输入",
+            title = t("增强提示词"),
+            subtitle = t("优化当前输入"),
             onClick = onOpenEnhance
         )
         AddSheetActionRow(
             icon = Icons.Outlined.Bolt,
-            title = "目标模式",
-            subtitle = "前往 Goal 模式",
+            title = t("目标模式"),
+            subtitle = t("前往 Goal 模式"),
             onClick = onOpenGoal
         )
         Row(
@@ -3056,12 +3130,12 @@ private fun SelectModelBottomSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(Modifier.size(40.dp).clip(androidx.compose.foundation.shape.CircleShape).background(xc.activeBg), contentAlignment = Alignment.Center) {
-                Icon(Icons.Outlined.Psychology, contentDescription = "多Agent协同", tint = xc.ink, modifier = Modifier.size(20.dp))
+                Icon(Icons.Outlined.Psychology, contentDescription = t("多Agent协同"), tint = xc.ink, modifier = Modifier.size(20.dp))
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text("多Agent协同", fontFamily = XinUiFont, fontSize = 15.sp, color = xc.ink)
-                Text(if (collabOn) "已开启：主脑+子智能体并行" else "已关闭", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(t("多Agent协同"), fontFamily = XinUiFont, fontSize = 15.sp, color = xc.ink)
+                Text(if (collabOn) t("已开启：主脑+子智能体并行") else t("已关闭"), fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Switch(
                 checked = collabOn,
@@ -3106,10 +3180,10 @@ private fun EffortBottomSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = xc.ink)
+                Icon(Icons.Outlined.ArrowBack, contentDescription = t("返回"), tint = xc.ink)
             }
             Spacer(Modifier.weight(1f))
-            Text("Effort", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Text(t("Effort"), fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.width(36.dp))
         }
@@ -3127,18 +3201,18 @@ private fun EffortBottomSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    opt.label,
+                    t(opt.label),
                     fontFamily = XinUiFont,
                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                     fontSize = 17.sp,
-                    color = if (isSelected) Color(0xFF1E50C0) else xc.ink
+                    color = if (isSelected) xc.green else xc.ink
                 )
                 Spacer(Modifier.weight(1f))
                 if (isSelected) {
                     Icon(
                         Icons.Outlined.Check,
-                        contentDescription = "已选择",
-                        tint = Color(0xFF1E50C0),
+                        contentDescription = t("已选择"),
+                        tint = xc.green,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -3176,10 +3250,10 @@ private fun ToolAccessBottomSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = xc.ink)
+                Icon(Icons.Outlined.ArrowBack, contentDescription = t("返回"), tint = xc.ink)
             }
             Spacer(Modifier.weight(1f))
-            Text("工具权限", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Text(t("工具权限"), fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.width(36.dp))
         }
@@ -3198,20 +3272,20 @@ private fun ToolAccessBottomSheet(
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        opt.title,
+                        t(opt.title),
                         fontFamily = XinUiFont,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
                         fontSize = 17.sp,
-                        color = if (isSelected) Color(0xFF1E50C0) else xc.ink
+                        color = if (isSelected) xc.green else xc.ink
                     )
                     Spacer(Modifier.height(3.dp))
-                    Text(opt.desc, fontFamily = XinUiFont, fontSize = 13.sp, color = xc.sub)
+                    Text(t(opt.desc), fontFamily = XinUiFont, fontSize = 13.sp, color = xc.sub)
                 }
                 if (isSelected) {
                     Icon(
                         Icons.Outlined.Check,
                         contentDescription = "已选择",
-                        tint = Color(0xFF1E50C0),
+                        tint = xc.green,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -3248,10 +3322,10 @@ private fun AddToProjectBottomSheet(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = xc.ink)
+                Icon(Icons.Outlined.ArrowBack, contentDescription = t("返回"), tint = xc.ink)
             }
             Spacer(Modifier.weight(1f))
-            Text("Add to project", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+            Text(t("Add to project"), fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.width(36.dp))
         }
@@ -3269,7 +3343,7 @@ private fun AddToProjectBottomSheet(
                 .border(0.8.dp, xc.border, RoundedCornerShape(16.dp)),
             singleLine = true,
             leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = xc.sub) },
-            placeholder = { Text("Search projects", fontFamily = XinUiFont, fontSize = 15.sp, color = xc.faint) },
+            placeholder = { Text(t("Search projects"), fontFamily = XinUiFont, fontSize = 15.sp, color = xc.faint) },
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
                 unfocusedContainerColor = Color.Transparent,
@@ -3302,7 +3376,7 @@ private fun AddToProjectBottomSheet(
                     Icon(
                         Icons.Outlined.Folder,
                         contentDescription = null,
-                        tint = if (isSelected) Color(0xFF1E50C0) else xc.sub,
+                        tint = if (isSelected) xc.green else xc.sub,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(14.dp))
@@ -3311,14 +3385,14 @@ private fun AddToProjectBottomSheet(
                         fontFamily = XinUiFont,
                         fontSize = 16.sp,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (isSelected) Color(0xFF1E50C0) else xc.ink,
+                        color = if (isSelected) xc.green else xc.ink,
                         modifier = Modifier.weight(1f)
                     )
                     if (isSelected) {
                         Icon(
                             Icons.Outlined.Check,
                             contentDescription = null,
-                            tint = Color(0xFF1E50C0),
+                            tint = xc.green,
                             modifier = Modifier.size(18.dp)
                         )
                     }

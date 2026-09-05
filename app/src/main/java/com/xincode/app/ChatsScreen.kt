@@ -30,9 +30,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.data.SessionEntity
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * Full-screen Claude-style Chats manager:
@@ -57,8 +54,6 @@ fun ChatsScreen(
     var filterOnlyPinned by remember { mutableStateOf(false) }
     var selectMode by remember { mutableStateOf(false) }
     val selectedIds = remember { mutableStateListOf<Long>() }
-
-    val dateFormat = remember { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
 
     val filtered = remember(sessions, query, filterOnlyPinned) {
         sessions
@@ -85,7 +80,7 @@ fun ChatsScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = xc.ink)
+                Icon(Icons.Outlined.ArrowBack, contentDescription = t("返回"), tint = xc.ink)
             }
             Spacer(Modifier.weight(1f))
 
@@ -102,7 +97,7 @@ fun ChatsScreen(
                 ) {
                     Icon(
                         Icons.Outlined.Delete,
-                        contentDescription = "批量删除",
+                        contentDescription = t("批量删除"),
                         tint = if (selectedIds.isNotEmpty()) xc.red else xc.faint
                     )
                 }
@@ -113,7 +108,7 @@ fun ChatsScreen(
                     },
                     modifier = Modifier.size(40.dp)
                 ) {
-                    Icon(Icons.Outlined.Close, contentDescription = "退出多选", tint = xc.ink)
+                    Icon(Icons.Outlined.Close, contentDescription = t("退出多选"), tint = xc.ink)
                 }
             } else {
                 // Pin filter toggle button
@@ -123,7 +118,7 @@ fun ChatsScreen(
                 ) {
                     Icon(
                         Icons.Outlined.PushPin,
-                        contentDescription = "置顶筛选",
+                        contentDescription = t("置顶筛选"),
                         tint = if (filterOnlyPinned) xc.green else xc.sub
                     )
                 }
@@ -132,7 +127,7 @@ fun ChatsScreen(
                     onClick = { selectMode = true },
                     modifier = Modifier.size(40.dp)
                 ) {
-                    Icon(Icons.Outlined.FilterList, contentDescription = "多选管理", tint = xc.sub)
+                    Icon(Icons.Outlined.FilterList, contentDescription = t("多选管理"), tint = xc.sub)
                 }
             }
         }
@@ -166,12 +161,12 @@ fun ChatsScreen(
             trailingIcon = {
                 if (query.isNotBlank()) {
                     IconButton(onClick = { query = "" }) {
-                        Icon(Icons.Outlined.Close, contentDescription = "清除", tint = xc.sub)
+                        Icon(Icons.Outlined.Close, contentDescription = t("清除"), tint = xc.sub)
                     }
                 }
             },
             placeholder = {
-                Text("Search Chats", fontFamily = XinUiFont, fontSize = 15.sp, color = xc.faint)
+                Text(t("Search Chats"), fontFamily = XinUiFont, fontSize = 15.sp, color = xc.faint)
             },
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.Transparent,
@@ -239,7 +234,7 @@ fun ChatsScreen(
                         Column(Modifier.weight(1f)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = session.title.ifBlank { "新对话" },
+                                    text = session.title.ifBlank { t("新对话") },
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Medium,
                                     fontFamily = XinUiFont,
@@ -252,14 +247,14 @@ fun ChatsScreen(
                                     Spacer(Modifier.width(6.dp))
                                     Icon(
                                         Icons.Outlined.PushPin,
-                                        contentDescription = "置顶",
+                                        contentDescription = t("置顶"),
                                         tint = xc.sub,
                                         modifier = Modifier.size(13.dp)
                                     )
                                 }
                             }
                             Text(
-                                text = dateFormat.format(Date(session.updatedAt.takeIf { it > 0 } ?: session.createdAt)),
+                                text = chatDate(session.updatedAt.takeIf { it > 0 } ?: session.createdAt),
                                 fontSize = 12.sp,
                                 fontFamily = XinUiFont,
                                 color = xc.faint,

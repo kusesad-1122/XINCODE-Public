@@ -33,9 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.xincode.data.ProjectEntity
 import com.xincode.data.SessionEntity
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * Claude-style Projects screen:
@@ -70,7 +67,6 @@ fun ProjectsScreen(
         selectedProject?.let { sel -> projects.firstOrNull { it.id == sel.id } }
     }
 
-    val dateFormat = remember { SimpleDateFormat("yyyy年M月d日", Locale.CHINA) }
 
     if (currentProject != null) {
         // ── PROJECT DETAIL VIEW (Screenshots 23:11:16 & 23:11:19) ──
@@ -86,12 +82,12 @@ fun ProjectsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = { selectedProject = null }, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Outlined.ArrowBack, contentDescription = "返回项目列表", tint = xc.ink)
+                        Icon(Icons.Outlined.ArrowBack, contentDescription = t("返回项目列表"), tint = xc.ink)
                     }
                     Spacer(Modifier.weight(1f))
                     Box {
                         IconButton(onClick = { detailMenuExpanded = true }, modifier = Modifier.size(40.dp)) {
-                            Icon(Icons.Outlined.MoreVert, contentDescription = "更多操作", tint = xc.ink)
+                            Icon(Icons.Outlined.MoreVert, contentDescription = t("更多操作"), tint = xc.ink)
                         }
                         DropdownMenu(
                             expanded = detailMenuExpanded,
@@ -99,12 +95,12 @@ fun ProjectsScreen(
                             modifier = Modifier.background(xc.bgElevated)
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Pin", fontFamily = XinUiFont) },
+                                text = { Text(t("Pin"), fontFamily = XinUiFont) },
                                 leadingIcon = { Icon(Icons.Outlined.PushPin, contentDescription = null) },
                                 onClick = { detailMenuExpanded = false }
                             )
                             DropdownMenuItem(
-                                text = { Text("Edit details", fontFamily = XinUiFont) },
+                                text = { Text(t("Edit details"), fontFamily = XinUiFont) },
                                 leadingIcon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
                                 onClick = {
                                     detailMenuExpanded = false
@@ -114,7 +110,7 @@ fun ProjectsScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Delete", fontFamily = XinUiFont, color = xc.red) },
+                                text = { Text(t("Delete"), fontFamily = XinUiFont, color = xc.red) },
                                 leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = xc.red) },
                                 onClick = {
                                     detailMenuExpanded = false
@@ -159,7 +155,7 @@ fun ProjectsScreen(
                         ) {
                             Icon(Icons.Outlined.Lock, contentDescription = null, tint = xc.sub, modifier = Modifier.size(13.dp))
                             Spacer(Modifier.width(5.dp))
-                            Text("Private", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub)
+                            Text(t("Private"), fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub)
                         }
                         Spacer(Modifier.height(20.dp))
                     }
@@ -199,9 +195,9 @@ fun ProjectsScreen(
                                     .border(0.8.dp, xc.border, RoundedCornerShape(16.dp))
                                     .padding(16.dp)
                             ) {
-                                Text("Project knowledge", fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = xc.ink)
+                                Text(t("Project knowledge"), fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = xc.ink)
                                 Spacer(Modifier.height(14.dp))
-                                Text("Add knowledge", fontFamily = XinUiFont, fontSize = 13.sp, color = xc.green)
+                                Text(t("Add knowledge"), fontFamily = XinUiFont, fontSize = 13.sp, color = xc.green)
                             }
 
                             // Right: Custom instructions
@@ -213,9 +209,9 @@ fun ProjectsScreen(
                                     .border(0.8.dp, xc.border, RoundedCornerShape(16.dp))
                                     .padding(16.dp)
                             ) {
-                                Text("Custom instructions", fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = xc.ink)
+                                Text(t("Custom instructions"), fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = xc.ink)
                                 Spacer(Modifier.height(14.dp))
-                                Text("Add instructions", fontFamily = XinUiFont, fontSize = 13.sp, color = xc.green)
+                                Text(t("Add instructions"), fontFamily = XinUiFont, fontSize = 13.sp, color = xc.green)
                             }
                         }
                         Spacer(Modifier.height(24.dp))
@@ -242,7 +238,7 @@ fun ProjectsScreen(
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
                                 Text(
-                                    session.title.ifBlank { "新对话" },
+                                    session.title.ifBlank { t("新对话") },
                                     fontSize = 15.sp,
                                     fontFamily = XinUiFont,
                                     fontWeight = FontWeight.Medium,
@@ -252,7 +248,7 @@ fun ProjectsScreen(
                                 )
                                 Spacer(Modifier.height(3.dp))
                                 Text(
-                                    dateFormat.format(Date(session.updatedAt.takeIf { t -> t > 0 } ?: session.createdAt)),
+                                    chatDate(session.updatedAt.takeIf { t -> t > 0 } ?: session.createdAt),
                                     fontSize = 12.sp,
                                     fontFamily = XinUiFont,
                                     color = xc.faint
@@ -281,7 +277,7 @@ fun ProjectsScreen(
             ) {
                 Icon(Icons.Outlined.Add, contentDescription = null, tint = xc.bg, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("New chat", color = xc.bg, fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(t("New chat"), color = xc.bg, fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp)
             }
         }
 
@@ -304,16 +300,16 @@ fun ProjectsScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = { showEditDetails = false }, modifier = Modifier.size(36.dp)) {
-                            Icon(Icons.Outlined.Close, contentDescription = "关闭", tint = xc.ink)
+                            Icon(Icons.Outlined.Close, contentDescription = t("关闭"), tint = xc.ink)
                         }
                         Spacer(Modifier.weight(1f))
-                        Text("Edit details", fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
+                        Text(t("Edit details"), fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium, color = xc.ink)
                         Spacer(Modifier.weight(1f))
                         Spacer(Modifier.width(36.dp))
                     }
 
                     Spacer(Modifier.height(18.dp))
-                    Text("What are you working on?", fontFamily = XinUiFont, fontSize = 14.sp, color = xc.sub)
+                    Text(t("What are you working on?"), fontFamily = XinUiFont, fontSize = 14.sp, color = xc.sub)
                     Spacer(Modifier.height(8.dp))
                     TextField(
                         value = editWorkingOn,
@@ -337,7 +333,7 @@ fun ProjectsScreen(
                     )
 
                     Spacer(Modifier.height(18.dp))
-                    Text("What are you trying to achieve?", fontFamily = XinUiFont, fontSize = 14.sp, color = xc.sub)
+                    Text(t("What are you trying to achieve?"), fontFamily = XinUiFont, fontSize = 14.sp, color = xc.sub)
                     Spacer(Modifier.height(8.dp))
                     TextField(
                         value = editAchieve,
@@ -375,7 +371,7 @@ fun ProjectsScreen(
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(containerColor = xc.ink, contentColor = xc.bg)
                     ) {
-                        Text("Save", fontFamily = XinUiFont, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(t("Save"), fontFamily = XinUiFont, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                     }
                     Spacer(Modifier.height(18.dp))
                 }
@@ -396,11 +392,11 @@ fun ProjectsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Outlined.ArrowBack, contentDescription = "返回", tint = xc.ink)
+                        Icon(Icons.Outlined.ArrowBack, contentDescription = t("返回"), tint = xc.ink)
                     }
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = { showCreate = true }, modifier = Modifier.size(40.dp)) {
-                        Icon(Icons.Outlined.Add, contentDescription = "新建项目", tint = xc.ink)
+                        Icon(Icons.Outlined.Add, contentDescription = t("新建项目"), tint = xc.ink)
                     }
                 }
 
@@ -423,8 +419,8 @@ fun ProjectsScreen(
                         .background(xc.bgElevated)
                         .border(0.8.dp, xc.border, RoundedCornerShape(16.dp)),
                     singleLine = true,
-                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = "搜索项目", tint = xc.sub) },
-                    placeholder = { Text("Search projects", fontFamily = XinUiFont, color = xc.faint, fontSize = 15.sp) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = t("搜索项目"), tint = xc.sub) },
+                    placeholder = { Text(t("Search projects"), fontFamily = XinUiFont, color = xc.faint, fontSize = 15.sp) },
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
@@ -446,14 +442,14 @@ fun ProjectsScreen(
                         Icon(Icons.Outlined.FolderOpen, contentDescription = null, tint = xc.faint, modifier = Modifier.size(56.dp))
                         Spacer(Modifier.height(16.dp))
                         Text(
-                            if (query.isBlank()) "No projects yet" else "No matching projects",
+                            if (query.isBlank()) t("No projects yet") else t("No matching projects"),
                             fontFamily = XinSerifFont,
                             fontSize = 20.sp,
                             color = xc.ink
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            if (query.isBlank()) "Create a project to keep related chats and work together." else "Try a different project name.",
+                            if (query.isBlank()) t("Create a project to keep related chats and work together.") else t("Try a different project name."),
                             fontFamily = XinUiFont,
                             fontSize = 13.sp,
                             color = xc.sub
@@ -496,20 +492,20 @@ fun ProjectsScreen(
             ) {
                 Icon(Icons.Outlined.Add, contentDescription = null, tint = xc.bg, modifier = Modifier.size(17.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("New project", color = xc.bg, fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                Text(t("New project"), color = xc.bg, fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp)
             }
         }
 
         if (showCreate) {
             AlertDialog(
                 onDismissRequest = { showCreate = false; createName = "" },
-                title = { Text("New project", fontFamily = XinSerifFont, color = xc.ink) },
+                title = { Text(t("New project"), fontFamily = XinSerifFont, color = xc.ink) },
                 text = {
                     TextField(
                         value = createName,
                         onValueChange = { createName = it },
                         singleLine = true,
-                        placeholder = { Text("Project name", fontFamily = XinUiFont, color = xc.faint) },
+                        placeholder = { Text(t("Project name"), fontFamily = XinUiFont, color = xc.faint) },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = xc.bgElevated,
                             unfocusedContainerColor = xc.bgElevated,
@@ -529,11 +525,11 @@ fun ProjectsScreen(
                             showCreate = false
                             createName = ""
                         }
-                    ) { Text("Create", color = xc.green, fontFamily = XinUiFont) }
+                    ) { Text(t("Create"), color = xc.green, fontFamily = XinUiFont) }
                 },
                 dismissButton = {
                     TextButton(onClick = { showCreate = false; createName = "" }) {
-                        Text("Cancel", color = xc.sub, fontFamily = XinUiFont)
+                        Text(t("Cancel"), color = xc.sub, fontFamily = XinUiFont)
                     }
                 },
                 containerColor = xc.bgElevated
@@ -547,7 +543,7 @@ fun ProjectsScreen(
                 modifier = Modifier.background(xc.bgElevated)
             ) {
                 DropdownMenuItem(
-                    text = { Text("Open details", fontFamily = XinUiFont) },
+                    text = { Text(t("Open details"), fontFamily = XinUiFont) },
                     leadingIcon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
                     onClick = {
                         selectedProject = project
@@ -555,7 +551,7 @@ fun ProjectsScreen(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("Delete", fontFamily = XinUiFont, color = xc.red) },
+                    text = { Text(t("Delete"), fontFamily = XinUiFont, color = xc.red) },
                     leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null, tint = xc.red) },
                     onClick = {
                         onDeleteProject(project.id)
@@ -593,7 +589,7 @@ private fun ProjectIndexRow(
             Text("$sessionCount chats", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub)
         }
         IconButton(onClick = onMenu, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Outlined.MoreVert, contentDescription = "项目操作", tint = xc.sub)
+            Icon(Icons.Outlined.MoreVert, contentDescription = t("项目操作"), tint = xc.sub)
         }
     }
 }

@@ -172,6 +172,10 @@ private val groupSessionMember = HashMap<Long, String>()
     var appLanguage by mutableStateOf("zh")
         private set
 
+    /** 个人昵称:侧边栏头像字 + 对话页身份展示。持久化到 Room `profile_nickname` 设置，空=默认"苦"。 */
+    var profileNickname by mutableStateOf("")
+        private set
+
     /** Live task cards are isolated by the AgentCore session that published them. */
     private val planStates = SessionPlanStore()
     val planState: PlanState
@@ -456,6 +460,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         toolRegistry.register(DescribeImageTool(database, keystore))       // 视觉
         toolRegistry.register(AskReasoningTool(database, keystore))        // 深度推理
         toolRegistry.register(TranslateTool(database, keystore))           // 翻译
+        toolRegistry.register(GenerateImageTool(database, keystore, filesDir))  // 文生图(原图保存+气泡直显)
         // 子智能体调度:主脑把任务拆给专职子智能体并行处理(带指挥室动画状态)。
         toolRegistry.register(SubAgentTool(toolRegistry, subAgentClient, database, securityGate, subAgentScene))
 
@@ -625,6 +630,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         darkMode = runBlocking { database.settingDao().get("dark_mode")?.toBooleanStrictOrNull() ?: false }
         enterToSend = runBlocking { database.settingDao().get("enter_to_send")?.toBooleanStrictOrNull() ?: true }
         appLanguage = runBlocking { database.settingDao().get("app_language")?.takeIf { it == "en" || it == "zh" } ?: "zh" }
+        profileNickname = runBlocking { database.settingDao().get("profile_nickname")?.trim().orEmpty() }
         // 联网搜索总开关:默认【关闭】,不打开就不能联网获取信息。加载持久化值。
         com.xincode.tools.WebSearchGate.enabled = runBlocking { database.settingDao().get("web_search_enabled")?.toBooleanStrictOrNull() ?: false }
         // Ensure enabledModelIds has at least the active model
@@ -1756,6 +1762,14 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         appLanguage = normalized
         GlobalScope.launch(Dispatchers.IO) {
             database.settingDao().put("app_language", normalized)
+        }
+    }
+
+    fun updateProfileNickname(name: String) {
+        val clean = name.trim().take(12)
+        profileNickname = clean
+        GlobalScope.launch(Dispatchers.IO) {
+            database.settingDao().put("profile_nickname", clean)
         }
     }
 

@@ -122,7 +122,7 @@ fun GradleScreen(
                 }
                 item {
                     Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFF0F1117)).padding(12.dp)) {
-                        Text("提示: 首次在项目中执行会下载 Gradle Wrapper 与依赖，输出实时显示在终端页。自定义环境变量（MY_*）已自动注入。", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF7BE0A4), lineHeight = 13.sp)
+                        Text("提示: 首次在项目中执行会下载 Gradle Wrapper 与依赖，输出实时显示在终端页。自定义环境变量（MY_*）已自动注入。", fontSize = 10.sp, fontFamily = Mono, color = xc.green, lineHeight = 13.sp)
                     }
                 }
             }

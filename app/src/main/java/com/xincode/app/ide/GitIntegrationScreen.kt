@@ -147,7 +147,7 @@ fun GitIntegrationScreen(
                     androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(xc.bgElevated).border(1.dp, xc.border, RoundedCornerShape(12.dp)).padding(12.dp)) {
                         Column {
                             Text("变更", fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
-                            if (status.staged.isNotEmpty()) { Text("已暂存:", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF7BE0A4)); status.staged.take(10).forEach { Text("  $it", fontSize = 10.sp, fontFamily = Mono, color = xc.sub) } }
+                            if (status.staged.isNotEmpty()) { Text("已暂存:", fontSize = 10.sp, fontFamily = Mono, color = xc.green); status.staged.take(10).forEach { Text("  $it", fontSize = 10.sp, fontFamily = Mono, color = xc.sub) } }
                             if (status.unstaged.isNotEmpty()) { Text("未暂存:", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFFF59E0B)); status.unstaged.take(10).forEach { Text("  $it", fontSize = 10.sp, fontFamily = Mono, color = xc.sub) } }
                             if (status.untracked.isNotEmpty()) { Text("未跟踪:", fontSize = 10.sp, fontFamily = Mono, color = xc.faint); status.untracked.take(10).forEach { Text("  $it", fontSize = 10.sp, fontFamily = Mono, color = xc.faint) } }
                             if (diffText.isNotBlank()) {
@@ -161,7 +161,7 @@ fun GitIntegrationScreen(
             item {
                 androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFF0F1117)).padding(12.dp)) {
                     Column {
-                        Text("提交日志", fontSize = 11.sp, fontFamily = Mono, color = Color(0xFF7BE0A4))
+                        Text("提交日志", fontSize = 11.sp, fontFamily = Mono, color = xc.green)
                         logLines.take(20).forEach { Text(it, fontSize = 10.sp, fontFamily = Mono, color = Color(0xFFD7DAE0)) }
                         if (logLines.isEmpty()) Text("无提交或非 git 仓库", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF6B7089))
                     }

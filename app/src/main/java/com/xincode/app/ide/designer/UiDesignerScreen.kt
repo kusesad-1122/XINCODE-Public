@@ -155,7 +155,7 @@ private fun VisualEditorTab(state: UiDesignerState, xc: XinColors, scope: kotlin
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
-                        Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF7BE0A4)).clickable { onShowProp() }.padding(horizontal = 10.dp, vertical = 5.dp)) { Text("编辑属性", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF0F1117)) }
+                        Box(Modifier.clip(RoundedCornerShape(8.dp)).background(xc.green).clickable { onShowProp() }.padding(horizontal = 10.dp, vertical = 5.dp)) { Text("编辑属性", fontSize = 10.sp, fontFamily = Mono, color = Color.White) }
                         Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF2A2E3F)).clickable { state.moveUp() }.padding(horizontal = 8.dp, vertical = 5.dp)) { Text("上移", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFFD7DAE0)) }
                         Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF2A2E3F)).clickable { state.moveDown() }.padding(horizontal = 8.dp, vertical = 5.dp)) { Text("下移", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFFD7DAE0)) }
                         Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFFE0685C).copy(0.2f)).clickable { state.removeSelected() }.padding(horizontal = 8.dp, vertical = 5.dp)) { Text("删除", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFFE0685C)) }
@@ -179,7 +179,7 @@ private fun VisualEditorTab(state: UiDesignerState, xc: XinColors, scope: kotlin
                             Modifier.fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (selected) Color(0xFFEFF6FF) else Color(0xFFF6F7F9))
-                                .border(1.dp, if (selected) Color(0xFF7BE0A4) else Color(0xFFE5E7EB), RoundedCornerShape(8.dp))
+                                .border(1.dp, if (selected) xc.green else Color(0xFFE5E7EB), RoundedCornerShape(8.dp))
                                 .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { state.selectedIndex = idx }
                                 .padding(10.dp)
                         ) {

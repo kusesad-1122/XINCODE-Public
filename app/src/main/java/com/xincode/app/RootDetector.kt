@@ -26,8 +26,9 @@ class RootDetector {
         TIMEOUT("[!] 检测超时")
     }
 
-    private var _status: Status = Status.CHECKING
-    val status: Status get() = _status
+    // 用 State 持有：后台线程检测完成后 Compose 自动重组，界面实时刷新。
+    private val _status = androidx.compose.runtime.mutableStateOf(Status.CHECKING)
+    val status: Status get() = _status.value
 
     private var _detail: String = ""
     val detail: String get() = _detail

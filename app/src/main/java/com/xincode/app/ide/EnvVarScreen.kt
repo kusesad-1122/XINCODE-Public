@@ -104,7 +104,7 @@ fun EnvVarScreen(
 
         if (vars.isNotEmpty()) {
             Box(Modifier.fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF0F1117)).padding(10.dp)) {
-                Text("导出预览: ${EnvVarManager.toExportCommands(vars).take(200)}", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF7BE0A4))
+                Text("导出预览: ${EnvVarManager.toExportCommands(vars).take(200)}", fontSize = 10.sp, fontFamily = Mono, color = xc.green)
             }
         }
     }

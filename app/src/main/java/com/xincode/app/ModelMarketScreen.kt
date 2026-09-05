@@ -225,8 +225,8 @@ fun ModelMarketScreen(
     Column(Modifier.fillMaxSize().background(xc.bg)) {
         if (showHeader) {
             XinPageHeader(
-                title = "模型与供应商",
-                subtitle = "免费额度、订阅套餐和按量付费",
+                title = t("模型与供应商"),
+                subtitle = t("免费额度、订阅套餐和按量付费"),
                 onBack = onBack,
                 modifier = Modifier.padding(horizontal = 12.dp)
             )
@@ -245,11 +245,11 @@ fun ModelMarketScreen(
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.weight(1f).heightIn(min = 44.dp, max = 52.dp),
                     singleLine = true,
-                    placeholder = { Text("搜索供应商或模型", fontFamily = XinUiFont, fontSize = 12.sp, color = xc.faint) },
+                    placeholder = { Text(t("搜索供应商或模型"), fontFamily = XinUiFont, fontSize = 12.sp, color = xc.faint) },
                     leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, tint = xc.sub) },
                     trailingIcon = {
                         if (searchQuery.isNotBlank()) IconButton(onClick = { searchQuery = "" }) {
-                            Icon(Icons.Outlined.Close, contentDescription = "清除搜索", tint = xc.sub)
+                            Icon(Icons.Outlined.Close, contentDescription = t("清除搜索"), tint = xc.sub)
                         }
                     },
                     colors = TextFieldDefaults.colors(
@@ -260,13 +260,13 @@ fun ModelMarketScreen(
                     textStyle = TextStyle(fontFamily = XinUiFont, fontSize = 13.sp)
                 )
             } else {
-                Text("供应商市场", fontFamily = XinSerifFont, fontSize = 18.sp, color = xc.ink, modifier = Modifier.weight(1f))
+                Text(t("供应商市场"), fontFamily = XinSerifFont, fontSize = 18.sp, color = xc.ink, modifier = Modifier.weight(1f))
             }
             IconButton(onClick = { searchOpen = !searchOpen; if (!searchOpen) searchQuery = "" }) {
-                Icon(Icons.Outlined.Search, contentDescription = "搜索供应商", tint = if (searchOpen) xc.green else xc.sub)
+                Icon(Icons.Outlined.Search, contentDescription = t("搜索供应商"), tint = if (searchOpen) xc.green else xc.sub)
             }
             IconButton(onClick = { showFilters = !showFilters }) {
-                Icon(Icons.Outlined.FilterList, contentDescription = "筛选市场", tint = if (showFilters) xc.green else xc.sub)
+                Icon(Icons.Outlined.FilterList, contentDescription = t("筛选市场"), tint = if (showFilters) xc.green else xc.sub)
             }
         }
 
@@ -289,8 +289,8 @@ fun ModelMarketScreen(
                     Modifier.width(116.dp).fillMaxHeight().background(xc.bgElevated).padding(horizontal = 10.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text("筛选", fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = xc.sub)
-                    listOf("all" to "全部", "free" to "免费", "plan" to "套餐", "paid" to "付费").forEach { (id, label) ->
+                    Text(t("筛选"), fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = xc.sub)
+                    listOf("all" to t("全部"), "free" to t("免费"), "plan" to t("套餐"), "paid" to t("付费")).forEach { (id, label) ->
                         Row(
                             Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
                                 .background(if (marketCategory == id) xc.activeBg else Color.Transparent)
@@ -568,7 +568,7 @@ private fun PresetCard(p: ProviderPreset, xc: XinColors, onSite: () -> Unit, onA
             Text(p.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink, modifier = Modifier.weight(1f))
             val (badge, bc) = when {
                 p.free -> "免费" to xc.green
-                p.plan -> "套餐" to Color(0xFF6FB3E0)   // 订阅制:与按量付费区分开
+                p.plan -> "套餐" to xc.green   // 订阅制:与按量付费区分开,统一橙色系
                 else -> "付费" to Color(0xFFF2C14E)
             }
             // 可登录授权的单独标一个:免手填 Key 是很实在的差别,埋在对话框里用户翻不到。

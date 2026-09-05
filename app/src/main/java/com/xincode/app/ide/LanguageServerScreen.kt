@@ -73,7 +73,7 @@ fun LanguageServerScreen(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(srv.language, fontSize = 13.sp, fontFamily = Mono, color = xc.ink, modifier = Modifier.weight(1f))
-                            Text(if(installed) "已安装" else "未安装", fontSize = 10.sp, fontFamily = Mono, color = if(installed) Color(0xFF7BE0A4) else xc.faint, modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(if(installed) Color(0xFF7BE0A4).copy(0.15f) else xc.bg).padding(horizontal = 8.dp, vertical = 4.dp))
+                            Text(if(installed) "已安装" else "未安装", fontSize = 10.sp, fontFamily = Mono, color = if(installed) xc.green else xc.faint, modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(if(installed) xc.green.copy(0.15f) else xc.bg).padding(horizontal = 8.dp, vertical = 4.dp))
                         }
                         Text(srv.name, fontSize = 12.sp, fontFamily = Mono, color = xc.ink)
                         Text(srv.description, fontSize = 10.sp, fontFamily = Mono, color = xc.sub)
@@ -116,19 +116,19 @@ fun LanguageServerScreen(
             item {
                 Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFF0F1117)).padding(12.dp)) {
                     Column {
-                        Text("快速诊断（javac/kotlinc/xmllint）", fontSize = 11.sp, fontFamily = Mono, color = Color(0xFF7BE0A4))
+                        Text("快速诊断（javac/kotlinc/xmllint）", fontSize = 11.sp, fontFamily = Mono, color = xc.green)
                         Spacer(Modifier.height(6.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             androidx.compose.material3.TextField(value = diagnosePath, onValueChange = { diagnosePath=it }, modifier = Modifier.weight(1f).border(1.dp, Color(0xFF20232E), RoundedCornerShape(8.dp)), placeholder = { Text("/sdcard/.../Main.java", fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF6B7089)) }, colors = androidx.compose.material3.TextFieldDefaults.colors(focusedContainerColor = Color(0xFF161923), unfocusedContainerColor = Color(0xFF161923), focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, focusedTextColor = Color(0xFFD7DAE0), unfocusedTextColor = Color(0xFFD7DAE0)), textStyle = androidx.compose.ui.text.TextStyle(fontFamily = Mono, fontSize = 11.sp), singleLine = true)
                             Spacer(Modifier.width(8.dp))
-                            Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF7BE0A4)).clickable {
+                            Box(Modifier.clip(RoundedCornerShape(8.dp)).background(xc.green).clickable {
                                 scope.launch(Dispatchers.IO) {
                                     val ext = diagnosePath.substringAfterLast('.', "").lowercase()
                                     val lang = when(ext){ "java"->"java"; "kt"->"kotlin"; "xml"->"xml"; else->"java" }
                                     val out = LspManager.diagnose(diagnosePath, lang)
                                     withContext(Dispatchers.Main) { diagnoseOut = out }
                                 }
-                            }.padding(horizontal = 12.dp, vertical = 8.dp)) { Text("诊断", fontSize = 11.sp, fontFamily = Mono, color = Color(0xFF0F1117)) }
+                            }.padding(horizontal = 12.dp, vertical = 8.dp)) { Text("诊断", fontSize = 11.sp, fontFamily = Mono, color = Color.White) }
                         }
                         if (diagnoseOut.isNotEmpty()) {
                             Spacer(Modifier.height(8.dp))

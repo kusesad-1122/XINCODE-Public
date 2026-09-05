@@ -37,8 +37,8 @@ fun SupplierHubScreen(
 
     Column(Modifier.fillMaxSize().background(xc.bg)) {
         XinPageHeader(
-            title = "模型与供应商",
-            subtitle = "管理 API 密钥、运行模型与探索供应商市场",
+            title = t("模型与供应商"),
+            subtitle = t("管理 API 密钥、运行模型与探索供应商市场"),
             onBack = onBack,
             modifier = Modifier.padding(horizontal = 12.dp)
         )
@@ -54,13 +54,13 @@ fun SupplierHubScreen(
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             SupplierHubTab(
-                title = "我的配置",
+                title = t("我的配置"),
                 selected = selectedTab == 0,
                 modifier = Modifier.weight(1f),
                 onClick = { selectedTab = 0 }
             )
             SupplierHubTab(
-                title = "供应商市场",
+                title = t("供应商市场"),
                 selected = selectedTab == 1,
                 modifier = Modifier.weight(1f),
                 onClick = { selectedTab = 1 }

@@ -40,7 +40,8 @@ private val Mono = XinUiFont
 fun FunctionModelsScreen(
     database: AppDatabase,
     keystore: KeystoreProvider,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onNavigateToAuxModels: () -> Unit = {}
 ) {
     val xc = LocalXinColors.current
     val scope = rememberCoroutineScope()
@@ -89,6 +90,22 @@ fun FunctionModelsScreen(
                 fontSize = 10.sp, fontFamily = Mono, color = xc.yellow, lineHeight = 15.sp,
                 modifier = Modifier.padding(bottom = 12.dp)
             )
+            // 模型委托入口并入本页：点进去手填自定义外部端点（覆盖本页指定）。
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                    .clip(RoundedCornerShape(12.dp)).background(xc.bgElevated)
+                    .border(1.dp, xc.border, RoundedCornerShape(12.dp))
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { onNavigateToAuxModels() }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("模型委托 · 自定义外部端点", fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
+                    Text("视觉/推理/翻译/转写另填 URL 与 Key，填了就优先于本页指定", fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                        modifier = Modifier.padding(top = 3.dp))
+                }
+                Text("›", fontSize = 20.sp, fontFamily = Mono, color = xc.faint)
+            }
 
             if (configs.isEmpty()) {
                 Text("还没有任何供应商配置,请先去「供应商配置」添加。",

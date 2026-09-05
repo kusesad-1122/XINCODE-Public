@@ -268,6 +268,7 @@ class MainActivity : ComponentActivity() {
                         onNavigateToChats = { featureOrigins = featureOrigins + ("chats" to "chat"); currentPage = "chats" },
                         onNavigateToTerminal = { terminalOrigin = "chat"; currentPage = "terminal" },
                         onNavigateToAgentScene = { currentPage = "agent_scene" },
+                        nickname = app.profileNickname,
                         onClose = { drawerScope.launch { drawerState.close() } },
                         onCreateProject = { name -> app.createProject(name) },
                         onCreateNewInProject = { projectId ->
@@ -495,6 +496,7 @@ class MainActivity : ComponentActivity() {
                         onNavigateToKanban = { currentPage = "kanban" },
                         onNavigateToGroupRooms = { featureOrigins = featureOrigins + ("group_rooms" to "settings"); currentPage = "group_rooms" },
                         onNavigateToProfiles = { currentPage = "profiles" },
+                        onNavigateToIdentityList = { featureOrigins = featureOrigins + ("identity_list" to "settings"); currentPage = "identity_list" },
                         onNavigateToSubAgents = { currentPage = "sub_agents" },
                         onNavigateToEnvConfig = { currentPage = "env_config" },
                         onNavigateToIdeDashboard = { featureOrigins = featureOrigins + ("ide_dashboard" to "settings"); ideOrigin = "settings"; currentPage = "ide_dashboard" },
@@ -612,7 +614,8 @@ class MainActivity : ComponentActivity() {
                     "function_models" -> FunctionModelsScreen(
                         database = app.database,
                         keystore = app.keystore,
-                        onBack = { currentPage = "settings" }
+                        onBack = { currentPage = "settings" },
+                        onNavigateToAuxModels = { currentPage = "aux_models" }
                     )
                     "sub_agents" -> SubAgentsScreen(
                         database = app.database,
@@ -659,7 +662,7 @@ class MainActivity : ComponentActivity() {
                         IdentityListScreen(
                             identities = identities,
                             activeId = activeIdentityId,
-                            onBack = { currentPage = "chat" },
+                            onBack = { currentPage = featureOrigins["identity_list"] ?: "chat" },
                             onCreateNew = { editingIdentityId = null; currentPage = "identity_edit" },
                             onEdit = { id -> editingIdentityId = id; currentPage = "identity_edit" },
                             onSetActive = { id -> app.setActiveIdentity(id) },

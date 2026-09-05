@@ -21,6 +21,17 @@ object ShizukuShell {
         return true
     }
 
+    /** 向当前流式进程 stdin 写一行；无活跃进程或写入失败返回 false。 */
+    fun sendInput(line: String): Boolean {
+        val process = activeStreamingProcess ?: return false
+        return try {
+            if (!process.isAlive) return false
+            process.outputStream.write(line.toByteArray())
+            process.outputStream.flush()
+            true
+        } catch (_: Exception) { false }
+    }
+
     private fun shizukuClass(): Class<*>? = try { Class.forName("rikka.shizuku.Shizuku") } catch (_: Exception) { null }
 
     private fun isShizukuPackagesInstalled(pm: PackageManager): Boolean {

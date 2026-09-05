@@ -120,13 +120,13 @@ fun PluginCreatorScreen(
 
             Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFF0F1117)).padding(12.dp)) {
                 Column {
-                    Text("生成预览", fontSize = 11.sp, fontFamily = Mono, color = Color(0xFF7BE0A4))
+                    Text("生成预览", fontSize = 11.sp, fontFamily = Mono, color = xc.green)
                     Text(when(pluginType){
                         "library" -> libraryGradle(packageName).take(400)
                         "plugin" -> pluginGradle(packageName).take(400)
                         else -> featureGradle(packageName).take(400)
                     }, fontSize = 9.sp, fontFamily = Mono, color = Color(0xFFD7DAE0), lineHeight = 11.sp)
-                    if (status.isNotBlank()) Text(status, fontSize = 10.sp, fontFamily = Mono, color = Color(0xFF7BE0A4), modifier = Modifier.padding(top = 8.dp))
+                    if (status.isNotBlank()) Text(status, fontSize = 10.sp, fontFamily = Mono, color = xc.green, modifier = Modifier.padding(top = 8.dp))
                 }
             }
 

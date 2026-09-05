@@ -32,7 +32,8 @@ object AuxModels {
         Task("vision", "视觉(看图)", "主模型看不了图时转交(OpenAI 兼容多模态)", "gpt-4o-mini"),
         Task("reason", "深度推理", "把难题转交更强的推理模型(如 deepseek-reasoner / o1)", "deepseek-reasoner"),
         Task("translate", "翻译", "转交擅长翻译的模型", ""),
-        Task("transcribe", "语音转写", "Whisper 兼容端点", "whisper-1")
+        Task("transcribe", "语音转写", "Whisper 兼容端点", "whisper-1"),
+        Task("image", "图像生成", "文生图专用端点(OpenAI /images/generations 兼容)", "gpt-image-1")
     )
 
     private val http = OkHttpClient.Builder()
