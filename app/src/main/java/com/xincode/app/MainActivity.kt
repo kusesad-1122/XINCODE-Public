@@ -500,6 +500,7 @@ class MainActivity : ComponentActivity() {
                         onNavigateToSubAgents = { currentPage = "sub_agents" },
                         onNavigateToEnvConfig = { currentPage = "env_config" },
                         onNavigateToIdeDashboard = { featureOrigins = featureOrigins + ("ide_dashboard" to "settings"); ideOrigin = "settings"; currentPage = "ide_dashboard" },
+                        onNavigateToPlugins = { currentPage = "plugins" },
                         onNavigateToAbout = { currentPage = "about" },
                         darkMode = app.darkMode,
                         onUpdateDarkMode = { app.updateDarkMode(it) },
@@ -586,6 +587,12 @@ class MainActivity : ComponentActivity() {
                     "mcp" -> McpServerScreen(
                         mcpManager = app.mcpManager,
                         onBack = { currentPage = featureOrigins["mcp"] ?: "chat" }
+                    )
+                    "plugins" -> PluginStoreScreen(
+                        database = app.database,
+                        keystore = app.keystore,
+                        mcpManager = app.mcpManager,
+                        onBack = { currentPage = "settings" }
                     )
                     "curated_memory" -> CuratedMemoryScreen(
                         database = app.database,
@@ -786,7 +793,7 @@ private fun parentPageOf(page: String): String = when (page) {
     "settings" -> "chat"
     "supplier", "model_market", "git_config", "audit", "memory_storage", "curated_memory",
     "cron_jobs", "aux_models", "function_models", "sub_agents", "env_config", "context_compress", "about",
-    "lan_devices", "logs", "usage_stats", "kanban", "profiles", "code_index" -> "settings"
+    "lan_devices", "logs", "usage_stats", "kanban", "profiles", "code_index", "plugins" -> "settings"
     "skills", "mcp", "group_rooms", "ide_dashboard", "goal", "projects" -> "chat"
     "ide_gradle", "ide_sdk", "ide_envvar", "ide_jdk", "ide_lsp", "ide_designer", "ide_translator", "ide_assets", "ide_plugin", "ide_git" -> "ide_dashboard"
     "replay" -> "workflow"

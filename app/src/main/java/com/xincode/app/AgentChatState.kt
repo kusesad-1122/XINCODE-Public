@@ -490,7 +490,8 @@ class AgentChatState(
                     val identity = session?.identityId?.let { database.identityDao().getById(it) }
                     // gap-11 可用技能清单 + gap-20 全局系统提示,注入分层系统提示。
                     val skills = try {
-                        database.skillDao().getAll().map { it.name to it.description }
+                        // 只注入 active 技能:插件商店「卸载技能包」=归档,归档后立即不再进提示词。
+                        database.skillDao().getAll().filter { it.state == "active" }.map { it.name to it.description }
                     } catch (_: Exception) { emptyList() }
                     val settings = try { database.globalSettingsDao().get() } catch (_: Exception) { null }
                     val globalPrompt = settings?.globalSystemPrompt

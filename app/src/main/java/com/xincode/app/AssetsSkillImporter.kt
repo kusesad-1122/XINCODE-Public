@@ -44,6 +44,8 @@ object AssetsSkillImporter {
                     description = desc,
                     content = content,
                     source = "bundled", // 随包技能只读,后台复盘不可改
+                    // 保留既有生命周期:插件商店里卸载(归档)的技能,重导入不复活。
+                    state = existing?.state ?: "active",
                     createdAt = existing?.createdAt ?: System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis()
                 )

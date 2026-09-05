@@ -112,6 +112,7 @@ fun SettingsScreen(
     onNavigateToSubAgents: () -> Unit = {},       // 子智能体
     onNavigateToEnvConfig: () -> Unit = {},       // 环境配置(内置开发环境/工具安装)
     onNavigateToIdeDashboard: () -> Unit = {},    // IDE 面板(Gradle/SDK/环境变量/LSP/UI设计等)
+    onNavigateToPlugins: () -> Unit = {},         // 插件商店(连接器/MCP/技能包 安装卸载)
     onNavigateToAbout: () -> Unit = {}            // 关于页(版本/检查更新/项目地址/许可)
 ) {
     val xc = LocalXinColors.current
@@ -459,7 +460,7 @@ fun SettingsScreen(
         }
 
         // ── Section: Agent 工具 ──
-        if (!SettingsStateHolder.hiddenSections.contains("Agent工具") && (searchQuery.isBlank() || "Agent工具 工作区 环境配置 配置环境 功能模型 模型委托 子智能体 看板 用量分析 日志 代码索引 Git 搜索 Key agent tools".contains(searchQuery.trim(), ignoreCase = true))) {
+        if (!SettingsStateHolder.hiddenSections.contains("Agent工具") && (searchQuery.isBlank() || "Agent工具 工作区 环境配置 配置环境 功能模型 模型委托 子智能体 看板 用量分析 日志 代码索引 Git 搜索 Key 插件 plugins agent tools".contains(searchQuery.trim(), ignoreCase = true))) {
             SectionDivider()
             var showSearchKeyDialog by remember { mutableStateOf(false) }
             var showWorkspaceDialog by remember { mutableStateOf(false) }
@@ -491,6 +492,7 @@ fun SettingsScreen(
                     SettingRow(t("日志"), t("崩溃与运行日志,按级别/关键词过滤,可复制反馈"), icon = Icons.Outlined.BugReport) { onNavigateToLogs() }
                     SettingRow(t("代码索引"), t("把工作区代码结构抽进本地索引,AI 查符号定义与调用关系不再靠读文件"), icon = Icons.Outlined.Code) { onNavigateToCodeIndex() }
                     SettingRow(t("Git 接入"), t("OAuth 登录 GitHub + 远程/本地 MCP(免 root 也能用)"), icon = Icons.Outlined.Code) { onNavigateToGit() }
+                    SettingRow(t("插件"), t("插件商店:安装/卸载连接器、MCP 服务与技能包"), icon = Icons.Outlined.Extension) { onNavigateToPlugins() }
                     SettingRow(t("搜索 API Key"), if (searchApiKey.isNotBlank()) "••••••••••" else t("未配置"), icon = Icons.Outlined.Extension) { showSearchKeyDialog = true }
                     if (showSearchKeyDialog) {
                         var tempKey by remember { mutableStateOf(searchApiKey) }
