@@ -1,13 +1,9 @@
 package com.xincode.app
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Icon
@@ -173,42 +170,43 @@ private fun ImagePreviewsFromTools(messages: List<ChatState.MessageUi>) {
     }
 }
 
-/** Claude 式思考折叠行:图标 + 一行摘要 + 箭头,默认收起,点开显示思考内容。 */
+/** Claude 式思考折叠行:裸行 + 时钟图标 + 思考首句摘要 + 细箭头,默认收起,无底框。 */
 @Composable
 private fun ThinkingFoldable(label: String, reasoning: String) {
     val xc = LocalXinColors.current
     var expanded by remember(reasoning) { mutableStateOf(false) }
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(xc.bgElevated)
-            .border(0.5.dp, xc.border, RoundedCornerShape(12.dp))
+            .fillMaxWidth()
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() }
             ) { expanded = !expanded }
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(top = 8.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             Icons.Outlined.Schedule,
             contentDescription = null,
-            tint = xc.sub,
-            modifier = Modifier.size(13.dp)
+            tint = xc.faint,
+            modifier = Modifier.size(14.dp)
         )
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(7.dp))
         Text(
-            label,
-            fontSize = 11.sp,
+            thinkingSummary(reasoning, label),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
             fontFamily = XinUiFont,
             color = xc.sub,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
         Icon(
-            imageVector = if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+            imageVector = if (expanded) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.KeyboardArrowRight,
             contentDescription = if (expanded) "收起思考" else "展开思考",
             tint = xc.faint,
-            modifier = Modifier.size(15.dp)
+            modifier = Modifier.size(16.dp)
         )
     }
     if (expanded && reasoning.isNotBlank()) {
@@ -218,8 +216,18 @@ private fun ThinkingFoldable(label: String, reasoning: String) {
             lineHeight = 18.sp,
             fontFamily = XinUiFont,
             color = xc.sub,
-            modifier = Modifier.padding(start = 10.dp, top = 6.dp, bottom = 2.dp)
+            modifier = Modifier.padding(start = 21.dp, top = 2.dp, bottom = 4.dp)
         )
+    }
+}
+
+/** 思考摘要:取思考内容的第一行压成一句;没有内容时回退到「思考了 X 秒」。 */
+private fun thinkingSummary(reasoning: String, fallback: String): String {
+    val flat = reasoning.replace('\n', ' ').trim()
+    return when {
+        flat.isEmpty() -> fallback
+        flat.length <= 34 -> flat
+        else -> flat.take(34) + "…"
     }
 }
 
@@ -232,6 +240,7 @@ fun ReasoningFoldable(msg: ChatState.MessageUi, isCurrentStreaming: Boolean = fa
 
     Row(
         modifier = Modifier
+            .fillMaxWidth()
             .clickable(
                 indication = null,
                 interactionSource = remember { MutableInteractionSource() }
@@ -242,23 +251,25 @@ fun ReasoningFoldable(msg: ChatState.MessageUi, isCurrentStreaming: Boolean = fa
         Icon(
             Icons.Outlined.Schedule,
             contentDescription = null,
-            tint = xc.sub,
-            modifier = Modifier.size(13.dp)
+            tint = xc.faint,
+            modifier = Modifier.size(14.dp)
         )
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(7.dp))
         Text(
-            text = if (isCurrentStreaming) "思考中…" else "思考摘要",
-            fontSize = 12.sp,
+            text = if (isCurrentStreaming) "思考中…" else thinkingSummary(msg.reasoning, "思考摘要"),
+            fontSize = 13.sp,
             lineHeight = 18.sp,
             fontFamily = XinUiFont,
             color = xc.sub,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
         Icon(
-            imageVector = if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+            imageVector = if (expanded) Icons.Outlined.KeyboardArrowDown else Icons.Outlined.KeyboardArrowRight,
             contentDescription = if (expanded) "收起思考摘要" else "查看思考摘要",
             tint = xc.faint,
-            modifier = Modifier.size(15.dp)
+            modifier = Modifier.size(16.dp)
         )
     }
     if (expanded) {
@@ -268,7 +279,7 @@ fun ReasoningFoldable(msg: ChatState.MessageUi, isCurrentStreaming: Boolean = fa
             lineHeight = 18.sp,
             fontFamily = XinUiFont,
             color = xc.sub,
-            modifier = Modifier.padding(start = 10.dp, bottom = 4.dp)
+            modifier = Modifier.padding(start = 21.dp, bottom = 4.dp)
         )
     }
 }

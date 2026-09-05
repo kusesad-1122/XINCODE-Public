@@ -463,6 +463,8 @@ fun SettingsScreen(
             SectionHeader(title = t("Agent 工具"), icon = Icons.Outlined.Build, expanded = expanded["Agent工具"] == true, onToggle = { toggle("Agent工具") })
             AnimatedVisibility(visible = expanded["Agent工具"] == true) {
                 Column {
+                    // 插件商店固定为本分区第一行,入口显眼(1.13.4 曾被误删,1.13.5 放回并提前)
+                    SettingRow(t("插件"), t("插件商店:安装/卸载连接器、MCP 服务与技能包"), icon = Icons.Outlined.Extension) { onNavigateToPlugins() }
                     SettingRow(
                         t("全局工作区目录"),
                         workspaceRoot.ifBlank { com.xincode.tools.WorkspaceContext.defaultRoot + " (默认·免 Root)" },
