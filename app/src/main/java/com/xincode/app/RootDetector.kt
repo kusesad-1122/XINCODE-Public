@@ -36,7 +36,7 @@ class RootDetector {
     fun start() { Thread { detect() }.start() }
 
     fun recheck() {
-        _status = Status.CHECKING
+        _status.value = Status.CHECKING
         _detail = ""
         Thread { detect() }.start()
     }
@@ -45,7 +45,7 @@ class RootDetector {
         try {
             val suPath = findSu()
             if (suPath == null) {
-                _status = Status.NO_ROOT
+                _status.value = Status.NO_ROOT
                 _detail = "未找到 su 二进制文件"
                 return
             }
@@ -53,20 +53,20 @@ class RootDetector {
             val result = executeWithTimeout(suPath)
             when {
                 result == null -> {
-                    _status = Status.TIMEOUT
+                    _status.value = Status.TIMEOUT
                     _detail = "su -c id 执行超时 (5s)"
                 }
                 result.exitCode ==0 -> {
-                    _status = Status.ROOT_GRANTED
+                    _status.value = Status.ROOT_GRANTED
                     _detail = result.stdout.trim().take(200)
                 }
                 else -> {
-                    _status = Status.ROOT_DENIED
+                    _status.value = Status.ROOT_DENIED
                     _detail = "exit=${result.exitCode} ${result.stderr.trim().take(200)}"
                 }
             }
         } catch (e: Exception) {
-            _status = Status.NO_ROOT
+            _status.value = Status.NO_ROOT
             _detail = "检测异常: ${e.message}"
         }
     }
