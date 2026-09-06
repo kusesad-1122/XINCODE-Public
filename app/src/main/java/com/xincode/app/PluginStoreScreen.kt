@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -143,6 +144,7 @@ private fun PluginIcon(
  * 在线部分的市场目录从远程 registry 实时拉取(新增插件无需发版),
  * 官方图标在线加载,点卡片可查看该插件带给 Agent 的全部功能。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PluginStoreScreen(
     store: PluginStoreManager,
