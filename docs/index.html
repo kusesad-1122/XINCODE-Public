@@ -207,6 +207,11 @@
   .release ul { list-style: none; }
   .release li { font-size: 14px; color: var(--sub); padding: 3px 0; }
   .release li::before { content: "—"; color: var(--clay); margin-right: 9px; }
+  .rl-h { font-weight: 700; color: var(--ink); font-size: 14.5px; margin: 10px 0 3px; }
+  .rl-li { font-size: 14px; color: var(--sub); padding: 3px 0; }
+  .rl-li::before { content: "—"; color: var(--clay); margin-right: 9px; }
+  .rl-p { font-size: 14px; color: var(--sub); padding: 2px 0; }
+  .rl-skip { font-size: 12px; color: var(--faint); padding: 10px 0; }
 
   /* 下载 */
   .download-card {
@@ -285,7 +290,7 @@
       <a class="btn btn-primary" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a>
       <a class="btn btn-ghost" href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener">查看源码仓库 →</a>
     </div>
-    <div class="meta">最新版本 <b id="ver">v1.13.6</b> · Android 9+ · <span id="ver-note">签名版 APK 随 Release 发布</span></div>
+    <div class="meta">最新版本 <b id="ver">v1.13.7</b> · Android 9+ · <span id="ver-note">签名版 APK 随 Release 发布</span></div>
   </div>
 
   <!-- 手机样机:还原应用内的对话与工具卡 -->
@@ -438,7 +443,16 @@
       <h2>迭代很快,条条有据。</h2>
       <p>每个版本都在仓库 CHANGELOG 里写清楚改了什么、为什么改。</p>
     </div>
-    <div class="changelog">
+    <div class="changelog" id="release-list">
+      <!-- 静态兜底:Release API 拉取成功后会被动态版本整体替换 -->
+      <div class="release">
+        <div class="v"><b>v1.13.7</b><time>2026-09-06</time></div>
+        <ul>
+          <li>十项 UI 与体验打磨:身份卡/供应商/子智能体/IDE/终端/群聊/项目知识库/自动起名/语音两段式/MCP 状态。</li>
+          <li>项目详情页知识库抽屉上线,条目注入项目内全部对话;工作区目录可直接选择。</li>
+          <li>语音消息录音直发 AI;对话自动起名,告别「新对话」。</li>
+        </ul>
+      </div>
       <div class="release">
         <div class="v"><b>v1.13.6</b><time>2026-09-06</time></div>
         <ul>
@@ -454,14 +468,6 @@
           <li>思考过程折叠行对齐 Claude:一行摘要 + 细箭头,点开才展开。</li>
         </ul>
       </div>
-      <div class="release">
-        <div class="v"><b>v1.13.4</b><time>2026-09-06</time></div>
-        <ul>
-          <li>插件市场扩至 12 个:新增 Microsoft Learn、Context7 免鉴权 MCP 与官方品牌图标。</li>
-          <li>对话新增「对话产出」Artifacts 抽屉;工具卡 / 计划卡默认收起。</li>
-          <li>身份卡、精编记忆、看板三页全面美化。</li>
-        </ul>
-      </div>
     </div>
   </div>
 </section>
@@ -473,10 +479,10 @@
       <div>
         <h2>现在就把它装进手机。</h2>
         <p>Release 附带正式签名 APK;也可以克隆仓库用 Gradle 自己构建。需要 Android 9 及以上。</p>
-        <span class="ver"><i></i>最新版本:<b id="ver2">v1.13.6</b> · 2026-09-06</span>
+        <span class="ver"><i></i>最新版本:<b id="ver2">v1.13.7</b> · <span id="apk-date">2026-09-06</span> · <span id="apk-size">约 96 MB</span></span>
       </div>
       <div class="dl-actions">
-        <a class="btn btn-inverse" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载 APK(约 96 MB)</a>
+        <a class="btn btn-inverse" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a>
         <a class="btn btn-outline-light" href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener">查看全部 Releases →</a>
       </div>
     </div>
@@ -495,23 +501,75 @@
 </footer>
 
 <script>
-  // 版本号从 GitHub Releases 动态获取;失败则保留静态兜底文案
+  // 实时更新:版本号/日期/APK 体积/更新日志全部来自 GitHub Releases API。
+  // 发新版本 = 打 tag 写 Release 说明,网页无需改代码;API 失败时保留下方静态兜底文案。
   (function () {
-    var api = "https://api.github.com/repos/kusesad-1122/XINCODE-Public/releases/latest";
-    fetch(api, { headers: { Accept: "application/vnd.github+json" } })
+    var API = "https://api.github.com/repos/kusesad-1122/XINCODE-Public";
+    function esc(s) {
+      var d = document.createElement("div");
+      d.textContent = s == null ? "" : String(s);
+      return d.innerHTML;
+    }
+    // 把 Release 说明(markdown 简体子集)渲染成安全 HTML:标题行/短横线列表/**粗体**/普通段落
+    function renderBody(body) {
+      var html = "";
+      var seenTitle = false;
+      String(body || "").split(/\r?\n/).forEach(function (line) {
+        var t = line.trim();
+        if (!t) return;
+        if (!seenTitle && /^XINCODE\s/.test(t)) { seenTitle = true; return; } // 首行版本号与标题重复,跳过
+        seenTitle = true;
+        if (t.charAt(0) === ">") return;                                      // 结尾引言行跳过
+        if (/^-{3,}$/.test(t)) return;
+        var safe = esc(t).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");           // 先转义再转粗体,无注入面
+        if (t.indexOf("## ") === 0) html += '<div class="rl-h">' + safe + "</div>";
+        else if (t.indexOf("- ") === 0) html += '<div class="rl-li">' + safe + "</div>";
+        else html += '<div class="rl-p">' + safe + "</div>";
+      });
+      return html;
+    }
+    function fmtSize(bytes) {
+      if (!bytes || bytes <= 0) return "";
+      return "约 " + (bytes / 1048576).toFixed(1) + " MB";
+    }
+    fetch(API + "/releases?per_page=6", { headers: { Accept: "application/vnd.github+json" } })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (d) {
-        if (!d || !d.tag_name) return;
+      .then(function (list) {
+        if (!list || !list.length) return;
+        var latest = list[0];
         ["ver", "ver2"].forEach(function (id) {
           var el = document.getElementById(id);
-          if (el) el.textContent = d.tag_name;
+          if (el) el.textContent = latest.tag_name;
         });
         var note = document.getElementById("ver-note");
-        if (note && d.published_at) {
-          note.textContent = "发布于 " + d.published_at.slice(0, 10) + " · 签名版 APK 随 Release 发布";
+        if (note && latest.published_at) {
+          note.textContent = "发布于 " + latest.published_at.slice(0, 10) + " · 签名版 APK 随 Release 发布";
         }
+        var dateEl = document.getElementById("apk-date");
+        if (dateEl && latest.published_at) dateEl.textContent = latest.published_at.slice(0, 10);
+        var asset = (latest.assets || []).filter(function (a) { return a.name === "app-release.apk"; })[0];
+        var sizeEl = document.getElementById("apk-size");
+        if (sizeEl && asset) sizeEl.textContent = fmtSize(asset.size);
+        var container = document.getElementById("release-list");
+        if (!container) return;
+        container.innerHTML = "";
+        list.forEach(function (rel) {
+          var wrap = document.createElement("div");
+          wrap.className = "release";
+          var head = document.createElement("div");
+          head.className = "v";
+          var b = document.createElement("b");
+          b.textContent = rel.tag_name;
+          var time = document.createElement("time");
+          time.textContent = (rel.published_at || "").slice(0, 10);
+          head.appendChild(b); head.appendChild(time);
+          var bodyDiv = document.createElement("div");
+          bodyDiv.innerHTML = renderBody(rel.body) || '<div class="rl-skip">该版本未附更新说明。</div>';
+          wrap.appendChild(head); wrap.appendChild(bodyDiv);
+          container.appendChild(wrap);
+        });
       })
-      .catch(function () { /* 静默回退 */ });
+      .catch(function () { /* 静默回退到静态兜底 */ });
   })();
 </script>
 </body>
