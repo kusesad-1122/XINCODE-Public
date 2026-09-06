@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XINCODE — 装进口袋的 AI 智能体</title>
+<meta name="description" content="XINCODE:纯 Kotlin 原生 Android AI 智能体。多供应商模型接入、工具调用循环、子智能体并行、插件市场与 MCP 生态、内置终端与长期记忆。开源,免 Root 可用。">
+<style>
+  :root {
+    --ivory: #F4F3EE;        /* Pampas 页面底色 */
+    --panel: #FFFFFF;
+    --panel-warm: #ECEAE1;
+    --ink: #191919;          /* 近黑正文 */
+    --sub: #6E6B62;          /* 暖灰次要文字 */
+    --faint: #9C988C;
+    --clay: #CC785C;         /* 赤陶主色 */
+    --crail: #C15F3C;        /* 深一档,hover/强调 */
+    --clay-soft: #E9D8CE;
+    --border: #E3E0D5;
+    --border-soft: #EBE8DE;
+    --radius: 14px;
+    --serif: Georgia, "Times New Roman", "Songti SC", "STSong", "Noto Serif CJK SC", "SimSun", serif;
+    --sans: "Styrene B", ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--ivory);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- 顶部导航 ---------- */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(244, 243, 238, 0.92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .nav { display: flex; align-items: center; height: 60px; gap: 28px; }
+  .wordmark {
+    font-family: var(--serif); font-weight: 700; font-size: 21px;
+    letter-spacing: 0.04em; color: var(--ink);
+  }
+  .wordmark span { color: var(--clay); }
+  .nav .links { display: flex; gap: 24px; margin-left: auto; align-items: center; }
+  .nav .links a {
+    font-size: 14px; color: var(--sub); transition: color .15s;
+  }
+  .nav .links a:hover { color: var(--ink); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    border-radius: 999px; font-size: 14px; font-weight: 600;
+    padding: 9px 20px; cursor: pointer; border: 1px solid transparent;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .btn-primary { background: var(--clay); color: #fff; }
+  .btn-primary:hover { background: var(--crail); }
+  .btn-ghost { border-color: var(--border); color: var(--ink); background: transparent; }
+  .btn-ghost:hover { border-color: var(--clay); color: var(--crail); }
+  .btn-sm { padding: 7px 16px; font-size: 13px; }
+  .nav .btn { margin-left: 4px; }
+  .menu-btn { display: none; margin-left: auto; background: none; border: none; font-size: 22px; color: var(--ink); cursor: pointer; }
+
+  /* ---------- Hero ---------- */
+  .hero { padding: 84px 0 64px; display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; }
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--crail); font-weight: 600;
+    border: 1px solid var(--clay-soft); background: #F6EFE9;
+    border-radius: 999px; padding: 5px 14px; margin-bottom: 22px;
+  }
+  h1 {
+    font-family: var(--serif); font-weight: 700;
+    font-size: clamp(34px, 5vw, 52px); line-height: 1.22;
+    letter-spacing: 0.01em; margin-bottom: 20px;
+  }
+  h1 em { font-style: normal; color: var(--crail); }
+  .hero p.lead { font-size: 17px; color: var(--sub); max-width: 33em; margin-bottom: 30px; }
+  .hero .ctas { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
+  .hero .meta { margin-top: 18px; font-size: 12.5px; color: var(--faint); }
+  .hero .meta b { color: var(--sub); font-weight: 600; }
+
+  /* 手机样机 */
+  .phone {
+    width: 300px; margin: 0 auto; border-radius: 36px;
+    background: var(--ink); padding: 10px;
+    box-shadow: 0 24px 60px rgba(25, 25, 25, 0.18), 0 4px 12px rgba(25,25,25,.08);
+  }
+  .phone .screen {
+    border-radius: 28px; background: var(--ivory); overflow: hidden;
+    height: 560px; display: flex; flex-direction: column;
+  }
+  .screen .bar {
+    padding: 12px 14px 10px; border-bottom: 1px solid var(--border-soft);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .screen .bar .t { font-family: var(--serif); font-weight: 700; font-size: 14px; }
+  .screen .bar .dots { display: flex; gap: 5px; }
+  .screen .bar .dots i { width: 22px; height: 22px; border-radius: 50%; background: var(--panel-warm); border: 1px solid var(--border); display: inline-block; }
+  .screen .chat { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 9px; overflow: hidden; }
+  .msg-user {
+    align-self: flex-end; max-width: 82%;
+    background: var(--panel-warm); border-radius: 14px 14px 4px 14px;
+    padding: 8px 12px; font-size: 12px; line-height: 1.55;
+  }
+  .step { font-size: 11px; color: var(--sub); }
+  .step .who { font-family: var(--serif); font-weight: 700; font-size: 12.5px; color: var(--ink); margin-bottom: 5px; }
+  .think-row, .tools-row, .file-row {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--faint); padding: 2px 0;
+  }
+  .think-row svg, .tools-row svg, .file-row svg { flex: none; }
+  .tools-row .pill {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 4px 9px; color: var(--sub); background: var(--panel);
+    display: inline-flex; gap: 6px; align-items: center;
+  }
+  .tools-row .pill b { color: var(--crail); font-weight: 600; }
+  .msg-ai { font-size: 12.5px; line-height: 1.6; color: var(--ink); }
+  .artifact {
+    display: flex; gap: 9px; align-items: center; align-self: flex-start;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 8px 12px; max-width: 88%;
+  }
+  .artifact .ic {
+    width: 30px; height: 30px; border-radius: 8px; background: var(--clay-soft);
+    display: flex; align-items: center; justify-content: center; color: var(--crail);
+  }
+  .artifact .tt { font-size: 11.5px; font-weight: 600; }
+  .artifact .st { font-size: 10px; color: var(--faint); }
+  .screen .inputbar {
+    margin: 0 12px 12px; border: 1px solid var(--border); background: var(--panel);
+    border-radius: 999px; padding: 9px 14px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .screen .inputbar .ph { font-size: 11px; color: var(--faint); }
+  .screen .inputbar .send { width: 24px; height: 24px; border-radius: 50%; background: var(--ink); display: flex; align-items: center; justify-content: center; }
+
+  /* ---------- 信任条 ---------- */
+  .strip { border-top: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); background: #F0EEE5; }
+  .strip-in { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .strip-in .cell {
+    padding: 18px 20px; font-size: 13.5px; color: var(--sub);
+    display: flex; gap: 9px; align-items: center; justify-content: center;
+    border-left: 1px solid var(--border-soft); text-align: center;
+  }
+  .strip-in .cell:first-child { border-left: none; }
+  .strip-in b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- 通用 section ---------- */
+  section { padding: 76px 0; }
+  .sec-head { max-width: 640px; margin-bottom: 44px; }
+  .sec-head .kicker { font-size: 13px; font-weight: 700; letter-spacing: .12em; color: var(--crail); text-transform: uppercase; margin-bottom: 12px; }
+  h2 { font-family: var(--serif); font-size: clamp(26px, 3.4vw, 36px); line-height: 1.28; font-weight: 700; margin-bottom: 12px; }
+  .sec-head p { color: var(--sub); font-size: 15.5px; }
+
+  /* 功能卡片 */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border-soft);
+    border-radius: var(--radius); padding: 26px 24px;
+    transition: border-color .15s, transform .15s, box-shadow .15s;
+  }
+  .card:hover { border-color: var(--clay-soft); transform: translateY(-2px); box-shadow: 0 10px 28px rgba(25,25,25,.06); }
+  .card .ic {
+    width: 40px; height: 40px; border-radius: 11px; background: #F6EFE9;
+    color: var(--crail); display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .card h3 { font-family: var(--serif); font-size: 19px; font-weight: 700; margin-bottom: 8px; }
+  .card p { font-size: 14px; color: var(--sub); }
+
+  /* 插件市场 */
+  .plugins { background: #F0EEE5; border-top: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft); }
+  .plugin-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+  .plugin {
+    background: var(--panel); border: 1px solid var(--border-soft); border-radius: 12px;
+    padding: 18px 16px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+  }
+  .plugin .logo {
+    width: 38px; height: 38px; border-radius: 10px; background: var(--ivory);
+    border: 1px solid var(--border-soft); display: flex; align-items: center; justify-content: center; color: var(--ink);
+  }
+  .plugin .name { font-size: 14px; font-weight: 700; }
+  .plugin .desc { font-size: 12px; color: var(--sub); line-height: 1.5; }
+  .plugin .tag { font-size: 10.5px; color: var(--crail); background: #F6EFE9; border-radius: 999px; padding: 2px 9px; font-weight: 600; }
+  .plugins .more { margin-top: 26px; text-align: center; font-size: 14px; color: var(--sub); }
+  .plugins .more a { color: var(--crail); font-weight: 600; }
+
+  /* 更新日志 */
+  .changelog { max-width: 760px; }
+  .release { border-left: 2px solid var(--border); padding: 0 0 30px 26px; position: relative; }
+  .release:last-child { padding-bottom: 0; }
+  .release::before {
+    content: ""; position: absolute; left: -7px; top: 5px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--clay); border: 2.5px solid var(--ivory);
+  }
+  .release .v { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .release .v b { font-family: var(--serif); font-size: 19px; }
+  .release .v time { font-size: 12.5px; color: var(--faint); }
+  .release ul { list-style: none; }
+  .release li { font-size: 14px; color: var(--sub); padding: 3px 0; }
+  .release li::before { content: "—"; color: var(--clay); margin-right: 9px; }
+
+  /* 下载 */
+  .download-card {
+    background: var(--ink); color: var(--ivory);
+    border-radius: 22px; padding: 56px 48px;
+    display: flex; align-items: center; justify-content: space-between; gap: 32px; flex-wrap: wrap;
+  }
+  .download-card h2 { color: var(--ivory); margin-bottom: 8px; }
+  .download-card p { color: #B7B3A6; font-size: 15px; max-width: 30em; }
+  .download-card .ver {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 14px;
+    font-size: 13px; color: #D8D4C6;
+    border: 1px solid rgba(244,243,238,.25); border-radius: 999px; padding: 5px 14px;
+  }
+  .download-card .ver i { width: 7px; height: 7px; border-radius: 50%; background: var(--clay); display: inline-block; }
+  .dl-actions { display: flex; flex-direction: column; gap: 12px; }
+  .btn-inverse { background: var(--ivory); color: var(--ink); }
+  .btn-inverse:hover { background: #fff; }
+  .btn-outline-light { border-color: rgba(244,243,238,.3); color: var(--ivory); }
+  .btn-outline-light:hover { border-color: var(--ivory); }
+
+  /* 页脚 */
+  footer { border-top: 1px solid var(--border-soft); padding: 34px 0 44px; }
+  .foot { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .foot .l { font-size: 13px; color: var(--faint); }
+  .foot .l a { color: var(--sub); }
+  .foot .l a:hover { color: var(--crail); }
+  .foot .r { display: flex; gap: 20px; font-size: 13px; color: var(--sub); }
+  .foot .r a:hover { color: var(--crail); }
+
+  /* 响应式 */
+  @media (max-width: 900px) {
+    .hero { grid-template-columns: 1fr; padding-top: 56px; }
+    .phone { width: 270px; }
+    .phone .screen { height: 500px; }
+    .grid { grid-template-columns: 1fr 1fr; }
+    .plugin-row { grid-template-columns: repeat(3, 1fr); }
+    .strip-in { grid-template-columns: 1fr 1fr; }
+    .strip-in .cell:nth-child(odd) { border-left: none; }
+    .nav .links a:not(.btn) { display: none; }
+    .menu-btn { display: block; }
+  }
+  @media (max-width: 560px) {
+    .grid { grid-template-columns: 1fr; }
+    .plugin-row { grid-template-columns: 1fr 1fr; }
+    .download-card { padding: 36px 26px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="wordmark" href="#">XIN<span>CODE</span></a>
+    <div class="links">
+      <a href="#features">功能</a>
+      <a href="#plugins">插件市场</a>
+      <a href="#changelog">更新日志</a>
+      <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn btn-primary btn-sm" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载 APK</a>
+    </div>
+    <button class="menu-btn" onclick="document.getElementById('mnav').scrollIntoView({behavior:'smooth'})">☰</button>
+  </div>
+</header>
+
+<!-- Hero -->
+<div class="wrap hero">
+  <div>
+    <span class="eyebrow">开源 · GPL-3.0 · 纯 Kotlin 原生</span>
+    <h1>把一个<em>真正的 AI 智能体</em>，<br>装进口袋。</h1>
+    <p class="lead">
+      XINCODE 是一个运行在 Android 手机上的自主智能体:接入多家模型供应商,自主规划并调用工具,
+      子智能体并行协作,插件市场与 MCP 生态即装即用——还带着一个真正的 Linux 终端。
+    </p>
+    <div class="ctas">
+      <a class="btn btn-primary" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a>
+      <a class="btn btn-ghost" href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener">查看源码仓库 →</a>
+    </div>
+    <div class="meta">最新版本 <b id="ver">v1.13.6</b> · Android 9+ · <span id="ver-note">签名版 APK 随 Release 发布</span></div>
+  </div>
+
+  <!-- 手机样机:还原应用内的对话与工具卡 -->
+  <div class="phone">
+    <div class="screen">
+      <div class="bar">
+        <span class="t">XinCode</span>
+        <span class="dots"><i></i><i></i><i></i></span>
+      </div>
+      <div class="chat">
+        <div class="msg-user">看看我最近有没有待处理的 GitHub PR,顺便整理成一个清单文档。</div>
+        <div class="step">
+          <div class="who">✦ XinCode</div>
+          <div class="think-row">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            先查仓库的开放 PR,再汇总成 Markdown 文档。
+            <span style="margin-left:auto">›</span>
+          </div>
+          <div class="tools-row">
+            <span class="pill"><b>✓</b> GitHub 远程 MCP · 列出 PR</span>
+          </div>
+          <div class="tools-row">
+            <span class="pill"><b>✓</b> file_write · pr_list.md</span>
+          </div>
+          <div class="msg-ai" style="margin-top:2px">共 3 个待处理 PR,已按优先级写进 <b>pr_list.md</b>。</div>
+          <div class="file-row">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            pr_list.md · Document · MD
+          </div>
+          <div class="artifact">
+            <div class="ic">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            </div>
+            <div><div class="tt">pr_list.md</div><div class="st">Document · MD</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="inputbar">
+        <span class="ph">输入消息与 AI 聊天…</span>
+        <span class="send">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#F4F3EE" stroke-width="2.4"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+        </span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 信任条 -->
+<div class="strip">
+  <div class="wrap strip-in">
+    <div class="cell"><b>免 Root 可用</b>,有 Root 更强</div>
+    <div class="cell"><b>本地优先</b>,密钥 Keystore 加密</div>
+    <div class="cell"><b>纯 Kotlin 原生</b>,无跨端框架</div>
+    <div class="cell"><b>开源</b> GPL-3.0,可自行构建</div>
+  </div>
+</div>
+
+<!-- 功能 -->
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">Capabilities</div>
+      <h2>不只是一个聊天框,<br>是一整套智能体工作台。</h2>
+      <p>从工具调用循环到多智能体协作,从长期记忆到内置 Linux 环境——该有的底盘,一次配齐。</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg></div>
+        <h3>插件市场</h3>
+        <p>连接器、远程 MCP 服务、技能包三类插件,一键安装卸载;需要授权的插件走设备流,浏览器登录后自动回传。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"/></svg></div>
+        <h3>MCP 工具生态</h3>
+        <p>本地 stdio 与远程 HTTP 双传输,GitHub、DeepWiki、Context7、Composio 等开箱即连,AI 直接调用真实工具。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle cx="17.5" cy="9.5" r="2.4"/><path d="M15.5 14.6c2.8.3 4.9 1.9 5.6 4.4"/></svg></div>
+        <h3>多智能体协作</h3>
+        <p>主脑拆解任务、并行派发给各司其职的子智能体,像素风「指挥室」里每个小人实时动给你看。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg></div>
+        <h3>Goal 自主模式</h3>
+        <p>丢一个目标进去,它自己拆解、执行、验收,后台跑完交付;计划卡全程可视,随时插话不打断。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a5 5 0 0 1 5 5c0 2-1 3.5-2 4.5-.8.8-1 1.5-1 2.5h-4c0-1-.2-1.7-1-2.5-1-1-2-2.5-2-4.5a5 5 0 0 1 5-5z"/><path d="M9.5 18h5M10.5 21h3"/></svg></div>
+        <h3>记忆与上下文</h3>
+        <p>全文 + 向量双检索的长期记忆,项目内隔离、对话间互通;上下文圆环与人民币成本实时可见,自动压缩。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 17l6-5-6-5M12 19h8"/></svg></div>
+        <h3>终端与 IDE</h3>
+        <p>内置 Ubuntu 环境与 root 终端,APK 构建、反编译、安全审计等技能随装随用——手机上真的能写代码。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 插件市场 -->
+<section id="plugins" class="plugins">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">Plugin Market</div>
+      <h2>开箱即连的插件生态。</h2>
+      <p>应用内置插件商店:免鉴权的官方远程 MCP 装完即用;Composio 把 500+ SaaS 应用托管授权后一次接入。共 12 个内置插件,持续扩充。</p>
+    </div>
+    <div class="plugin-row">
+      <div class="plugin">
+        <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></div>
+        <div class="name">GitHub</div>
+        <div class="desc">OAuth 设备流登录,远程 MCP 管仓库 / PR / Issue</div>
+        <span class="tag">连接器 + MCP</span>
+      </div>
+      <div class="plugin">
+        <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M0 0v11.408h11.408V0zM12.594 0v11.408H24V0zM0 12.594V24h11.408V12.594zm12.594 0V24H24V12.594z"/></svg></div>
+        <div class="name">Microsoft Learn</div>
+        <div class="desc">微软官方文档与代码示例,免鉴权直查</div>
+        <span class="tag">MCP · 免鉴权</span>
+      </div>
+      <div class="plugin">
+        <div class="logo"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19V5a2 2 0 0 1 2-2h13v18H6a2 2 0 0 1-2-2z"/><path d="M4 17a2 2 0 0 1 2-2h13"/><path d="M9 7h6"/></svg></div>
+        <div class="name">Context7</div>
+        <div class="desc">框架与库的实时官方文档注入上下文</div>
+        <span class="tag">MCP · 免鉴权</span>
+      </div>
+      <div class="plugin">
+        <div class="logo"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg></div>
+        <div class="name">DeepWiki</div>
+        <div class="desc">开源仓库结构化 Wiki,架构用法一问即答</div>
+        <span class="tag">MCP · 免鉴权</span>
+      </div>
+      <div class="plugin">
+        <div class="logo"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12h8M12 8v8"/></svg></div>
+        <div class="name">Composio</div>
+        <div class="desc">Gmail / Notion / Slack 等 500+ SaaS 托管接入</div>
+        <span class="tag">MCP · 自建地址</span>
+      </div>
+    </div>
+    <div class="more">还有 6 个内置技能包:安全代码审计 · 逆向分析 · APK 构建 / 更新 / 反编译 · LSPosed 模块开发 —— <a href="https://github.com/kusesad-1122/XINCODE-Public#-主要能力" target="_blank" rel="noopener">了解更多 →</a></div>
+  </div>
+</section>
+
+<!-- 更新日志 -->
+<section id="changelog">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="kicker">Changelog</div>
+      <h2>迭代很快,条条有据。</h2>
+      <p>每个版本都在仓库 CHANGELOG 里写清楚改了什么、为什么改。</p>
+    </div>
+    <div class="changelog">
+      <div class="release">
+        <div class="v"><b>v1.13.6</b><time>2026-09-06</time></div>
+        <ul>
+          <li>对话时序彻底修复:结论不再排在工具卡上方,流式进行中即正确。</li>
+          <li>流式中删除消息不再导致内容错位;MCP 鉴权头改 Keystore 加密落库。</li>
+          <li>启动重连失败如实回落为未连接;重连不再泄漏旧连接。</li>
+        </ul>
+      </div>
+      <div class="release">
+        <div class="v"><b>v1.13.5</b><time>2026-09-06</time></div>
+        <ul>
+          <li>设置页「插件」入口回归 Agent 工具区第一行。</li>
+          <li>思考过程折叠行对齐 Claude:一行摘要 + 细箭头,点开才展开。</li>
+        </ul>
+      </div>
+      <div class="release">
+        <div class="v"><b>v1.13.4</b><time>2026-09-06</time></div>
+        <ul>
+          <li>插件市场扩至 12 个:新增 Microsoft Learn、Context7 免鉴权 MCP 与官方品牌图标。</li>
+          <li>对话新增「对话产出」Artifacts 抽屉;工具卡 / 计划卡默认收起。</li>
+          <li>身份卡、精编记忆、看板三页全面美化。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 下载 -->
+<section id="download">
+  <div class="wrap">
+    <div class="download-card">
+      <div>
+        <h2>现在就把它装进手机。</h2>
+        <p>Release 附带正式签名 APK;也可以克隆仓库用 Gradle 自己构建。需要 Android 9 及以上。</p>
+        <span class="ver"><i></i>最新版本:<b id="ver2">v1.13.6</b> · 2026-09-06</span>
+      </div>
+      <div class="dl-actions">
+        <a class="btn btn-inverse" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载 APK(约 96 MB)</a>
+        <a class="btn btn-outline-light" href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener">查看全部 Releases →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <div class="l">© 2026 XINCODE · GPL-3.0-or-later · <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener">github.com/kusesad-1122/XINCODE-Public</a></div>
+    <div class="r">
+      <a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a>
+      <a href="https://github.com/kusesad-1122/XINCODE-Public/issues" target="_blank" rel="noopener">反馈 Issue</a>
+      <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">MCP 生态</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // 版本号从 GitHub Releases 动态获取;失败则保留静态兜底文案
+  (function () {
+    var api = "https://api.github.com/repos/kusesad-1122/XINCODE-Public/releases/latest";
+    fetch(api, { headers: { Accept: "application/vnd.github+json" } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.tag_name) return;
+        ["ver", "ver2"].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.textContent = d.tag_name;
+        });
+        var note = document.getElementById("ver-note");
+        if (note && d.published_at) {
+          note.textContent = "发布于 " + d.published_at.slice(0, 10) + " · 签名版 APK 随 Release 发布";
+        }
+      })
+      .catch(function () { /* 静默回退 */ });
+  })();
+</script>
+</body>
+</html>
