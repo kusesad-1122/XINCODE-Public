@@ -8,6 +8,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -64,15 +65,26 @@ class OnlineApiTool(
 
     override suspend fun executeJson(args: JSONObject): ToolResult = withContext(Dispatchers.IO) {
         try {
-            val host = NetGuard.validate(baseUrl.trimEnd('/') + urlPath)
+            // path 参数 {x} 从入参取值替换,替换掉的键不再进 body/query(注释与代码一致)。
+            // 注意:先替换再做 NetGuard 校验 —— 校验的必须是最终 URL,否则替换值绕过守卫。
             var urlPath = spec.path
-
-            // path 参数 {x} 从入参取值替换,替换后从 body/query 参数中移除
+            val substituted = mutableSetOf<String>()
             Regex("\\{([a-zA-Z0-9_]+)\\}").findAll(urlPath).forEach { m ->
                 val key = m.groupValues[1]
                 val v = args.optString(key)
-                if (v.isNotBlank()) urlPath = urlPath.replace(m.value, v)
+                if (v.isNotBlank()) {
+                    urlPath = urlPath.replace(m.value, v)
+                    substituted.add(key)
+                }
             }
+            // effectiveArgs:入参减去已进路径的键。putOpt 单重载,绕开 JSONObject.get 的
+            // Java 重载歧义;同时跳过 null,blank 值保留(由服务端判)。
+            val effectiveArgs = JSONObject()
+            args.keys().forEach { k ->
+                if (k !in substituted) effectiveArgs.putOpt(k, args.opt(k))
+            }
+
+            NetGuard.validate(baseUrl.trimEnd('/') + urlPath)
 
             val url = baseUrl.trimEnd('/') + urlPath
             val key = keyProvider()
@@ -83,7 +95,7 @@ class OnlineApiTool(
                     val keys = effectiveArgs.keys()
                     while (keys.hasNext()) {
                         val k = keys.next()
-                        if (!urlPath.contains("{$k}")) body.put(k, effectiveArgs.get(k))
+                        if (!urlPath.contains("{$k}")) body.putOpt(k, effectiveArgs.opt(k))
                     }
                     Request.Builder().url(url)
                         .applyAuth(authHeader, key)
