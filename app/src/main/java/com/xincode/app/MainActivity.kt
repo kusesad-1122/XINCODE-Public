@@ -583,9 +583,7 @@ class MainActivity : ComponentActivity() {
                         onBack = { currentPage = featureOrigins["mcp"] ?: "chat" }
                     )
                     "plugins" -> PluginStoreScreen(
-                        database = app.database,
-                        keystore = app.keystore,
-                        mcpManager = app.mcpManager,
+                        store = app.pluginStoreManager,
                         onBack = { currentPage = "settings" }
                     )
                     "curated_memory" -> CuratedMemoryScreen(

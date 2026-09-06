@@ -20,6 +20,11 @@ object DefaultsSeeder {
         runCatching { WorkSkills.install(db) }
             .onFailure { Log.w(TAG, "work skills seed failed: ${it.message}") }
 
+        // 内置子智能体同样按名字查重、每次启动补齐:老用户误删后,升级版本会自动找回。
+        // 与 WorkSkills 相同的幂等模式——重复调用无副作用。
+        runCatching { seedSubAgents(db) }
+            .onFailure { Log.w(TAG, "sub-agent seed failed: ${it.message}") }
+
         try {
             if (db.settingDao().get(FLAG) == "1") return
             // v1→v2 清理:删掉会与原生 agent_plan/可视化任务卡冲突的内置 "plan" 技能

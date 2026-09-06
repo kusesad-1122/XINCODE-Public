@@ -4,7 +4,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,19 +43,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.xincode.data.AppDatabase
-import com.xincode.security.KeystoreProvider
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 
 // --- palette ---
 private val Bg: Color @Composable get() = LocalXinColors.current.bg
+private val BgElevated: Color @Composable get() = LocalXinColors.current.bgElevated
 private val Ink: Color @Composable get() = LocalXinColors.current.ink
 private val Sub: Color @Composable get() = LocalXinColors.current.sub
 private val Faint: Color @Composable get() = LocalXinColors.current.faint
@@ -61,47 +72,115 @@ private val Red: Color @Composable get() = LocalXinColors.current.red
 private val Border: Color @Composable get() = LocalXinColors.current.border
 private val JetBrainsMono = XinUiFont
 
+/** 插件官方在线图标加载器:内存 → 磁盘 → 网络,三级缓存;失败回退本地图标。 */
+object PluginIconLoader {
+    private val mem = java.util.concurrent.ConcurrentHashMap<String, Bitmap>()
+    private val http = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .build()
+
+    fun load(context: Context, url: String): Bitmap? {
+        mem[url]?.let { return it }
+        val file = java.io.File(
+            java.io.File(context.filesDir, "plugin_icons").apply { mkdirs() },
+            Integer.toHexString(url.hashCode()) + ".png"
+        )
+        if (file.exists() && file.length() > 0) {
+            BitmapFactory.decodeFile(file.absolutePath)?.let {
+                mem[url] = it
+                return it
+            }
+        }
+        return try {
+            NetGuard.validate(url) // 图标同为出站请求:仅 http(s) 公网
+            val req = okhttp3.Request.Builder().url(url).build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return null
+                val bytes = resp.body?.bytes() ?: return null
+                if (bytes.size > 3 * 1024 * 1024) return null
+                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+                file.writeBytes(bytes)
+                mem[url] = bmp
+                bmp
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
+
+/** 官方在线图标(带本地回退):有 URL 优先网络加载官方图标,失败再落回内置图形。 */
+@Composable
+private fun PluginIcon(
+    url: String?,
+    brandRes: Int?,
+    icon: ImageVector,
+    size: Dp
+) {
+    val context = LocalContext.current
+    var bmp by remember(url) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(url) {
+        if (!url.isNullOrBlank()) {
+            bmp = withContext(Dispatchers.IO) { PluginIconLoader.load(context, url) }
+        }
+    }
+    when {
+        bmp != null -> Image(
+            bitmap = bmp!!.asImageBitmap(), null,
+            modifier = Modifier.size(size)
+        )
+        brandRes != null -> Icon(painterResource(brandRes), null, Modifier.size(size), tint = Ink)
+        else -> Icon(icon, null, Modifier.size(size), tint = Sub)
+    }
+}
+
 /**
- * 插件商店:安装/卸载连接器(OAuth)、远程 MCP 服务与内置技能包。
- * 安装需授权的插件时先弹「跳转授权」弹窗(GitHub 设备流),浏览器完成登录后自动回传。
+ * 插件市场:连接器(设备流授权)/ 远程 MCP / 技能包 / 在线 OpenAPI 插件。
+ * 在线部分的市场目录从远程 registry 实时拉取(新增插件无需发版),
+ * 官方图标在线加载,点卡片可查看该插件带给 Agent 的全部功能。
  */
 @Composable
 fun PluginStoreScreen(
-    database: AppDatabase,
-    keystore: KeystoreProvider,
-    mcpManager: McpManager,
+    store: PluginStoreManager,
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val appContext = LocalContext.current.applicationContext
-    val manager = remember { PluginStoreManager(appContext, database, keystore, mcpManager) }
 
     var installed by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var loaded by remember { mutableStateOf(false) }
+    var onlinePlugins by remember { mutableStateOf<List<PluginDescriptor>>(emptyList()) }
     var statusMessage by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
     var busyId by remember { mutableStateOf<String?>(null) }
     var authPlugin by remember { mutableStateOf<PluginDescriptor?>(null) }
     var pendingAfterAuth by remember { mutableStateOf<PluginDescriptor?>(null) }
-    var urlPromptPlugin by remember { mutableStateOf<PluginDescriptor?>(null) }
+    var keyPromptPlugin by remember { mutableStateOf<PluginDescriptor?>(null) }
     var confirmUninstall by remember { mutableStateOf<PluginDescriptor?>(null) }
+    var detailPlugin by remember { mutableStateOf<PluginDescriptor?>(null) }
+    var detailCaps by remember { mutableStateOf<List<PluginCapability>?>(null) }
 
     fun refresh() {
         scope.launch {
-            installed = manager.installedStates()
+            installed = store.installedStates()
             loaded = true
         }
     }
-    LaunchedEffect(Unit) { refresh() }
+    LaunchedEffect(Unit) {
+        refresh()
+        onlinePlugins = store.refreshRemoteCatalog()
+        refresh() // 在线插件安装状态依赖远程目录,拉到后再刷一次
+    }
 
-    // 协程里拼的状态文案:格式串先按当前语言取好,协程内只做 format(McpServerScreen 同款)。
+    // 协程里拼的状态文案:格式串先按当前语言取好,协程内只做 format
     val fmtConnecting = t("连接中...")
     val fmtInstallOk = t("安装成功: %s(发现 %s 个工具)")
     val fmtInstallFail = t("安装失败: %s")
     val fmtSkillOk = t("已安装: %s")
+    val fmtOnlineOk = t("已安装: %s(%s 个工具已注入 Agent)")
     val fmtUninstalled = t("已卸载: %s")
     val fmtAuthSaved = t("GitHub 授权已保存")
-    val fmtBadUrl = t("地址需以 http(s):// 开头")
 
     fun setStatus(msg: String, err: Boolean) {
         statusMessage = msg
@@ -113,8 +192,22 @@ fun PluginStoreScreen(
         busyId = p.id
         setStatus(fmtConnecting, false)
         scope.launch {
-            when (val r = manager.installMcp(p, url, authHeader)) {
+            when (val r = store.installMcp(p, url, authHeader)) {
                 is McpConnectResult.Success -> setStatus(fmtInstallOk.format(p.name, r.toolCount.toString()), false)
+                is McpConnectResult.Error -> setStatus(fmtInstallFail.format(r.message), true)
+            }
+            busyId = null
+            refresh()
+        }
+    }
+
+    fun doInstallOnline(p: PluginDescriptor, key: String) {
+        if (busyId != null) return
+        busyId = p.id
+        setStatus(fmtConnecting, false)
+        scope.launch {
+            when (val r = store.installOnline(p, key)) {
+                is McpConnectResult.Success -> setStatus(fmtOnlineOk.format(p.name, r.toolCount.toString()), false)
                 is McpConnectResult.Error -> setStatus(fmtInstallFail.format(r.message), true)
             }
             busyId = null
@@ -125,23 +218,23 @@ fun PluginStoreScreen(
     fun onInstallClicked(p: PluginDescriptor) {
         if (busyId != null) return
         when (p.kind) {
-            // 连接器:授权即安装(存 token)
             PluginKind.CONNECTOR -> { pendingAfterAuth = null; authPlugin = p }
             PluginKind.MCP -> when {
-                // 需要鉴权但未登录:先走设备流授权,成功后接着装
                 p.requiresAuth -> scope.launch {
-                    val tok = manager.gitToken()
+                    val tok = store.gitToken()
                     if (tok.isBlank()) { pendingAfterAuth = p; authPlugin = p }
                     else doInstallMcp(p, p.defaultUrl, "Bearer ${tok.trim()}")
                 }
-                // 地址由用户提供(如 Composio):弹输入弹窗
-                p.defaultUrl.isBlank() -> urlPromptPlugin = p
                 else -> doInstallMcp(p, p.defaultUrl, "")
+            }
+            PluginKind.ONLINE -> when {
+                p.requiresAuth -> keyPromptPlugin = p
+                else -> doInstallOnline(p, "")
             }
             PluginKind.SKILL -> {
                 busyId = p.id
                 scope.launch {
-                    val ok = manager.installSkill(p)
+                    val ok = store.installSkill(p)
                     setStatus(if (ok) fmtSkillOk.format(p.name) else fmtInstallFail.format(p.name), !ok)
                     busyId = null
                     refresh()
@@ -155,9 +248,10 @@ fun PluginStoreScreen(
         busyId = p.id
         scope.launch {
             when (p.kind) {
-                PluginKind.CONNECTOR -> manager.clearGitToken()
-                PluginKind.MCP -> manager.uninstallMcp(p)
-                PluginKind.SKILL -> manager.uninstallSkill(p)
+                PluginKind.CONNECTOR -> store.clearGitToken()
+                PluginKind.MCP -> store.uninstallMcp(p)
+                PluginKind.SKILL -> store.uninstallSkill(p)
+                PluginKind.ONLINE -> store.uninstallOnline(p)
             }
             setStatus(fmtUninstalled.format(p.name), false)
             busyId = null
@@ -177,19 +271,26 @@ fun PluginStoreScreen(
                 modifier = Modifier.padding(bottom = 8.dp))
         }
 
-        // 市场总览:全部插件可见、装了多少一目了然(加载完成才显示,避免闪「已安装 0 个」)
         if (loaded) {
-            val totalCount = PluginCatalog.all.size
+            val totalCount = PluginCatalog.all.size + onlinePlugins.size
             val installedCount = installed.count { it.value }
             Text(
                 tx("共 %s 个插件 · 已安装 %s 个", totalCount.toString(), installedCount.toString()),
                 fontSize = 11.sp, fontFamily = JetBrainsMono, color = Faint,
                 modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
             )
+            store.remoteError?.let {
+                Text(it, fontSize = 10.sp, fontFamily = JetBrainsMono, color = Faint,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+            }
         }
 
-        listOf(PluginKind.CONNECTOR, PluginKind.MCP, PluginKind.SKILL).forEach { kind ->
-            val items = PluginCatalog.all.filter { it.kind == kind }
+        listOf(PluginKind.CONNECTOR, PluginKind.MCP, PluginKind.ONLINE, PluginKind.SKILL).forEach { kind ->
+            if (kind == PluginKind.ONLINE && onlinePlugins.isEmpty()) return@forEach
+            val items = when (kind) {
+                PluginKind.ONLINE -> onlinePlugins
+                else -> PluginCatalog.all.filter { it.kind == kind }
+            }
             Text(
                 t(kind.label), fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                 fontFamily = JetBrainsMono, color = Sub,
@@ -199,7 +300,8 @@ fun PluginStoreScreen(
                 PluginCard(
                     p = p,
                     installedState = installed[p.id] == true,
-                    disabled = busyId != null || !loaded,
+                    disabled = !loaded || busyId != null,
+                    onOpenDetail = { detailPlugin = p },
                     onInstall = { onInstallClicked(p) },
                     onUninstall = { confirmUninstall = p }
                 )
@@ -212,12 +314,12 @@ fun PluginStoreScreen(
     authPlugin?.let { ap ->
         PluginAuthDialog(
             plugin = ap,
-            database = database,
+            database = store.database,
             onDismiss = { authPlugin = null; pendingAfterAuth = null },
             onAuthorized = { tok ->
                 authPlugin = null
                 scope.launch {
-                    manager.saveGitToken(tok)
+                    store.saveGitToken(tok)
                     setStatus(fmtAuthSaved, false)
                     val cont = pendingAfterAuth
                     pendingAfterAuth = null
@@ -226,18 +328,6 @@ fun PluginStoreScreen(
                     }
                     refresh()
                 }
-            }
-        )
-    }
-
-    // —— 需要用户自填 MCP 地址(Composio 等) ——
-    urlPromptPlugin?.let { p ->
-        PluginMcpUrlDialog(
-            plugin = p,
-            onDismiss = { urlPromptPlugin = null },
-            onConfirm = { url, auth ->
-                urlPromptPlugin = null
-                doInstallMcp(p, url, auth)
             }
         )
     }
@@ -266,6 +356,41 @@ fun PluginStoreScreen(
             containerColor = Bg
         )
     }
+
+    // —— 插件详情:这个插件装好后,Agent 能用它做什么 ——
+    detailPlugin?.let { p ->
+        LaunchedEffect(p.id) {
+            detailCaps = null
+            detailCaps = store.capabilitiesFor(p)
+        }
+        ModalBottomSheetGlass(
+            onDismiss = { detailPlugin = null },
+            title = p.name,
+            subtitle = p.summary,
+            statusText = if (installed[p.id] == true) t("● 已安装") else t("○ 未安装"),
+            statusOk = installed[p.id] == true,
+            capabilities = detailCaps,
+            actionLabel = if (installed[p.id] == true) t("卸载") else t("安装"),
+            actionDestructive = installed[p.id] == true,
+            actionEnabled = busyId == null,
+            onAction = {
+                detailPlugin = null
+                if (installed[p.id] == true) confirmUninstall = p else onInstallClicked(p)
+            }
+        )
+    }
+
+    // —— 在线插件 API Key 输入(Keystore 加密落库) ——
+    keyPromptPlugin?.let { p ->
+        OnlineKeyDialog(
+            pluginName = p.name,
+            onDismiss = { keyPromptPlugin = null },
+            onConfirm = { key ->
+                keyPromptPlugin = null
+                doInstallOnline(p, key)
+            }
+        )
+    }
 }
 
 @Composable
@@ -273,6 +398,7 @@ private fun PluginCard(
     p: PluginDescriptor,
     installedState: Boolean,
     disabled: Boolean,
+    onOpenDetail: () -> Unit,
     onInstall: () -> Unit,
     onUninstall: () -> Unit
 ) {
@@ -281,6 +407,8 @@ private fun PluginCard(
         Modifier.fillMaxWidth().padding(vertical = 4.dp)
             .background(xc.bgElevated, RoundedCornerShape(18.dp))
             .border(1.dp, xc.border, RoundedCornerShape(18.dp))
+            .clickable(indication = null,
+                interactionSource = remember { MutableInteractionSource() }) { onOpenDetail() }
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -288,12 +416,7 @@ private fun PluginCard(
             Modifier.size(36.dp).background(xc.activeBg, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            if (p.brandRes != null) {
-                // 官方品牌图标(GitHub octocat 等),比通用图标更有辨识度
-                Icon(painterResource(p.brandRes), null, Modifier.size(20.dp), tint = xc.ink)
-            } else {
-                Icon(p.icon, null, Modifier.size(18.dp), tint = xc.sub)
-            }
+            PluginIcon(url = p.iconUrl, brandRes = p.brandRes, icon = p.icon, size = 20.dp)
         }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
@@ -308,7 +431,13 @@ private fun PluginCard(
             }
             Text(
                 p.summary, fontSize = 11.sp, fontFamily = JetBrainsMono, color = xc.sub,
-                lineHeight = 15.sp, modifier = Modifier.padding(top = 2.dp)
+                lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            Text(
+                t("查看功能 ›"),
+                fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.green,
+                modifier = Modifier.padding(top = 3.dp)
             )
         }
         Spacer(Modifier.width(10.dp))
@@ -318,6 +447,141 @@ private fun PluginCard(
             enabled = !disabled,
             destructive = installedState
         )
+    }
+}
+
+/** 复用玻璃拟态底部抽屉样式的插件详情:功能清单 + 安装/卸载操作。 */
+@Composable
+private fun ModalBottomSheetGlass(
+    onDismiss: () -> Unit,
+    title: String,
+    subtitle: String,
+    statusText: String,
+    statusOk: Boolean,
+    capabilities: List<PluginCapability>?,
+    actionLabel: String,
+    actionDestructive: Boolean,
+    actionEnabled: Boolean,
+    onAction: () -> Unit
+) {
+    val xc = LocalXinColors.current
+    androidx.compose.material3.ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = xc.bgElevated,
+        dragHandle = {
+            Box(Modifier.padding(top = 10.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(xc.border))
+        }
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(bottom = 26.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium,
+                    color = xc.ink, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    statusText, fontSize = 11.sp, fontFamily = JetBrainsMono,
+                    color = if (statusOk) xc.green else xc.faint
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Text(subtitle, fontSize = 12.sp, fontFamily = XinUiFont, color = xc.sub, lineHeight = 17.sp)
+            Spacer(Modifier.height(14.dp))
+            Text(t("安装后,以下能力会注入 Agent:"), fontSize = 11.sp, fontFamily = XinUiFont, color = xc.faint)
+            Spacer(Modifier.height(8.dp))
+
+            when {
+                capabilities == null -> Text(
+                    t("加载中…"), fontSize = 12.sp, fontFamily = XinUiFont, color = xc.faint,
+                    modifier = Modifier.padding(vertical = 14.dp)
+                )
+                capabilities.isEmpty() -> Text(
+                    t("该插件未声明具体工具。"), fontSize = 12.sp, fontFamily = XinUiFont,
+                    color = xc.faint, modifier = Modifier.padding(vertical = 12.dp)
+                )
+                else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    capabilities.forEach { cap ->
+                        Column(
+                            Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(xc.bg)
+                                .border(0.8.dp, xc.border, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 9.dp)
+                        ) {
+                            Text(t(cap.name), fontSize = 13.sp, fontFamily = JetBrainsMono, color = xc.ink,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (cap.summary.isNotBlank()) {
+                                Text(t(cap.summary), fontSize = 11.sp, fontFamily = XinUiFont, color = xc.sub,
+                                    lineHeight = 15.sp, modifier = Modifier.padding(top = 2.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(18.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .clip(RoundedCornerShape(23.dp))
+                    .background(
+                        if (actionEnabled) (if (actionDestructive) xc.ink else xc.green) else xc.border
+                    )
+                    .clickable(enabled = actionEnabled, indication = null,
+                        interactionSource = remember { MutableInteractionSource() }) { onAction() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    actionLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    fontFamily = XinUiFont, color = Color.White
+                )
+            }
+        }
+    }
+}
+
+/** 在线插件 API Key 输入弹窗:Key 经 Keystore 加密存储,只在请求头里使用。 */
+@Composable
+private fun OnlineKeyDialog(
+    pluginName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var key by remember { mutableStateOf("") }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(Modifier.background(Bg).padding(16.dp)) {
+            Text(tx("安装 %s", pluginName), fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                t("该插件需要 API Key。Key 经 Keystore 加密存储在本机,只在请求头中使用,不会进入对话内容。"),
+                fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub
+            )
+            Spacer(Modifier.height(12.dp))
+            Text("API Key", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
+            TextField(
+                value = key, onValueChange = { key = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text("粘贴 Key", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
+                textStyle = TextStyle(fontSize = 12.sp, fontFamily = JetBrainsMono),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink
+                )
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Text(t("取消"), fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
+                    modifier = Modifier.clickable(indication = null,
+                        interactionSource = remember { MutableInteractionSource() }) { onDismiss() })
+                Spacer(Modifier.width(16.dp))
+                Text(t("保存并安装"), fontSize = 12.sp, fontFamily = JetBrainsMono,
+                    color = if (key.isNotBlank()) Green else Faint,
+                    modifier = Modifier.clickable(indication = null,
+                        interactionSource = remember { MutableInteractionSource() }) {
+                        if (key.isNotBlank()) onConfirm(key.trim())
+                    })
+            }
+        }
     }
 }
 
@@ -400,89 +664,6 @@ private fun PluginAuthDialog(
                         modifier = Modifier.clickable(indication = null,
                             interactionSource = remember { MutableInteractionSource() }) { openVerify() })
                 }
-            }
-        }
-    }
-}
-
-/** 自填 MCP 地址弹窗(Composio 等按用户账号生成的服务地址)。 */
-@Composable
-private fun PluginMcpUrlDialog(
-    plugin: PluginDescriptor,
-    onDismiss: () -> Unit,
-    onConfirm: (url: String, authHeader: String) -> Unit
-) {
-    var url by remember { mutableStateOf("") }
-    var auth by remember { mutableStateOf("") }
-    val ctx = LocalContext.current
-    val fmtHint = t("三步接入:① 打开控制台生成你的 MCP 地址 → ② 复制粘贴到下面 → ③ 点安装。如需鉴权可再填 Authorization 头(可选)。")
-    val valid = url.trim().startsWith("http://") || url.trim().startsWith("https://")
-
-    Dialog(onDismissRequest = onDismiss) {
-        Column(Modifier.background(Bg).padding(16.dp)) {
-            Text(tx("安装 %s", plugin.name), fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
-            Spacer(Modifier.height(8.dp))
-            Text(fmtHint, fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
-            if (plugin.consoleUrl.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
-                Text(t("打开控制台获取 MCP 地址 ›"), fontSize = 11.sp, fontFamily = JetBrainsMono, color = Green,
-                    modifier = Modifier.clickable(indication = null,
-                        interactionSource = remember { MutableInteractionSource() }) {
-                        try {
-                            ctx.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse(plugin.consoleUrl))
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            )
-                        } catch (_: Exception) {}
-                    })
-            }
-            Spacer(Modifier.height(12.dp))
-            Text("MCP URL", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
-            TextField(
-                value = url, onValueChange = { url = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = {
-                    Text(plugin.urlPlaceholder.ifBlank { "https://…" },
-                        fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint)
-                },
-                textStyle = TextStyle(fontSize = 12.sp, fontFamily = JetBrainsMono),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink
-                )
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(t("Auth Header (可选)"), fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
-            TextField(
-                value = auth, onValueChange = { auth = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = { Text("Bearer xxx", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
-                textStyle = TextStyle(fontSize = 12.sp, fontFamily = JetBrainsMono),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink
-                )
-            )
-            if (url.isNotBlank() && !valid) {
-                Spacer(Modifier.height(6.dp))
-                Text(t("地址需以 http(s):// 开头"), fontSize = 10.sp, fontFamily = JetBrainsMono, color = Red)
-            }
-            Spacer(Modifier.height(16.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Text(t("取消"), fontSize = 12.sp, fontFamily = JetBrainsMono, color = Sub,
-                    modifier = Modifier.clickable(indication = null,
-                        interactionSource = remember { MutableInteractionSource() }) { onDismiss() })
-                Spacer(Modifier.width(16.dp))
-                Text(t("安装"), fontSize = 12.sp, fontFamily = JetBrainsMono,
-                    color = if (valid) Ink else Faint,
-                    modifier = Modifier.clickable(indication = null,
-                        interactionSource = remember { MutableInteractionSource() }) {
-                        if (valid) onConfirm(url.trim(), auth.trim())
-                    })
             }
         }
     }

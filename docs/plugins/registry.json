@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "id": "open_meteo_weather",
+      "name": "Open-Meteo 实时天气",
+      "description": "全球任意经纬度的实时天气、风速与空气质量查询。免密钥,装完即用。",
+      "icon": "https://open-meteo.com/favicon.ico",
+      "auth_type": "none",
+      "base_url": "https://api.open-meteo.com/v1",
+      "tools": [
+        {
+          "name": "get_forecast",
+          "summary": "查询指定经纬度的实时天气(温度/风速等要素可选)",
+          "method": "GET",
+          "path": "/forecast",
+          "params": [
+            { "name": "latitude", "description": "纬度,如 39.9", "required": true, "type": "number" },
+            { "name": "longitude", "description": "经度,如 116.4", "required": true, "type": "number" },
+            { "name": "current", "description": "要返回的实时要素,逗号分隔(temperature_2m,wind_speed_10m,relative_humidity_2m 等)", "required": false, "type": "string", "default": "temperature_2m,wind_speed_10m,relative_humidity_2m" },
+            { "name": "timezone", "description": "时区,auto 表示按经纬度自动", "required": false, "type": "string", "default": "auto" }
+          ]
+        },
+        {
+          "name": "get_air_quality",
+          "summary": "查询指定经纬度的空气质量(欧洲标准指数与 PM2.5 等)",
+          "method": "GET",
+          "path": "/air-quality",
+          "params": [
+            { "name": "latitude", "description": "纬度,如 39.9", "required": true, "type": "number" },
+            { "name": "longitude", "description": "经度,如 116.4", "required": true, "type": "number" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "frankfurter_exchange",
+      "name": "Frankfurter 汇率",
+      "description": "欧洲央行基准的实时外汇汇率查询与换算。免密钥,装完即用。",
+      "icon": "https://frankfurter.dev/favicon.ico",
+      "auth_type": "none",
+      "base_url": "https://api.frankfurter.dev/v1",
+      "tools": [
+        {
+          "name": "get_latest_rate",
+          "summary": "查询最新汇率(如 USD→CNY),不带金额则直接返回汇率",
+          "method": "GET",
+          "path": "/latest",
+          "params": [
+            { "name": "base", "description": "基准货币代码,如 USD", "required": false, "type": "string", "default": "USD" },
+            { "name": "symbols", "description": "目标货币代码,逗号分隔,如 CNY,EUR", "required": false, "type": "string", "default": "CNY" },
+            { "name": "amount", "description": "要换算的金额(可选,传入则返回换算结果)", "required": false, "type": "number" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "exa_search",
+      "name": "Exa 神经检索",
+      "description": "基于语义的专业网页深度检索与内容提取。安装时需填写 Exa API Key。",
+      "icon": "https://exa.ai/images/favicon.png",
+      "auth_type": "api_key",
+      "auth_header": "x-api-key",
+      "base_url": "https://api.exa.ai",
+      "tools": [
+        {
+          "name": "exa_search",
+          "summary": "执行网页深度语义搜索,返回相关页面列表与摘要",
+          "method": "POST",
+          "path": "/search",
+          "params": [
+            { "name": "query", "description": "搜索 query(自然语言)", "required": true, "type": "string", "body": true },
+            { "name": "numResults", "description": "返回结果条数,默认 5", "required": false, "type": "integer", "default": 5, "body": true },
+            { "name": "type", "description": "检索类型:auto / neural / keyword", "required": false, "type": "string", "default": "auto", "body": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

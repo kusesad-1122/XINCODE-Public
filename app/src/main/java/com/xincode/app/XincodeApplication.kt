@@ -137,6 +137,8 @@ private val groupSessionMember = HashMap<Long, String>()
         private set
     lateinit var mcpManager: McpManager
         private set
+    lateinit var pluginStoreManager: PluginStoreManager
+        private set
     lateinit var batteryMonitor: BatteryMonitor
         private set
     lateinit var suExecTool: SuExecTool
@@ -350,6 +352,23 @@ override fun onCreate() {
         projectsRepository = ProjectsRepository(database)
         initProjectFlows()
 
+        // 步骤A:App Server 双向层拥有方注册——通知栏“中断”/超时/手势统一走这里真停一切工作。
+        com.xincode.service.AgentServer.onInterruptRequest = { interruptAllAgentWork() }
+        // 步骤E:审批请求推通知栏(同意/拒绝直回 rendezvous);批复落定即撤通知。Turn 在 core 侧真停着。
+        applicationScope.launch {
+            com.xincode.service.AgentServer.events.collect { ev ->
+                when (ev) {
+                    is com.xincode.service.AgentServer.AgentServerEvent.ApprovalRequested ->
+                        com.xincode.service.AgentForegroundService.notifyApproval(
+                            this@XincodeApplication, ev.requestId, ev.toolName, ev.preview
+                        )
+                    is com.xincode.service.AgentServer.AgentServerEvent.ApprovalResolved ->
+                        com.xincode.service.AgentForegroundService.cancelApproval(this@XincodeApplication)
+                    else -> {}
+                }
+            }
+        }
+
         // 5.0: Project & star flows — collated from Room for sidebar
 
         // Security gate — load permission mode from Room
@@ -396,6 +415,30 @@ override fun onCreate() {
 
         // Agent Core with tool registry + security gate + cursor persistence
         toolRegistry = ToolRegistry()
+        // 步骤C:全仓唯一派发点的全局观测(注册表多会话共享,挂一次即可)→ AgentServer 下行事件。
+        // Turn 归属由各 core 的 turnHooks 负责(带 sessionId),这里只做不限会话的全局执行流。
+        toolRegistry.onDispatch = { call ->
+            com.xincode.service.AgentServer.emit(
+                com.xincode.service.AgentServer.AgentServerEvent.ToolCallStarted(
+                    call.name, call.arguments.take(200)
+                )
+            )
+            com.xincode.service.AgentServer.setTaskState(
+                com.xincode.service.AgentServer.AgentTaskState.WAITING_TOOL
+            )
+        }
+        toolRegistry.onExecuted = { call, result ->
+            val digest = when (result) {
+                is com.xincode.core.ToolResult.Success -> result.output.take(200)
+                is com.xincode.core.ToolResult.Error -> "ERR: ${result.message.take(200)}"
+            }
+            com.xincode.service.AgentServer.emit(
+                com.xincode.service.AgentServer.AgentServerEvent.ToolResult(call.name, digest)
+            )
+            com.xincode.service.AgentServer.setTaskState(
+                com.xincode.service.AgentServer.AgentTaskState.RUNNING
+            )
+        }
         shellExecTool = ShellExecTool()
         toolRegistry.register(shellExecTool)
 val suExecTool = SuExecTool().also { this.suExecTool = it }
@@ -489,6 +532,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             .cache(HttpCacheProvider.get())
             .build()
         mcpManager = McpManager(database, toolRegistry, mcpOkHttpClient, keystore)
+        pluginStoreManager = PluginStoreManager(this, database, keystore, mcpManager, toolRegistry)
 
         // workflowState 必须先于会话工厂构造(各 core 的状态收集器会调用它)。
         workflowState = WorkflowState()
@@ -657,6 +701,12 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             } catch (e: Exception) {
                 Log.w("XINCODE", "MCP syncFromRoom failed: ${e.message}")
             }
+            // 在线插件:刷新远程目录并把已装插件的工具重新注册进 ToolRegistry
+            try {
+                pluginStoreManager.syncAll()
+            } catch (e: Exception) {
+                Log.w("XINCODE", "plugin store sync failed: ${e.message}")
+            }
         }
 
         // Battery monitor — observe state and adjust power mode
@@ -797,6 +847,50 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         chat.thinkingEnabled = thinkingEnabled
         chat.thinkingLevel = thinkingLevel
         core.setConfirmHandler(chat.confirmHandler)
+        // 步骤C:Turn 身份落库 + AgentServer 状态(RUNNING/FINISHED)。WAITING_APPROVAL 映射 E 步接管。
+        // Room suspend DAO 主线程安全(room-ktx 切线程);钩子异常由 core 侧吞掉,这里只管写对。
+        val harness = com.xincode.data.HarnessThreads(database.harnessThreadDao())
+        var harnessTurnId = 0L
+        core.turnHooks = object : com.xincode.core.AgentTurnHooks {
+            override suspend fun onTurnStart(input: String) {
+                val threadId = harness.activeOrStart(sessionId, input.take(120))
+                harnessTurnId = harness.startTurn(threadId, input)
+                com.xincode.service.AgentServer.setTaskState(
+                    com.xincode.service.AgentServer.AgentTaskState.RUNNING
+                )
+            }
+
+            override suspend fun onTurnFinish(ok: Boolean, summary: String) {
+                if (harnessTurnId != 0L) {
+                    harness.finishTurn(harnessTurnId, ok, summary, "")
+                    harnessTurnId = 0L
+                }
+                com.xincode.service.AgentServer.setTaskState(
+                    com.xincode.service.AgentServer.AgentTaskState.FINISHED
+                )
+            }
+        }
+        // 步骤E:远端审批桥——审批请求进 AgentServer rendezvous(通知栏/自动化可批复),本地框照常。
+        // 远端无回执返回 null → core 转回等本地(不放行不拒绝);远端先决 → 本地框被 cancel。
+        core.remoteApproval = object : com.xincode.core.RemoteApprovalBridge {
+            override suspend fun awaitRemote(toolName: String, preview: String, timeoutMs: Long): Boolean? {
+                val server = com.xincode.service.AgentServer
+                val id = server.newApprovalId()
+                server.emit(
+                    com.xincode.service.AgentServer.AgentServerEvent.ApprovalRequested(
+                        id, toolName, preview.take(300)
+                    )
+                )
+                server.setTaskState(
+                    com.xincode.service.AgentServer.AgentTaskState.WAITING_APPROVAL
+                )
+                val verdict = server.awaitApproval(id, timeoutMs)
+                server.setTaskState(
+                    com.xincode.service.AgentServer.AgentTaskState.RUNNING
+                )
+                return verdict
+            }
+        }
         val holder = SessionAgents(sessionId, core, chat)
         // 各会话独立状态收集器:驱动前台服务保活(跨全部 core 聚合)+ 轨迹保存 + 后台完成即回收。
         holder.collector = GlobalScope.launch(Dispatchers.Main) {
@@ -859,6 +953,21 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             sessionPool.remove(sid)?.collector?.cancel()
             coreBusy.remove(sid)
         }
+    }
+
+    /**
+     * 步骤A:App Server 中断入口实现——停掉所有在跑的工作。
+     * 会话 core 走 AgentCore.stop() (置 Interrupted 状态,下游观察者正常收尾);
+     * 群聊 job 直接 cancel。最后刷新前台通知,避免停了还显示“执行中”。
+     * 与 stopGroupMessage/会话切换回收互不干扰:这里只停,不删池。
+     */
+    fun interruptAllAgentWork() {
+        // 外层兜底:中断可能来自通知栏线程,与后台回调并发时快照可能撞见结构性修改。
+        runCatching {
+            sessionPool.values.toList().forEach { runCatching { it.core.stop() } }
+            groupRoomJobs.values.toList().forEach { runCatching { it.cancel() } }
+        }
+        runCatching { refreshForegroundService() }
     }
 
     /** 前台通知/桌面小组件:只要【任一】会话在忙就保活(否则 Android 可能杀掉后台续跑)。 */
