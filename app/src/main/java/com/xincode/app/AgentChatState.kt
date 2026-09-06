@@ -381,6 +381,9 @@ class AgentChatState(
 
     /** Delete a single message row + refresh the visible list. */
     suspend fun deleteMessage(id: Long) {
+        // compactContext 的 M5 同款保护:回合进行中删消息会让 consumer/toolCallIndices
+        // 持有的下标漂移 —— 流式内容写错行、工具结果挂错卡,甚至越界崩溃。流式期间一律拒绝。
+        if (isStreaming.value) { Log.d(TAG, "delete skipped: streaming in progress"); return }
         withContext(Dispatchers.IO) { messageDao.deleteById(id) }
         val idx = messages.indexOfFirst { it.id == id }
         if (idx >= 0) messages.removeAt(idx)
@@ -611,6 +614,25 @@ class AgentChatState(
                 // 真正的分段动作全部在主线程完成,避免并发改 messages/buffer 造成丢字或错位。
                 val wantNewSegment = java.util.concurrent.atomic.AtomicBoolean(false)
 
+                // 思考缓冲:整轮累计;reasoningSegStart 记录当前段从哪开始,
+                // 让每段只显示自己的思考,不重复上一段已展示过的内容。
+                val reasoningBuf = StringBuilder()
+                var reasoningSegStart = 0
+
+                // 开一段新文字(插库拿 id,append 到 messages 末尾——调用时机决定它必然排在
+                // 已插入的工具行之后,这就是「结论落在工具下方」的保证)。
+                suspend fun openNextSegment() {
+                    val nextMsg = MessageEntity(
+                        role = "assistant", content = "",
+                        sessionId = currentSessionId, turnId = agentCore.currentTurnId
+                    )
+                    val nextId = withContext(Dispatchers.IO) { messageDao.insert(nextMsg) }
+                    messages.add(ChatState.MessageUi(nextId, "assistant", "", nextMsg.timestamp, turnId = agentCore.currentTurnId))
+                    asstId = nextId
+                    asstIdx = messages.size - 1
+                    reasoningSegStart = reasoningBuf.length
+                }
+
                 // Token consumer: 16ms frame-aligned
                 val tokenChannel = Channel<String>(Channel.UNLIMITED)
                 tokenChannelRef = tokenChannel
@@ -625,6 +647,32 @@ class AgentChatState(
                             if (r.isSuccess) { buffer.append(r.getOrThrow()); drained++ }
                             else break
                         }
+
+                        // 分段信号优先处理:工具块此时已经 push 到 messages 末尾,
+                        // 这里在主线程决定后续文字写到哪一段。
+                        if (wantNewSegment.compareAndSet(true, false)) {
+                            val seg = buffer.toString()
+                            if (seg.isNotBlank() && asstIdx >= 0) {
+                                // 已有一段话:定稿它,后续 token 写进新的一条(排在工具行之后)。
+                                messages[asstIdx] = messages[asstIdx].copy(content = seg)
+                                val finishedId = asstId
+                                launch(Dispatchers.IO) { messageDao.updateContent(finishedId, seg) }
+                                openNextSegment()
+                                buffer.setLength(0)
+                                lastDbUpdate = 0L
+                            } else if (asstIdx >= 0) {
+                                // 模型还没开口工具就来了:作废空白占位段(它留在原地作为
+                                // 工具步骤的锚),文字之后懒创建新消息——保证结论排在工具之后。
+                                asstIdx = -1
+                                asstId = -1L
+                            }
+                        }
+
+                        // 懒创建:占位段被作废后的第一段文字到来时,新消息 append 在工具之后。
+                        if (drained > 0 && asstIdx < 0 && buffer.isNotBlank()) {
+                            openNextSegment()
+                        }
+
                         if (drained > 0 && asstIdx >= 0) {
                             val current = buffer.toString()
                             messages[asstIdx] = messages[asstIdx].copy(content = current)
@@ -635,27 +683,6 @@ class AgentChatState(
                             }
                         }
 
-                        // 交错分段:工具即将执行 → 把已产出的文字定稿为一段,后续 token 写入新的一条。
-                        // 只在【已有非空文字】时才切,避免连续调工具时插入一堆空消息。
-                        if (wantNewSegment.compareAndSet(true, false)) {
-                            val seg = buffer.toString()
-                            if (seg.isNotBlank() && asstIdx >= 0) {
-                                messages[asstIdx] = messages[asstIdx].copy(content = seg)
-                                val finishedId = asstId
-                                launch(Dispatchers.IO) { messageDao.updateContent(finishedId, seg) }
-
-                                val nextMsg = MessageEntity(
-                                    role = "assistant", content = "",
-                                    sessionId = currentSessionId, turnId = agentCore.currentTurnId
-                                )
-                                val nextId = withContext(Dispatchers.IO) { messageDao.insert(nextMsg) }
-                                messages.add(ChatState.MessageUi(nextId, "assistant", "", nextMsg.timestamp, turnId = agentCore.currentTurnId))
-                                asstIdx = messages.size - 1
-                                asstId = nextId
-                                buffer.setLength(0)
-                                lastDbUpdate = 0L
-                            }
-                        }
                         if (tokenChannel.isClosedForReceive) break
                     }
                     // Final drain
@@ -664,6 +691,9 @@ class AgentChatState(
                         if (r.isSuccess) buffer.append(r.getOrThrow()) else break
                     }
                     val final = buffer.toString()
+                    if (final.isNotEmpty() && asstIdx < 0) {
+                        openNextSegment()
+                    }
                     if (final.isNotEmpty() && asstIdx >= 0) {
                         messages[asstIdx] = messages[asstIdx].copy(content = final)
                         withContext(Dispatchers.IO) { messageDao.updateContent(asstId, final) }
@@ -687,8 +717,7 @@ class AgentChatState(
                 }
 
                 tokenCollectorRef = tokenCollector
-                // Build per-message reasoning buffer — real-time with 500ms throttling
-                val reasoningBuf = StringBuilder()
+                // Per-message reasoning, real-time with 500ms throttling(只写当前段新增的部分)
                 var lastReasoningUpdate = 0L
                 val reasoningCollector = s.launch {
                     // 同上:思考流也必须 collect,collectLatest 会丢片段。
@@ -696,7 +725,7 @@ class AgentChatState(
                         reasoningBuf.append(r)
                         val now = System.currentTimeMillis()
                         if (now - lastReasoningUpdate > 500 && asstIdx >= 0) {
-                            messages[asstIdx] = messages[asstIdx].copy(reasoning = reasoningBuf.toString())
+                            messages[asstIdx] = messages[asstIdx].copy(reasoning = reasoningBuf.substring(reasoningSegStart))
                             lastReasoningUpdate = now
                         }
                     }
@@ -742,7 +771,7 @@ class AgentChatState(
                 // Final persistence + attach reasoning
                 if (asstIdx >= 0) {
                     val finalContent = messages[asstIdx].content
-                    val finalReasoning = reasoningBuf.toString()
+                    val finalReasoning = reasoningBuf.substring(reasoningSegStart)
                     messages[asstIdx] = messages[asstIdx].copy(content = finalContent, reasoning = finalReasoning)
                     if (finalContent.isNotEmpty()) {
                         withContext(Dispatchers.IO) { messageDao.updateContent(asstId, finalContent) }
@@ -777,7 +806,8 @@ class AgentChatState(
 
                 // On error, mark assistant bubble red
                 val st = agentCore.state.value
-                if (st is AgentState.Error && asstIdx >= 0) {
+                if (st is AgentState.Error) {
+                    if (asstIdx < 0) openNextSegment() // 「直接调工具、尚未产出文字」的回合报错也要可见
                     messages[asstIdx] = messages[asstIdx].copy(content = "✗ ${st.message}")
                     withContext(Dispatchers.IO) { messageDao.updateContent(asstId, "✗ ${st.message}") }
                 }

@@ -77,6 +77,7 @@ fun PluginStoreScreen(
     val manager = remember { PluginStoreManager(appContext, database, keystore, mcpManager) }
 
     var installed by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    var loaded by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("") }
     var isError by remember { mutableStateOf(false) }
     var busyId by remember { mutableStateOf<String?>(null) }
@@ -86,7 +87,10 @@ fun PluginStoreScreen(
     var confirmUninstall by remember { mutableStateOf<PluginDescriptor?>(null) }
 
     fun refresh() {
-        scope.launch { installed = manager.installedStates() }
+        scope.launch {
+            installed = manager.installedStates()
+            loaded = true
+        }
     }
     LaunchedEffect(Unit) { refresh() }
 
@@ -173,14 +177,16 @@ fun PluginStoreScreen(
                 modifier = Modifier.padding(bottom = 8.dp))
         }
 
-        // 市场总览:全部插件可见、装了多少一目了然
-        val totalCount = PluginCatalog.all.size
-        val installedCount = installed.count { it.value }
-        Text(
-            tx("共 %s 个插件 · 已安装 %s 个", totalCount.toString(), installedCount.toString()),
-            fontSize = 11.sp, fontFamily = JetBrainsMono, color = Faint,
-            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
-        )
+        // 市场总览:全部插件可见、装了多少一目了然(加载完成才显示,避免闪「已安装 0 个」)
+        if (loaded) {
+            val totalCount = PluginCatalog.all.size
+            val installedCount = installed.count { it.value }
+            Text(
+                tx("共 %s 个插件 · 已安装 %s 个", totalCount.toString(), installedCount.toString()),
+                fontSize = 11.sp, fontFamily = JetBrainsMono, color = Faint,
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+            )
+        }
 
         listOf(PluginKind.CONNECTOR, PluginKind.MCP, PluginKind.SKILL).forEach { kind ->
             val items = PluginCatalog.all.filter { it.kind == kind }
@@ -193,7 +199,7 @@ fun PluginStoreScreen(
                 PluginCard(
                     p = p,
                     installedState = installed[p.id] == true,
-                    disabled = busyId != null,
+                    disabled = busyId != null || !loaded,
                     onInstall = { onInstallClicked(p) },
                     onUninstall = { confirmUninstall = p }
                 )

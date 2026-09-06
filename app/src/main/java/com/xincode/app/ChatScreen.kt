@@ -636,17 +636,19 @@ fun ChatScreen(
                 Icon(Icons.Outlined.Add, contentDescription = "新建聊天", tint = xc.ink, modifier = Modifier.size(18.dp))
             }
             Spacer(Modifier.width(8.dp))
-            // 对话产出:仿 Claude 顶栏文件入口,点开列出本会话生成的 MD/文件/图片
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(xc.bgElevated)
-                    .border(BorderStroke(0.8.dp, xc.border), CircleShape)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showArtifactsSheet = true },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Outlined.Description, contentDescription = "对话产出文件", tint = xc.ink, modifier = Modifier.size(18.dp))
+            // 对话产出:仿 Claude 顶栏文件入口,点开列出本会话生成的 MD/文件/图片(空会话不显示)
+            if (hasMessages) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(xc.bgElevated)
+                        .border(BorderStroke(0.8.dp, xc.border), CircleShape)
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { showArtifactsSheet = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Outlined.Description, contentDescription = "对话产出文件", tint = xc.ink, modifier = Modifier.size(18.dp))
+                }
             }
             Spacer(Modifier.width(8.dp))
             Box {
@@ -986,7 +988,7 @@ fun ChatScreen(
                     Box(Modifier.padding(top = 10.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(xc.border))
                 }
             ) {
-                val sessionArtifacts = remember(showArtifactsSheet, chatState.messages.size) {
+                val sessionArtifacts = remember(showArtifactsSheet, chatState.messages.size, chatState.isStreaming.value) {
                     collectSessionArtifacts(chatState.messages.toList())
                 }
                 ArtifactsSheet(artifacts = sessionArtifacts, onClose = { showArtifactsSheet = false })

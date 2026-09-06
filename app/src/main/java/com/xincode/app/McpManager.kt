@@ -6,6 +6,7 @@ import com.xincode.data.AppDatabase
 import com.xincode.data.McpServerEntity
 import com.xincode.provider.McpClient
 import com.xincode.provider.McpServerInfo
+import com.xincode.security.KeystoreProvider
 import com.xincode.tools.McpToolAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,14 +19,38 @@ import okhttp3.OkHttpClient
  * - connectServer(): initialize handshake → discover tools → register adapters → update Room
  * - disconnectServer(): disconnect client → unregister adapters → update Room
  * - syncFromRoom(): on startup, restore previously connected servers
+ *
+ * 安全:auth_header 在 Room 里以 Keystore 加密存放(1.13.6 起);旧版本的明文存量
+ * 解不开时按原文回退使用,不影响重连。
  */
 class McpManager(
     private val database: AppDatabase,
     private val toolRegistry: ToolRegistry,
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val keystore: KeystoreProvider
 ) {
     companion object {
         private const val TAG = "McpManager"
+    }
+
+    /** 鉴权头加密入库;空串原样返回。 */
+    private fun encryptHeader(raw: String): String {
+        if (raw.isBlank()) return ""
+        return try {
+            android.util.Base64.encodeToString(keystore.encrypt(raw), android.util.Base64.NO_WRAP)
+        } catch (_: Exception) {
+            raw
+        }
+    }
+
+    /** 鉴权头解密使用;解不开视为旧版明文存量,原样返回。 */
+    private fun decryptHeader(stored: String): String {
+        if (stored.isBlank()) return ""
+        return try {
+            keystore.decrypt(android.util.Base64.decode(stored, android.util.Base64.NO_WRAP))
+        } catch (_: Exception) {
+            stored
+        }
     }
 
     /** Active connections: key(url 或 stdio:name)→ 传输(HTTP/stdio) */
@@ -59,17 +84,18 @@ class McpManager(
                 adapterNames.add(adapter.name)
             }
 
-            // Store connection
+            // Store connection(重连同一地址时先关掉旧传输,避免泄漏旧客户端/子进程)
+            clients[url]?.let { runCatching { it.close() } }
             clients[url] = client
             registeredTools[url] = adapterNames
 
-            // Update Room
+            // Update Room(authHeader 加密存放)
             val existing = database.mcpServerDao().getByUrl(url)
             val entity = McpServerEntity(
                 id = existing?.id ?: 0,
                 name = name,
                 url = url,
-                authHeader = authHeader,
+                authHeader = encryptHeader(authHeader),
                 connected = true,
                 toolNames = tools.joinToString(",") { it.name },
                 createdAt = existing?.createdAt ?: System.currentTimeMillis(),
@@ -112,6 +138,7 @@ class McpManager(
                 toolRegistry.register(adapter)
                 adapterNames.add(adapter.name)
             }
+            clients[key]?.let { runCatching { it.close() } }
             clients[key] = client
             registeredTools[key] = adapterNames
 
@@ -174,7 +201,14 @@ class McpManager(
                 val env = parseJsonObject(server.envJson)
                 connectStdioServer(server.name, server.command, args, env, server.runAsRoot)
             } else {
-                connectServer(server.name, server.url, server.authHeader)
+                connectServer(server.name, server.url, decryptHeader(server.authHeader))
+            }
+            // 启动重连失败:把 connected 落回 false,让插件页/MCP 页如实显示未连接,
+            // 否则会出现「卡片显示已安装、AI 却说没有这个工具」的矛盾状态。
+            if (result is McpConnectResult.Error) {
+                runCatching {
+                    database.mcpServerDao().update(server.copy(connected = false, updatedAt = System.currentTimeMillis()))
+                }
             }
             results.add(result)
         }

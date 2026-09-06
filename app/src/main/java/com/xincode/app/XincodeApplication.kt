@@ -488,7 +488,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .cache(HttpCacheProvider.get())
             .build()
-        mcpManager = McpManager(database, toolRegistry, mcpOkHttpClient)
+        mcpManager = McpManager(database, toolRegistry, mcpOkHttpClient, keystore)
 
         // workflowState 必须先于会话工厂构造(各 core 的状态收集器会调用它)。
         workflowState = WorkflowState()

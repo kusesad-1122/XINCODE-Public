@@ -192,7 +192,8 @@ class PluginStoreManager(
                 PluginKind.MCP -> {
                     val url = database.settingDao().get(mcpKey(p.id))
                         ?.takeIf { it.isNotBlank() } ?: p.defaultUrl
-                    url.isNotBlank() && servers.any { it.url == url }
+                    // 必须处于 connected:断开后的残留条目不算已安装(工具已注销,AI 用不了)
+                    url.isNotBlank() && servers.any { it.url == url && it.connected }
                 }
                 PluginKind.SKILL -> (skills[p.skillName] ?: "archived") == "active"
             }

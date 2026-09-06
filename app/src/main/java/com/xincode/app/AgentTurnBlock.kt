@@ -136,7 +136,8 @@ fun AgentTurnBlock(
                 ImagePreviewsFromTools(toolsAfter)
             }
 
-            assistant?.takeIf { !isStreaming }?.let { message ->
+            // 空占位段(纯工具步骤)不渲染操作行,避免一排空按钮
+            assistant?.takeIf { !isStreaming && it.content.isNotBlank() }?.let { message ->
                 MessageActionsRow(message.content, onRegenerate)
             }
     }

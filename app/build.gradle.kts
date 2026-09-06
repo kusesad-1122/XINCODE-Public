@@ -21,8 +21,8 @@ android {
         applicationId = "com.xincode.app"
         minSdk = 28
         targetSdk = 34
-        versionCode = 131
-        versionName = "1.13.5"
+        versionCode = 132
+        versionName = "1.13.6"
     }
 
     // 只有在 keystore.properties 真实存在时才建 release 签名配置。
