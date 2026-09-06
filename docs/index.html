@@ -22,8 +22,8 @@
     --serif: Georgia, "Times New Roman", "Songti SC", "STSong", "Noto Serif CJK SC", "SimSun", serif;
     --sans: "Styrene B", ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
   }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { scroll-behavior: smooth; scroll-padding-top: 76px; }
   body {
     background: var(--ivory);
     color: var(--ink);
@@ -61,14 +61,53 @@
   }
   .btn-primary { background: var(--clay); color: #fff; }
   .btn-primary:hover { background: var(--crail); }
+  .btn:active { transform: scale(.96); }
   .btn-ghost { border-color: var(--border); color: var(--ink); background: transparent; }
   .btn-ghost:hover { border-color: var(--clay); color: var(--crail); }
   .btn-sm { padding: 7px 16px; font-size: 13px; }
   .nav .btn { margin-left: 4px; }
-  .menu-btn { display: none; margin-left: auto; background: none; border: none; font-size: 22px; color: var(--ink); cursor: pointer; }
+  .menu-btn {
+    display: none; margin-left: auto; background: none; border: none;
+    font-size: 22px; color: var(--ink); cursor: pointer;
+    width: 42px; height: 42px; border-radius: 12px; outline: none;
+    align-items: center; justify-content: center;
+  }
+  .menu-btn:active { background: var(--panel-warm); }
+
+  /* 移动端下拉菜单 */
+  .mobile-menu { display: none; }
+  @media (max-width: 900px) {
+    .mobile-menu.open {
+      display: flex; flex-direction: column;
+      border-top: 1px solid var(--border-soft);
+      background: rgba(244, 243, 238, .98);
+      backdrop-filter: blur(8px);
+      padding: 4px 24px 16px;
+    }
+    .mobile-menu a {
+      padding: 14px 4px; font-size: 15px; color: var(--ink);
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .mobile-menu a:active { color: var(--crail); }
+    .mobile-menu a.btn {
+      margin-top: 14px; text-align: center; border-bottom: none;
+      border-radius: 999px; color: #fff; background: var(--clay); font-weight: 600;
+    }
+    .mobile-menu a.btn:active { background: var(--crail); }
+  }
+
+  /* 滚动渐显 */
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .55s ease, transform .55s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+    html { scroll-behavior: auto; }
+  }
 
   /* ---------- Hero ---------- */
-  .hero { padding: 84px 0 64px; display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; }
+  /* 注意:此处只覆盖纵向 padding,横向沿用 .wrap 的 24px——
+     之前写成 padding: 84px 0 64px 会把左右内边距覆盖成 0,手机上文字贴边 */
+  .hero { padding-top: 84px; padding-bottom: 64px; display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 48px; align-items: center; }
   .eyebrow {
     display: inline-flex; align-items: center; gap: 8px;
     font-size: 13px; color: var(--crail); font-weight: 600;
@@ -252,7 +291,7 @@
     .strip-in { grid-template-columns: 1fr 1fr; }
     .strip-in .cell:nth-child(odd) { border-left: none; }
     .nav .links a:not(.btn) { display: none; }
-    .menu-btn { display: block; }
+    .menu-btn { display: flex; }
   }
   @media (max-width: 560px) {
     .grid { grid-template-columns: 1fr; }
@@ -273,8 +312,15 @@
       <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener">GitHub</a>
       <a class="btn btn-primary btn-sm" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载 APK</a>
     </div>
-    <button class="menu-btn" onclick="document.getElementById('mnav').scrollIntoView({behavior:'smooth'})">☰</button>
+    <button class="menu-btn" id="menuBtn" aria-label="打开菜单" onclick="toggleMenu()">☰</button>
   </div>
+  <nav class="mobile-menu" id="mobileMenu">
+    <a href="#features" onclick="toggleMenu(false)">功能</a>
+    <a href="#plugins" onclick="toggleMenu(false)">插件市场</a>
+    <a href="#changelog" onclick="toggleMenu(false)">更新日志</a>
+    <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener">GitHub</a>
+    <a class="btn btn-primary" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk" onclick="toggleMenu(false)">下载 APK</a>
+  </nav>
 </header>
 
 <!-- Hero -->
@@ -501,6 +547,16 @@
 </footer>
 
 <script>
+  // 移动端菜单开合(force=true/false 显式控制;点链接后自动收起)
+  function toggleMenu(force) {
+    var m = document.getElementById("mobileMenu");
+    var b = document.getElementById("menuBtn");
+    var open = typeof force === "boolean" ? force : !m.classList.contains("open");
+    m.classList.toggle("open", open);
+    b.textContent = open ? "✕" : "☰";
+    b.setAttribute("aria-label", open ? "关闭菜单" : "打开菜单");
+  }
+
   // 实时更新:版本号/日期/APK 体积/更新日志全部来自 GitHub Releases API。
   // 发新版本 = 打 tag 写 Release 说明,网页无需改代码;API 失败时保留下方静态兜底文案。
   (function () {
@@ -573,7 +629,21 @@
         });
       })
       .catch(function () { /* 静默回退到静态兜底 */ });
-  })();
-</script>
+
+  // 滚动渐显:卡片/插件/版本/区块进入视口时轻微上浮淡入(尊重系统减弱动效设置)
+  var revealEls = document.querySelectorAll(".card, .plugin, .release, .sec-head, .download-card, .strip-in .cell");
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if ("IntersectionObserver" in window && !reduced) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, { threshold: 0.12 });
+    revealEls.forEach(function (el) {
+      el.classList.add("reveal");
+      io.observe(el);
+    });
+  }
+})();
 </body>
 </html>
