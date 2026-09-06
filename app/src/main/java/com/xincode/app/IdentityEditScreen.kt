@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
 
 private val Bg: Color @Composable get() = LocalXinColors.current.bg
+private val BgElevated: Color @Composable get() = LocalXinColors.current.bgElevated
 private val Ink: Color @Composable get() = LocalXinColors.current.ink
 private val Sub: Color @Composable get() = LocalXinColors.current.sub
 private val Faint: Color @Composable get() = LocalXinColors.current.faint
