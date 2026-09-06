@@ -35,6 +35,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -60,6 +61,12 @@ private val TErr: Color @Composable get() = LocalXinColors.current.red
 
 private const val PREFS_TERMINAL = "xincode_terminal_prefs"
 private const val KEY_SAVED_COMMANDS = "saved_commands"
+
+// 立体窗框里的深色机身:真终端就该是暗的,颜色固定不随主题(浅色主题下也成立)。
+private val TermBody = Color(0xFF14161B)
+private val TermTitle = Color(0xFF1D2026)
+private val TermEdge = Color(0xFF2A2E36)
+private val TermFaint = Color(0xFF8B8FA3)
 
 /**
  * 终端页:
@@ -156,16 +163,9 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
                 color = TInk
             )
             Spacer(Modifier.weight(1f))
-            Text(
-                t("清屏"),
-                fontSize = 13.sp,
-                fontFamily = Mono,
-                color = TSub,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { terminal.clear() }
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
-            )
+            IconButton(onClick = { terminal.clear() }, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Outlined.Close, contentDescription = t("清屏"), tint = TSub, modifier = Modifier.size(18.dp))
+            }
         }
 
         // ── 快捷指令横滑标签栏 ──
@@ -241,21 +241,60 @@ fun TerminalScreen(terminal: TerminalState, onBack: () -> Unit) {
             }
         }
 
-        Box(Modifier.fillMaxWidth().height(1.dp).background(TBorder))
-
-        // ── 滚动输出区 ──
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+        // ── 立体窗框里的终端输出区:深色机身 + 红黄绿窗控 + 投影 ──
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .shadow(6.dp, RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(16.dp))
+                .background(TermBody)
+                .border(1.dp, TermEdge, RoundedCornerShape(16.dp))
         ) {
-            items(terminal.lines) { line ->
-                val color = when {
-                    line.startsWith("$ ") -> TGreen
-                    line.startsWith("[exit 0]") -> TSub
-                    line.startsWith("[exit ") || line.startsWith("[错误]") || line.startsWith("[异常]") -> TErr
-                    else -> TInk
+            Column(Modifier.fillMaxSize()) {
+                // 窗控标题栏
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(TermTitle)
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.size(10.dp).background(Color(0xFFFF5F57), CircleShape))
+                    Spacer(Modifier.width(6.dp))
+                    Box(Modifier.size(10.dp).background(Color(0xFFFEBC2E), CircleShape))
+                    Spacer(Modifier.width(6.dp))
+                    Box(Modifier.size(10.dp).background(Color(0xFF28C840), CircleShape))
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        if (LinuxEnvironment.isReady()) "agent@xincode: ~/ubuntu" else "agent@xincode: ~ (root shell)",
+                        fontSize = 10.sp, fontFamily = Mono, color = TermFaint
+                    )
+                    Spacer(Modifier.weight(1f))
+                    Text(
+                        t("清屏"),
+                        fontSize = 10.sp, fontFamily = Mono, color = TermFaint,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { terminal.clear() }
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
                 }
-                Text(line, fontSize = 12.sp, fontFamily = Mono, color = color, lineHeight = 16.sp)
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    items(terminal.lines) { line ->
+                        val color = when {
+                            line.startsWith("$ ") -> Color(0xFF7EC87E)
+                            line.startsWith("[exit 0]") -> TermFaint
+                            line.startsWith("[exit ") || line.startsWith("[错误]") || line.startsWith("[异常]") -> Color(0xFFFF7B72)
+                            else -> Color(0xFFD6D8DC)
+                        }
+                        Text(line, fontSize = 12.sp, fontFamily = Mono, color = color, lineHeight = 16.sp)
+                    }
+                }
             }
         }
 

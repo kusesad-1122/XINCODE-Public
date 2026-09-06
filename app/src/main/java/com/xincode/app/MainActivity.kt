@@ -459,7 +459,9 @@ class MainActivity : ComponentActivity() {
                     "projects" -> ProjectsScreen(
                         projects = projects,
                         projectSessions = projectSessionsMap,
+                        database = app.database,
                         onBack = { currentPage = featureOrigins["projects"] ?: "chat" },
+                        onSetProjectWorkspace = { id, path -> app.updateProjectWorkspace(id, path) },
                         onCreateProject = { name -> app.createProject(name) },
                         onCreateNewInProject = { projectId ->
                             val newId = app.createSessionInProject(projectId)

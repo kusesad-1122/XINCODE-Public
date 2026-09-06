@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -46,6 +47,9 @@ import kotlinx.coroutines.withContext
 
 private val Mono = XinUiFont
 
+/** 房间列表行的摘要:成员数 + 最后一条消息预览 + 时间。 */
+private data class RoomPreview(val members: Int, val preview: String, val ts: Long)
+
 /** Workbench is a product surface, never a protocol/debug log surface. */
 internal fun workbenchVisibleMessages(messages: List<MessageEntity>): List<MessageEntity> =
     messages.filter { message ->
@@ -77,6 +81,27 @@ fun GroupRoomsScreen(
     }
     var showAdd by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
+
+    // 房间摘要:成员数 + 最后一条消息(房间数不多,进列表时一次性拉取)
+    var roomPreviews by remember { mutableStateOf<Map<Long, RoomPreview>>(emptyMap()) }
+    // 协程里不能调 t(),先在组合作用域取好
+    val fmtMe = t("我")
+    LaunchedEffect(rooms) {
+        roomPreviews = withContext(Dispatchers.IO) {
+            rooms.associate { r ->
+                val members = runCatching { database.groupRoomDao().getMembers(r.id) }.getOrDefault(emptyList())
+                val msgs = runCatching { database.groupRoomDao().getMessages(r.id) }.getOrDefault(emptyList())
+                val last = msgs.lastOrNull { it.content.isNotBlank() }
+                r.id to RoomPreview(
+                    members = members.size,
+                    preview = last?.let { m ->
+                        (if (m.sender.isBlank()) fmtMe else m.sender) + ": " + m.content.replace("\n", " ").take(60)
+                    } ?: "",
+                    ts = last?.ts ?: 0L
+                )
+            }
+        }
+    }
 
     openRoom?.let { rid ->
         GroupRoomChatScreen(database, keystore, rid, onBack = { openRoom = null })
@@ -139,18 +164,50 @@ fun GroupRoomsScreen(
             }
             items(rooms.size) { i ->
                 val r = rooms[i]
+                val pv = roomPreviews[r.id]
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(xc.bgElevated)
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(xc.bgElevated)
+                        .border(0.8.dp, xc.border, RoundedCornerShape(14.dp))
                         .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { openRoom = r.id }
-                        .padding(14.dp),
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Box(
+                        Modifier.size(40.dp).clip(CircleShape).background(xc.green.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            r.name.firstOrNull()?.toString() ?: "?",
+                            fontSize = 15.sp, fontWeight = FontWeight.SemiBold, fontFamily = Mono, color = xc.green
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(r.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink)
-                        if (r.note.isNotBlank()) {
-                            Text(r.note, fontSize = 10.sp, fontFamily = Mono, color = xc.faint,
-                                modifier = Modifier.padding(top = 2.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                r.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = Mono, color = xc.ink,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text("${pv?.members ?: 0} " + t("成员"), fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
                         }
+                        if (pv != null && pv.preview.isNotBlank()) {
+                            Text(
+                                pv.preview, fontSize = 10.sp, fontFamily = Mono, color = xc.sub,
+                                lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        } else if (r.note.isNotBlank()) {
+                            Text(r.note, fontSize = 10.sp, fontFamily = Mono, color = xc.faint, modifier = Modifier.padding(top = 2.dp))
+                        }
+                    }
+                    if (pv != null && pv.ts > 0) {
+                        Text(
+                            java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(pv.ts)),
+                            fontSize = 9.sp, fontFamily = Mono, color = xc.faint
+                        )
+                        Spacer(Modifier.width(8.dp))
                     }
                     Text("删除", fontSize = 10.sp, fontFamily = Mono, color = xc.red,
                         modifier = Modifier.clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {

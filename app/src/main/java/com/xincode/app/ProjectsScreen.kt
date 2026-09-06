@@ -31,8 +31,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.xincode.data.AppDatabase
+import com.xincode.data.MemoryEntity
 import com.xincode.data.ProjectEntity
 import com.xincode.data.SessionEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Claude-style Projects screen:
@@ -45,12 +50,14 @@ import com.xincode.data.SessionEntity
 fun ProjectsScreen(
     projects: List<ProjectEntity>,
     projectSessions: Map<Long, List<SessionEntity>>,
+    database: AppDatabase,
     onBack: () -> Unit,
     onCreateProject: (String) -> Unit,
     onCreateNewInProject: (Long) -> Unit,
     onSelectSession: (Long) -> Unit,
     onRenameProject: (Long, String) -> Unit,
-    onDeleteProject: (Long) -> Unit
+    onDeleteProject: (Long) -> Unit,
+    onSetProjectWorkspace: (Long, String) -> Unit = { _, _ -> }
 ) {
     val xc = LocalXinColors.current
     var query by remember { mutableStateOf("") }
@@ -65,6 +72,18 @@ fun ProjectsScreen(
     // Keep selected project updated if projects list updates
     val currentProject = remember(projects, selectedProject) {
         selectedProject?.let { sel -> projects.firstOrNull { it.id == sel.id } }
+    }
+
+    // 项目知识库:本项目内自动沉淀 + 手动添加的记忆条目(会注入本项目每一段对话)
+    var projectKnowledge by remember(currentProject?.id) { mutableStateOf<List<MemoryEntity>>(emptyList()) }
+    var knowledgeReload by remember { mutableStateOf(0) }
+    var showKnowledge by remember { mutableStateOf(false) }
+    var newKnowledge by remember { mutableStateOf("") }
+    var showWorkspacePicker by remember { mutableStateOf(false) }
+    val detailScope = rememberCoroutineScope()
+    LaunchedEffect(currentProject?.id, showKnowledge, knowledgeReload) {
+        val pid = currentProject?.id ?: return@LaunchedEffect
+        projectKnowledge = withContext(Dispatchers.IO) { database.memoryDao().getAllByProject(pid) }
     }
 
 
@@ -160,7 +179,7 @@ fun ProjectsScreen(
                         Spacer(Modifier.height(20.dp))
                     }
 
-                    // Card 1: Memory card
+                    // Card 1: Memory card(点击打开知识库)
                     item(key = "memory_card") {
                         Box(
                             modifier = Modifier
@@ -168,10 +187,15 @@ fun ProjectsScreen(
                                 .clip(RoundedCornerShape(16.dp))
                                 .background(xc.bgElevated)
                                 .border(0.8.dp, xc.border, RoundedCornerShape(16.dp))
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { MutableInteractionSource() }
+                                ) { showKnowledge = true }
                                 .padding(16.dp)
                         ) {
                             Text(
-                                "Project memory will appear after a few chats.",
+                                if (projectKnowledge.isEmpty()) t("Project memory will appear after a few chats.")
+                                else tx("已沉淀 %s 条项目记忆,点开查看与管理。", projectKnowledge.size.toString()),
                                 fontFamily = XinUiFont,
                                 fontSize = 13.sp,
                                 color = xc.sub
@@ -180,38 +204,54 @@ fun ProjectsScreen(
                         Spacer(Modifier.height(14.dp))
                     }
 
-                    // Card 2: Knowledge & Instructions (two columns)
+                    // Card 2: Knowledge & Workspace (两卡都可点:知识库抽屉 + 工作区选择)
                     item(key = "knowledge_instructions") {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // Left: Project knowledge
+                            // Left: Project knowledge → 打开知识库抽屉
                             Column(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(xc.bgElevated)
                                     .border(0.8.dp, xc.border, RoundedCornerShape(16.dp))
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { showKnowledge = true }
                                     .padding(16.dp)
                             ) {
                                 Text(t("Project knowledge"), fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = xc.ink)
-                                Spacer(Modifier.height(14.dp))
-                                Text(t("Add knowledge"), fontFamily = XinUiFont, fontSize = 13.sp, color = xc.green)
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    if (projectKnowledge.isEmpty()) t("Add knowledge")
+                                    else tx("%s 条记忆", projectKnowledge.size.toString()),
+                                    fontFamily = XinUiFont, fontSize = 13.sp, color = xc.green
+                                )
                             }
 
-                            // Right: Custom instructions
+                            // Right: 工作区目录 → 选择项目工作区(AI 在这里读写文件)
                             Column(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(xc.bgElevated)
                                     .border(0.8.dp, xc.border, RoundedCornerShape(16.dp))
+                                    .clickable(
+                                        indication = null,
+                                        interactionSource = remember { MutableInteractionSource() }
+                                    ) { showWorkspacePicker = true }
                                     .padding(16.dp)
                             ) {
-                                Text(t("Custom instructions"), fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = xc.ink)
-                                Spacer(Modifier.height(14.dp))
-                                Text(t("Add instructions"), fontFamily = XinUiFont, fontSize = 13.sp, color = xc.green)
+                                Text(t("工作区目录"), fontFamily = XinUiFont, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = xc.ink)
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    currentProject.workspaceRoot.ifBlank { t("设置项目工作区") },
+                                    fontFamily = XinUiFont, fontSize = 12.sp, color = xc.green,
+                                    maxLines = 2, overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
                         Spacer(Modifier.height(24.dp))
@@ -333,14 +373,14 @@ fun ProjectsScreen(
                     )
 
                     Spacer(Modifier.height(18.dp))
-                    Text(t("What are you trying to achieve?"), fontFamily = XinUiFont, fontSize = 14.sp, color = xc.sub)
+                    Text(t("工作区目录(AI 在这里读写文件)"), fontFamily = XinUiFont, fontSize = 14.sp, color = xc.sub)
                     Spacer(Modifier.height(8.dp))
                     TextField(
                         value = editAchieve,
                         onValueChange = { editAchieve = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 120.dp, max = 200.dp)
+                            .heightIn(min = 80.dp, max = 160.dp)
                             .clip(RoundedCornerShape(14.dp))
                             .background(xc.bg)
                             .border(0.8.dp, xc.border, RoundedCornerShape(14.dp)),
@@ -363,6 +403,10 @@ fun ProjectsScreen(
                             if (editWorkingOn.isNotBlank()) {
                                 onRenameProject(currentProject.id, editWorkingOn.trim())
                             }
+                            // 工作区目录一并保存(此前这个字段填了会被丢弃)
+                            if (editAchieve.trim() != currentProject.workspaceRoot) {
+                                onSetProjectWorkspace(currentProject.id, editAchieve.trim())
+                            }
                             showEditDetails = false
                         },
                         modifier = Modifier
@@ -376,6 +420,148 @@ fun ProjectsScreen(
                     Spacer(Modifier.height(18.dp))
                 }
             }
+        }
+
+        // ── 项目知识库抽屉:自动沉淀 + 手动添加的记忆条目(注入本项目每段对话) ──
+        if (showKnowledge) {
+            ModalBottomSheet(
+                onDismissRequest = { showKnowledge = false },
+                containerColor = xc.bgElevated,
+                dragHandle = {
+                    Box(Modifier.padding(top = 10.dp).width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(xc.border))
+                }
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 22.dp).padding(bottom = 26.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            t("项目知识库"),
+                            fontFamily = XinSerifFont, fontSize = 18.sp, fontWeight = FontWeight.Medium,
+                            color = xc.ink, modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { showKnowledge = false }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Outlined.Close, contentDescription = t("关闭"), tint = xc.ink)
+                        }
+                    }
+                    Text(
+                        t("这些条目会注入本项目的每一段对话;聊天会自动沉淀,也可以手动添加。"),
+                        fontSize = 12.sp, fontFamily = XinUiFont, color = xc.sub, lineHeight = 17.sp
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        TextField(
+                            value = newKnowledge,
+                            onValueChange = { newKnowledge = it },
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(xc.bg)
+                                .border(0.8.dp, xc.border, RoundedCornerShape(12.dp)),
+                            placeholder = { Text(t("手动添加一条知识…"), fontSize = 13.sp, fontFamily = XinUiFont, color = xc.faint) },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                                cursorColor = xc.green,
+                                focusedTextColor = xc.ink,
+                                unfocusedTextColor = xc.ink
+                            ),
+                            textStyle = androidx.compose.ui.text.TextStyle(fontFamily = XinUiFont, fontSize = 14.sp)
+                        )
+                        Text(
+                            t("添加"),
+                            fontSize = 13.sp, fontFamily = XinUiFont, fontWeight = FontWeight.Medium,
+                            color = if (newKnowledge.isNotBlank()) xc.green else xc.faint,
+                            modifier = Modifier.clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                val content = newKnowledge.trim()
+                                if (content.isNotBlank()) {
+                                    detailScope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            database.memoryDao().upsert(
+                                                MemoryEntity(
+                                                    title = content.take(40),
+                                                    content = content,
+                                                    source = "note",
+                                                    projectId = currentProject.id
+                                                )
+                                            )
+                                        }
+                                        newKnowledge = ""
+                                        knowledgeReload++
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    Spacer(Modifier.height(14.dp))
+                    if (projectKnowledge.isEmpty()) {
+                        Text(
+                            t("还没有项目记忆。聊几句后这里会自动出现沉淀。"),
+                            fontSize = 12.sp, fontFamily = XinUiFont, color = xc.faint,
+                            modifier = Modifier.padding(vertical = 14.dp)
+                        )
+                    } else {
+                        LazyColumn(
+                            Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(projectKnowledge, key = { it.id }) { mem ->
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(xc.bg)
+                                        .border(0.8.dp, xc.border, RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            mem.title, fontSize = 13.sp, fontFamily = XinUiFont,
+                                            fontWeight = FontWeight.Medium, color = xc.ink,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (mem.content != mem.title) {
+                                            Text(
+                                                mem.content, fontSize = 11.sp, fontFamily = XinUiFont,
+                                                color = xc.sub, lineHeight = 15.sp, maxLines = 3,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
+                                        }
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            detailScope.launch {
+                                                withContext(Dispatchers.IO) { database.memoryDao().delete(mem) }
+                                                knowledgeReload++
+                                            }
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Outlined.Delete, contentDescription = t("删除"), tint = xc.sub, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── 项目工作区目录选择 ──
+        if (showWorkspacePicker) {
+            DirectoryPickerDialog(
+                initialPath = currentProject.workspaceRoot.ifBlank { com.xincode.tools.WorkspaceContext.defaultRoot },
+                onConfirm = {
+                    onSetProjectWorkspace(currentProject.id, it)
+                    showWorkspacePicker = false
+                },
+                onDismiss = { showWorkspacePicker = false }
+            )
         }
 
     } else {

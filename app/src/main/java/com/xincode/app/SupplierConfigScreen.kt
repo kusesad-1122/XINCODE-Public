@@ -392,14 +392,14 @@ fun SupplierConfigScreen(
                 }
                 Row(
                     modifier = Modifier
-                        .height(34.dp)
                         .clip(RoundedCornerShape(17.dp))
-                        .background(Green)
+                        .background(LocalXinColors.current.activeBg)
+                        .border(0.5.dp, Green.copy(alpha = 0.35f), RoundedCornerShape(17.dp))
                         .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() }
                         ) { startNew() }
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                        .padding(horizontal = 15.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -407,7 +407,7 @@ fun SupplierConfigScreen(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Medium,
                         fontFamily = XinUiFont,
-                        color = Bg
+                        color = Green
                     )
                 }
             }
@@ -430,25 +430,29 @@ fun SupplierConfigScreen(
                 Spacer(Modifier.height(14.dp))
                 Row(
                     modifier = Modifier
-                        .height(38.dp)
                         .clip(RoundedCornerShape(19.dp))
-                        .background(Green)
+                        .background(LocalXinColors.current.activeBg)
+                        .border(0.5.dp, Green.copy(alpha = 0.35f), RoundedCornerShape(19.dp))
                         .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() }
                         ) { startNew() }
-                        .padding(horizontal = 18.dp),
+                        .padding(horizontal = 18.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(t("+ 立即添加配置"), fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Bg, fontFamily = XinUiFont)
+                    Text(t("+ 立即添加配置"), fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Green, fontFamily = XinUiFont)
                 }
             }
         } else {
             savedConfigs.forEach { cfg ->
                 val isActive = cfg.id == activeId
-                Row(Modifier.fillMaxWidth().background(if (isActive) LocalXinColors.current.activeBg else Bg)
-                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { activateConfig(cfg.id) }
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (isActive) LocalXinColors.current.activeBg else LocalXinColors.current.bgElevated)
+                        .border(1.dp, if (isActive) Green.copy(alpha = 0.35f) else Border, RoundedCornerShape(14.dp))
+                        .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) { activateConfig(cfg.id) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     ProviderAvatar(
                         supplierId = cfg.supplierId,
@@ -457,8 +461,20 @@ fun SupplierConfigScreen(
                     )
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(cfg.name, fontSize = 12.sp, fontFamily = XinUiFont,
-                            color = if (isActive) Ink else Sub)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(cfg.name, fontSize = 12.sp, fontFamily = XinUiFont,
+                                color = if (isActive) Ink else Sub)
+                            if (isActive) {
+                                Spacer(Modifier.width(7.dp))
+                                Text(
+                                    t("使用中"), fontSize = 9.sp, fontFamily = XinUiFont, color = Green,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(7.dp))
+                                        .background(Green.copy(alpha = 0.12f))
+                                        .padding(horizontal = 7.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("${knownSuppliers.find{it.id==cfg.supplierId}?.name ?: cfg.supplierId} · ${cfg.model}",
                                 fontSize = 10.sp, fontFamily = XinUiFont, color = Faint)
@@ -469,20 +485,18 @@ fun SupplierConfigScreen(
                                 })
                         }
                     }
-                    if (isActive) Text("✓", fontSize = 12.sp, color = Green, modifier = Modifier.padding(end = 8.dp))
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = { startEdit(cfg) }, modifier = Modifier.size(40.dp)) {
-                            Icon(Icons.Outlined.Edit, contentDescription = "编辑 ${cfg.name}", tint = Sub, modifier = Modifier.size(19.dp))
+                        IconButton(onClick = { startEdit(cfg) }, modifier = Modifier.size(38.dp)) {
+                            Icon(Icons.Outlined.Edit, contentDescription = "编辑 ${cfg.name}", tint = Sub, modifier = Modifier.size(18.dp))
                         }
-                        IconButton(onClick = { deleteConfig(cfg) }, modifier = Modifier.size(40.dp)) {
-                            Icon(Icons.Outlined.Delete, contentDescription = "删除 ${cfg.name}", tint = Red, modifier = Modifier.size(19.dp))
+                        IconButton(onClick = { deleteConfig(cfg) }, modifier = Modifier.size(38.dp)) {
+                            Icon(Icons.Outlined.Delete, contentDescription = "删除 ${cfg.name}", tint = Red, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
-                Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
             }
         }
 

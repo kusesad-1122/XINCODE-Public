@@ -205,6 +205,19 @@ private suspend fun processAttachmentUri(
         return
     }
 
+    // ---- 音频:落盘存路径。支持音频输入的模型直接听;其余模型可用 transcribe_audio 转写。 ----
+    if (mime.startsWith("audio/") || ext in audioExts) {
+        val dest = copyToPrivate() ?: run { toast("无法读取音频: $fileName"); return }
+        addAttachment(Attachment(
+            fileName = fileName,
+            absolutePath = dest.absolutePath,
+            sizeBytes = if (size > 0) size else dest.length(),
+            mimeType = mime.ifBlank { "audio/$ext" },
+            content = ""
+        ))
+        return
+    }
+
     // ---- 文本文件:白名单 + 按大小决定内联还是给路径 ----
     val nameNoExt = fileName.substringBeforeLast('.')
     val allowed = whiteList.contains(ext) || whiteListNoExt.contains(nameNoExt) ||
@@ -255,6 +268,9 @@ private val whiteListNoExt = setOf("README","LICENSE","Makefile","Dockerfile","C
 
 /** 图片扩展名。MIME 缺失时(部分文件管理器不给 type)靠它兜底判断。 */
 private val imageExts = setOf("jpg","jpeg","png","webp","gif","bmp","heic","heif","avif")
+
+/** 音频扩展名。MIME 缺失时兜底;语音消息与音频附件共用。 */
+private val audioExts = setOf("m4a","wav","mp3","aac","ogg","flac","amr","opus")
 
 /** 人类可读体积,用于附件 chip。 */
 private fun humanSize(bytes: Long): String = when {
@@ -387,11 +403,15 @@ fun ChatScreen(
     val voiceFinalText = voiceInputHelper?.finalText?.collectAsState()?.value.orEmpty()
     val voiceErrorText = voiceInputHelper?.errorMsg?.collectAsState()?.value.orEmpty()
     val voiceFeedback = voiceUiFeedback(voiceState, voicePartialText, voiceErrorText)
-    val micPermissionLauncher = rememberLauncherForActivityResult(
+    // 语音消息录音状态(独立于上面的原生识别:那个是「说成文字」,这个是「音频直接发 AI」)
+    val voiceRecording by VoiceMessageRecorder.recording.collectAsState()
+    val voiceDurationSec by VoiceMessageRecorder.durationSec.collectAsState()
+    val voiceRecordLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) voiceInputHelper?.startListening()
-        else Toast.makeText(context, "需要录音权限才能使用语音输入", Toast.LENGTH_SHORT).show()
+        if (granted) {
+            if (!VoiceMessageRecorder.start(context)) Toast.makeText(context, "录音启动失败", Toast.LENGTH_SHORT).show()
+        } else Toast.makeText(context, "需要录音权限才能发送语音消息", Toast.LENGTH_SHORT).show()
     }
 
     LaunchedEffect(voiceFinalText) {
@@ -1209,12 +1229,14 @@ fun ChatScreen(
                         if (att.absolutePath.isNotEmpty()) {
                             // 走路径的附件:内容不进消息体,所以多大都不占上下文。
                             // 图片交给 describe_image(未配视觉模型时该工具不暴露),
+                            // 语音直接给模型(支持音频的模型听,其余用 transcribe_audio),
                             // 大文本交给 file_read 按需读、分段读。
                             val isImg = att.mimeType.startsWith("image/")
-                            if (isImg) {
-                                append("\n### ${att.fileName}(图片,路径:${att.absolutePath})\n")
-                            } else {
-                                append("\n### ${att.fileName}(文件较大未内联,路径:${att.absolutePath},请用 file_read 按需读取)\n")
+                            when {
+                                isImg -> append("\n### ${att.fileName}(图片,路径:${att.absolutePath})\n")
+                                att.mimeType.startsWith("audio/") ->
+                                    append("\n### ${att.fileName}(语音,路径:${att.absolutePath},可用 transcribe_audio 转写)\n")
+                                else -> append("\n### ${att.fileName}(文件较大未内联,路径:${att.absolutePath},请用 file_read 按需读取)\n")
                             }
                         } else {
                             append("\n### ${att.fileName}\n```\n${att.content}\n```\n")
@@ -1440,7 +1462,36 @@ fun ChatScreen(
 
                     Spacer(Modifier.weight(1f))
 
-                    // Microphone button
+                    // 语音消息:录音 → 音频文件直接发给 AI(不先转文字)
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {
+                                if (voiceRecording) {
+                                    val att = VoiceMessageRecorder.stop()
+                                    if (att != null) pendingAttachments.value = pendingAttachments.value + att
+                                    else Toast.makeText(context, "录音失败，请重试", Toast.LENGTH_SHORT).show()
+                                } else if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                    if (!VoiceMessageRecorder.start(context)) Toast.makeText(context, "录音启动失败", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    voiceRecordLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            if (voiceRecording) "${voiceDurationSec}s" else "●",
+                            fontSize = if (voiceRecording) 10.sp else 15.sp,
+                            fontFamily = XinUiFont,
+                            fontWeight = FontWeight.Medium,
+                            color = if (voiceRecording) Red else Sub
+                        )
+                    }
+
+                    Spacer(Modifier.width(8.dp))
+
+                    // Microphone button(系统原生语音识别:直接说成文字进输入框,不再先申请权限)
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -1450,8 +1501,7 @@ fun ChatScreen(
                                 voiceInputHelper == null -> Toast.makeText(context, "语音输入组件尚未初始化", Toast.LENGTH_LONG).show()
                                 voiceState == VoiceInputHelper.State.STARTING || voiceState == VoiceInputHelper.State.LISTENING -> voiceInputHelper.finishListening()
                                 voiceState == VoiceInputHelper.State.PROCESSING -> Toast.makeText(context, "正在整理识别结果，请稍候", Toast.LENGTH_SHORT).show()
-                                ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED -> voiceInputHelper.startListening()
-                                else -> micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                else -> voiceInputHelper.startListening()
                             }
                         },
                         contentAlignment = Alignment.Center

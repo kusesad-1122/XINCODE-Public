@@ -801,6 +801,13 @@ class AgentChatState(
                                 database, openAiClient, sessionProjectId, asstId, finalContent
                             )
                         }
+
+                        // --- Auto title ---
+                        // 仍是默认标题「新对话」时,按首轮内容起个短标题(独立协程,不阻塞本回合)
+                        ChatTitleGenerator.maybeGenerate(
+                            database, sessionId = currentSessionId,
+                            userText = text, assistantText = finalContent
+                        )
                     }
                 }
 

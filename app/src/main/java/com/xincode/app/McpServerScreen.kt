@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -65,6 +66,7 @@ fun McpServerScreen(
         Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)
     ) {
         XinPageHeader(title = t("MCP 服务器"), subtitle = t("连接和管理外部工具"), onBack = onBack) {
+            XinHeaderAction(label = t("刷新"), onClick = { refresh() })
             XinHeaderAction(label = t("添加"), onClick = { showAddDialog = true })
         }
         Spacer(Modifier.height(12.dp))
@@ -87,9 +89,20 @@ fun McpServerScreen(
                 Column {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(server.name, fontSize = 13.sp, fontFamily = JetBrainsMono, color = Ink)
-                        val statusText = if (server.connected) t("● 已连接") else t("○ 未连接")
-                        Text(statusText, fontSize = 11.sp, fontFamily = JetBrainsMono,
-                            color = if (server.connected) Green else Faint)
+                        // 连接状态指示:正常连接绿点,异常/断开红点
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                Modifier
+                                    .size(8.dp)
+                                    .background(if (server.connected) Green else Red, RoundedCornerShape(4.dp))
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (server.connected) t("已连接") else t("未连接"),
+                                fontSize = 11.sp, fontFamily = JetBrainsMono,
+                                color = if (server.connected) Green else Red
+                            )
+                        }
                     }
                     Text(server.url, fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
                     if (server.connected && server.toolNames.isNotBlank()) {

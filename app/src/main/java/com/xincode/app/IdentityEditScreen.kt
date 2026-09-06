@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -79,18 +81,8 @@ fun IdentityEditScreen(
         Spacer(Modifier.height(12.dp))
 
         Text("名称", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
-        Spacer(Modifier.height(4.dp))
-        TextField(
-            value = name, onValueChange = { name = it }, singleLine = true,
-            placeholder = { Text("例如: 代码评审", fontSize = 13.sp, fontFamily = JetBrainsMono, color = Faint) },
-            modifier = Modifier.fillMaxWidth().border(0.5.dp, Border, RoundedCornerShape(4.dp)),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
-                cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink,
-                focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
-            ),
-            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = JetBrainsMono)
-        )
+        Spacer(Modifier.height(6.dp))
+        IdField(name, { name = it }, "例如: 代码评审", singleLine = true)
 
         Spacer(Modifier.height(20.dp))
         Text("描述(只在列表里显示,不进提示词)", fontSize = 11.sp, fontFamily = JetBrainsMono, color = Sub)
@@ -134,17 +126,11 @@ fun IdentityEditScreen(
             "只写个名字(比如「架构师」)也能点扩展,它会补出角色边界、关注点和输出要求。",
             fontSize = 9.sp, fontFamily = JetBrainsMono, color = Faint, lineHeight = 13.sp
         )
-        Spacer(Modifier.height(4.dp))
-        TextField(
-            value = prompt, onValueChange = { prompt = it },
-            placeholder = { Text("描述角色、性格、能力倾向…或只写个名字后点上面的扩展", fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
-            modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp).border(0.5.dp, Border, RoundedCornerShape(4.dp)),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
-                cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink,
-                focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
-            ),
-            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = JetBrainsMono)
+        Spacer(Modifier.height(6.dp))
+        IdField(
+            prompt, { prompt = it },
+            "描述角色、性格、能力倾向…或只写个名字后点上面的扩展",
+            minHeight = 160.dp
         )
 
         Spacer(Modifier.height(20.dp))
@@ -225,15 +211,20 @@ private fun IdField(
     singleLine: Boolean = false,
     minHeight: androidx.compose.ui.unit.Dp = 0.dp
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     TextField(
         value = value, onValueChange = onValueChange, singleLine = singleLine,
         placeholder = { Text(placeholder, fontSize = 12.sp, fontFamily = JetBrainsMono, color = Faint) },
         modifier = Modifier.fillMaxWidth()
             .let { if (minHeight > 0.dp) it.heightIn(min = minHeight) else it }
-            .border(0.5.dp, Border, RoundedCornerShape(4.dp)),
+            .clip(RoundedCornerShape(14.dp))
+            .background(BgElevated)
+            .border(1.dp, if (focused) Green.copy(alpha = 0.45f) else Border, RoundedCornerShape(14.dp)),
+        interactionSource = interaction,
         colors = TextFieldDefaults.colors(
             focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
-            cursorColor = Ink, focusedTextColor = Ink, unfocusedTextColor = Ink,
+            cursorColor = Green, focusedTextColor = Ink, unfocusedTextColor = Ink,
             focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent
         ),
         textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, fontFamily = JetBrainsMono)

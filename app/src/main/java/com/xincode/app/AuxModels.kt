@@ -33,7 +33,8 @@ object AuxModels {
         Task("reason", "深度推理", "把难题转交更强的推理模型(如 deepseek-reasoner / o1)", "deepseek-reasoner"),
         Task("translate", "翻译", "转交擅长翻译的模型", ""),
         Task("transcribe", "语音转写", "Whisper 兼容端点", "whisper-1"),
-        Task("image", "图像生成", "文生图专用端点(OpenAI /images/generations 兼容)", "gpt-image-1")
+        Task("image", "图像生成", "文生图专用端点(OpenAI /images/generations 兼容)", "gpt-image-1"),
+        Task("title", "对话起名", "首轮回复后自动为会话生成短标题(不配则用主模型)", "")
     )
 
     private val http = OkHttpClient.Builder()
@@ -58,7 +59,11 @@ object AuxModels {
         // 这里没单独填 URL/Key 时,退而看【功能模型配置】有没有给这个 key 指定一套已存的供应商配置。
         // 两套机制的优先级:手填的委托端点 > 功能模型配置 > 不可用。
         // 手填优先,是因为用户特意填了外部端点,多半就是要绕开主供应商。
-        if (baseUrl.isBlank() || keyEnc.isBlank()) return resolveFromFunctionConfig(db, keystore, key)
+        if (baseUrl.isBlank() || keyEnc.isBlank()) {
+            // 对话起名这类小任务必须开箱可用:连功能模型都没配时兜底用主供应商。
+            return resolveFromFunctionConfig(db, keystore, key)
+                ?: if (key == "title") resolveActive(db, keystore) else null
+        }
         val model = db.settingDao().get(Profiles.key(p, "aux_${key}_model"))?.trim()
             ?.ifBlank { TASKS.firstOrNull { it.key == key }?.defaultModel ?: "" } ?: ""
         val apiPathType = db.settingDao().get(Profiles.key(p, "aux_${key}_api_path_type"))
@@ -91,6 +96,19 @@ object AuxModels {
             return null
         }
         return Resolved(cfg.baseUrl, apiKey, model, cfg.apiPathType, cfg.extraHeadersJson)
+    }
+
+    /** 兜底:直接用当前激活的主供应商配置(title 这类小任务保证开箱可用)。 */
+    private suspend fun resolveActive(db: AppDatabase, keystore: KeystoreProvider): Resolved? {
+        val cfg = db.providerConfigDao().getActive() ?: return null
+        if (cfg.baseUrl.isBlank() || cfg.apiKeyEnc.isBlank()) return null
+        val apiKey = try {
+            keystore.decrypt(Base64.decode(cfg.apiKeyEnc, Base64.NO_WRAP))
+        } catch (e: Exception) {
+            Log.w(TAG, "aux resolveActive decrypt failed: ${e.message}")
+            return null
+        }
+        return Resolved(cfg.baseUrl, apiKey, cfg.model, cfg.apiPathType, cfg.extraHeadersJson)
     }
 
     suspend fun isConfigured(db: AppDatabase, key: String): Boolean {

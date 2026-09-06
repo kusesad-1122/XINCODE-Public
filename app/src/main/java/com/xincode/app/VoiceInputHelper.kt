@@ -131,9 +131,11 @@ class VoiceInputHelper(private val context: Context) {
             })
         }
 
+        // 语言跟随应用界面语言,而不是固定中文
+        val lang = if ((context.applicationContext as? XincodeApplication)?.appLanguage == "en") "en-US" else "zh-CN"
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
