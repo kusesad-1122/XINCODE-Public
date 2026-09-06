@@ -336,7 +336,7 @@
       <a class="btn btn-primary" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a>
       <a class="btn btn-ghost" href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener">查看源码仓库 →</a>
     </div>
-    <div class="meta">最新版本 <b id="ver">v1.13.7</b> · Android 9+ · <span id="ver-note">签名版 APK 随 Release 发布</span></div>
+    <div class="meta">最新版本 <b id="ver">v1.14.1</b> · Android 9+ · <span id="ver-note">签名版 APK 随 Release 发布</span></div>
   </div>
 
   <!-- 手机样机:还原应用内的对话与工具卡 -->
@@ -406,12 +406,17 @@
       <div class="card">
         <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/></svg></div>
         <h3>插件市场</h3>
-        <p>连接器、远程 MCP 服务、技能包三类插件,一键安装卸载;需要授权的插件走设备流,浏览器登录后自动回传。</p>
+        <p>连接器、远程 MCP、在线插件、技能包四页签；27 个在线插件分 8 类（气象/金融/知识/影音/工具/饮食/游戏/开发），云端上架免发版；技能按场景自动引用。</p>
       </div>
       <div class="card">
         <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M19.1 4.9l-2.8 2.8M7.7 16.3l-2.8 2.8"/></svg></div>
         <h3>MCP 工具生态</h3>
         <p>本地 stdio 与远程 HTTP 双传输,GitHub、DeepWiki、Context7 等开箱即连,AI 直接调用真实工具。</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l2.5 5.5L20 9.5l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-1z"/></svg></div>
+        <h3>任务不断线</h3>
+        <p>通知栏一键中断长任务、敏感操作通知栏批复；多轮任务自动继承前文，杀进程可从断点续跑——无回执不执行，失败明示不静默。</p>
       </div>
       <div class="card">
         <div class="ic"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><circle cx="17.5" cy="9.5" r="2.4"/><path d="M15.5 14.6c2.8.3 4.9 1.9 5.6 4.4"/></svg></div>
@@ -443,7 +448,7 @@
     <div class="sec-head">
       <div class="kicker">Plugin Market</div>
       <h2>开箱即连的插件生态。</h2>
-      <p>应用内置插件商店:免鉴权的官方远程 MCP 装完即用；云端在线目录实时拉取,在线插件（天气/汇率/神经检索）免发版上线。共 10+ 内置插件,持续扩充。</p>
+      <p>应用内置插件商店:免鉴权的官方远程 MCP 装完即用；云端在线目录实时拉取,27 个在线插件分 8 大类（天气/汇率/币价/地震/菜谱/宝可梦/GitHub 星数/npm 下载量…）免发版上线。持续扩充。</p>
     </div>
     <div class="plugin-row">
       <div class="plugin">
@@ -483,7 +488,7 @@
         <span class="tag">在线 · 免密钥</span>
       </div>
     </div>
-    <div class="more">还有 Exa 神经检索(填写 API Key 即用)+ 6 个内置技能包:安全代码审计 · 逆向分析 · APK 构建 / 更新 / 反编译 · LSPosed 模块开发 —— <a href="https://github.com/kusesad-1122/XINCODE-Public#-主要能力" target="_blank" rel="noopener">了解更多 →</a></div>
+    <div class="more">还有 Exa 神经检索(填写 API Key 即用)+ 6 个内置技能包:安全代码审计 · 逆向分析 · APK 构建 / 更新 / 反编译 · LSPosed 模块开发 —— 技能按场景自动引用，也可用 /技能名 主动调用 —— <a href="https://github.com/kusesad-1122/XINCODE-Public#-主要能力" target="_blank" rel="noopener">了解更多 →</a></div>
   </div>
 </section>
 
@@ -497,6 +502,14 @@
     </div>
     <div class="changelog" id="release-list">
       <!-- 静态兜底:Release API 拉取成功后会被动态版本整体替换 -->
+      <div class="release">
+        <div class="v"><b>v1.14.1</b><time>2026-09-07</time></div>
+        <ul>
+          <li>在线插件市场 3 → 27 个:8 大分类，逐个实测可用；插件页拆四页签，带搜索/分类/授权/排序。</li>
+          <li>技能场景自动引用:命中附用法，未命中零成本；子智能体管理页空列表修复。</li>
+          <li>用量分析页优雅化:Hero 总览卡 + 圆头渐显柱 + 成本 Top3；代码索引按需自建。</li>
+        </ul>
+      </div>
       <div class="release">
         <div class="v"><b>v1.13.7</b><time>2026-09-06</time></div>
         <ul>
@@ -513,12 +526,6 @@
           <li>启动重连失败如实回落为未连接;重连不再泄漏旧连接。</li>
         </ul>
       </div>
-      <div class="release">
-        <div class="v"><b>v1.13.5</b><time>2026-09-06</time></div>
-        <ul>
-          <li>设置页「插件」入口回归 Agent 工具区第一行。</li>
-          <li>思考过程折叠行对齐 Claude:一行摘要 + 细箭头,点开才展开。</li>
-        </ul>
       </div>
     </div>
   </div>
@@ -531,7 +538,7 @@
       <div>
         <h2>现在就把它装进手机。</h2>
         <p>Release 附带正式签名 APK;也可以克隆仓库用 Gradle 自己构建。需要 Android 9 及以上。</p>
-        <span class="ver"><i></i>最新版本:<b id="ver2">v1.13.7</b> · <span id="apk-date">2026-09-06</span> · <span id="apk-size">约 96 MB</span></span>
+        <span class="ver"><i></i>最新版本:<b id="ver2">v1.14.1</b> · <span id="apk-date">2026-09-07</span> · <span id="apk-size">约 96 MB</span></span>
       </div>
       <div class="dl-actions">
         <a class="btn btn-inverse" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a>
