@@ -200,7 +200,7 @@ fun GlassSwitch(
         Box(
             Modifier
                 .padding(start = 3.dp)
-                .offset(x = progress * 22.dp)
+                .offset(x = 22.dp * progress)
                 .size(24.dp)
                 .shadow(2.dp, CircleShape)
                 .clip(CircleShape)
