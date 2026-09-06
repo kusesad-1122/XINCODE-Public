@@ -545,8 +545,16 @@ class AgentChatState(
                         database, openAiClient, sessionProjectId, text
                     )
                     val recallBase = lastLayeredSystemPrompt
-                    if (recallBlock.isNotBlank() && recallBase != null) {
-                        agentCore.updateSystemPrompt(recallBase + "\n\n" + recallBlock)
+                    // 场景技能自动引用(Codex Skills 式渐进披露):命中则附全文摘要,
+                    // 与记忆召回同一通道(不写回冻结前缀,保缓存)。未命中零成本。
+                    val skillBlock = try {
+                        SkillRecall.blockForQuery(
+                            database.skillDao().getAll().filter { it.state == "active" }, text
+                        )
+                    } catch (_: Exception) { "" }
+                    val extras = listOf(recallBlock, skillBlock).filter { it.isNotBlank() }
+                    if (extras.isNotEmpty() && recallBase != null) {
+                        agentCore.updateSystemPrompt(recallBase + "\n\n" + extras.joinToString("\n\n"))
                     }
                     agentCore.temperature = identity?.temperature ?: 1.0f
                     // 身份卡工具白名单:留空=不限制。每回合重设,这样编辑身份卡后下一回合就生效。

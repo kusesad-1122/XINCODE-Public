@@ -49,6 +49,11 @@ fun SubAgentsScreen(
     val scope = rememberCoroutineScope()
     var agents by remember { mutableStateOf<List<SubAgentEntity>>(emptyList()) }
     var reload by remember { mutableStateOf(0) }
+    // 修：列表此前从未加载（无 LaunchedEffect、无订阅），子智能体页恒为空。
+    // 按 reload 重查，增删改后 reload++ 即刷新。
+    androidx.compose.runtime.LaunchedEffect(reload) {
+        agents = withContext(Dispatchers.IO) { database.subAgentDao().getAll() }
+    }
     var creating by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<Long?>(null) }
 

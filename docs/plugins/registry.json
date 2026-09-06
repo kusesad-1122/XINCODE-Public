@@ -1,11 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "plugins": [
     {
       "id": "open_meteo_weather",
       "name": "Open-Meteo 实时天气",
       "description": "全球任意经纬度的实时天气、风速与空气质量查询。免密钥,装完即用。",
-      "icon": "https://open-meteo.com/favicon.ico",
+      "category": "气象预报",
       "auth_type": "none",
       "base_url": "https://api.open-meteo.com/v1",
       "tools": [
@@ -15,44 +15,923 @@
           "method": "GET",
           "path": "/forecast",
           "params": [
-            { "name": "latitude", "description": "纬度,如 39.9", "required": true, "type": "number" },
-            { "name": "longitude", "description": "经度,如 116.4", "required": true, "type": "number" },
-            { "name": "current", "description": "要返回的实时要素,逗号分隔(temperature_2m,wind_speed_10m,relative_humidity_2m 等)", "required": false, "type": "string", "default": "temperature_2m,wind_speed_10m,relative_humidity_2m" },
-            { "name": "timezone", "description": "时区,auto 表示按经纬度自动", "required": false, "type": "string", "default": "auto" }
+            {
+              "name": "latitude",
+              "description": "纬度,如 39.9",
+              "required": true,
+              "type": "number"
+            },
+            {
+              "name": "longitude",
+              "description": "经度,如 116.4",
+              "required": true,
+              "type": "number"
+            },
+            {
+              "name": "current",
+              "description": "要返回的实时要素,逗号分隔",
+              "required": false,
+              "type": "string",
+              "default": "temperature_2m,wind_speed_10m,relative_humidity_2m"
+            },
+            {
+              "name": "timezone",
+              "description": "时区,auto 按经纬度自动",
+              "required": false,
+              "type": "string",
+              "default": "auto"
+            }
           ]
         },
         {
           "name": "get_air_quality",
-          "summary": "查询指定经纬度的空气质量(欧洲标准指数与 PM2.5 等)",
+          "summary": "查询指定经纬度的空气质量(欧洲指数与 PM2.5 等)",
           "method": "GET",
           "path": "/air-quality",
           "params": [
-            { "name": "latitude", "description": "纬度,如 39.9", "required": true, "type": "number" },
-            { "name": "longitude", "description": "经度,如 116.4", "required": true, "type": "number" }
+            {
+              "name": "latitude",
+              "description": "纬度",
+              "required": true,
+              "type": "number"
+            },
+            {
+              "name": "longitude",
+              "description": "经度",
+              "required": true,
+              "type": "number"
+            }
           ]
         }
-      ]
+      ],
+      "icon": "https://open-meteo.com/favicon.ico"
+    },
+    {
+      "id": "sunrise_sunset",
+      "name": "日出日落时刻",
+      "description": "全球任意经纬度的日出、日落、昼长与暮光时刻。免密钥。",
+      "category": "气象预报",
+      "auth_type": "none",
+      "base_url": "https://api.sunrise-sunset.org",
+      "tools": [
+        {
+          "name": "get_times",
+          "summary": "查询指定经纬度某日的日出日落时刻",
+          "method": "GET",
+          "path": "/json",
+          "params": [
+            {
+              "name": "lat",
+              "description": "纬度,如 39.9",
+              "required": true,
+              "type": "number"
+            },
+            {
+              "name": "lng",
+              "description": "经度,如 116.4",
+              "required": true,
+              "type": "number"
+            },
+            {
+              "name": "date",
+              "description": "日期 YYYY-MM-DD,默认今天",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "name": "formatted",
+              "description": "为0返回24小时制时间",
+              "required": false,
+              "type": "string",
+              "default": "0"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.sunrise-sunset.org&sz=64"
+    },
+    {
+      "id": "usgs_earthquakes",
+      "name": "全球地震速报",
+      "description": "美国地质调查局实时地震目录,按震级与数量查询近期地震。免密钥。",
+      "category": "气象预报",
+      "auth_type": "none",
+      "base_url": "https://earthquake.usgs.gov/fdsnws/event/1",
+      "tools": [
+        {
+          "name": "query",
+          "summary": "查询近期地震(震级/数量可调)",
+          "method": "GET",
+          "path": "/query",
+          "params": [
+            {
+              "name": "minmagnitude",
+              "description": "最小震级,如 5",
+              "required": false,
+              "type": "string",
+              "default": "5"
+            },
+            {
+              "name": "limit",
+              "description": "返回条数",
+              "required": false,
+              "type": "string",
+              "default": "5"
+            },
+            {
+              "name": "format",
+              "description": "固定 geojson",
+              "required": false,
+              "type": "string",
+              "default": "geojson"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=earthquake.usgs.gov&sz=64"
     },
     {
       "id": "frankfurter_exchange",
       "name": "Frankfurter 汇率",
-      "description": "欧洲央行基准的实时外汇汇率查询与换算。免密钥,装完即用。",
-      "icon": "https://frankfurter.dev/favicon.ico",
+      "description": "欧洲央行参考汇率,160+ 货币实时与历史换算。免密钥。",
+      "category": "金融财经",
       "auth_type": "none",
       "base_url": "https://api.frankfurter.dev/v1",
       "tools": [
         {
-          "name": "get_latest_rate",
-          "summary": "查询最新汇率(如 USD→CNY),不带金额则直接返回汇率",
+          "name": "latest",
+          "summary": "最新汇率换算(基准/目标货币可调)",
           "method": "GET",
           "path": "/latest",
           "params": [
-            { "name": "base", "description": "基准货币代码,如 USD", "required": false, "type": "string", "default": "USD" },
-            { "name": "symbols", "description": "目标货币代码,逗号分隔,如 CNY,EUR", "required": false, "type": "string", "default": "CNY" },
-            { "name": "amount", "description": "要换算的金额(可选,传入则返回换算结果)", "required": false, "type": "number" }
+            {
+              "name": "base",
+              "description": "基准货币,如 CNY",
+              "required": false,
+              "type": "string",
+              "default": "CNY"
+            },
+            {
+              "name": "symbols",
+              "description": "目标货币逗号分隔,如 USD,EUR",
+              "required": false,
+              "type": "string",
+              "default": "USD"
+            }
+          ]
+        },
+        {
+          "name": "history",
+          "summary": "查询某日历史汇率",
+          "method": "GET",
+          "path": "/{date}",
+          "params": [
+            {
+              "name": "date",
+              "description": "日期 YYYY-MM-DD,如 2024-01-01",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "base",
+              "description": "基准货币",
+              "required": false,
+              "type": "string",
+              "default": "CNY"
+            },
+            {
+              "name": "symbols",
+              "description": "目标货币逗号分隔",
+              "required": false,
+              "type": "string",
+              "default": "USD"
+            }
           ]
         }
-      ]
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.frankfurter.dev&sz=64"
+    },
+    {
+      "id": "coingecko_crypto",
+      "name": "CoinGecko 币价",
+      "description": "上万种加密货币实时价格与市值。免密钥(低频调用)。",
+      "category": "金融财经",
+      "auth_type": "none",
+      "base_url": "https://api.coingecko.com/api/v3",
+      "tools": [
+        {
+          "name": "simple_price",
+          "summary": "查询币种现价(支持人民币)",
+          "method": "GET",
+          "path": "/simple/price",
+          "params": [
+            {
+              "name": "ids",
+              "description": "币种id逗号分隔,如 bitcoin,ethereum",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "vs_currencies",
+              "description": "计价货币,如 usd,cny",
+              "required": false,
+              "type": "string",
+              "default": "usd"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.coingecko.com&sz=64"
+    },
+    {
+      "id": "nbp_exchange",
+      "name": "波兰央行汇率",
+      "description": "波兰国家银行官方外汇牌价表。免密钥。",
+      "category": "金融财经",
+      "auth_type": "none",
+      "base_url": "https://api.nbp.pl/api",
+      "tools": [
+        {
+          "name": "table_a",
+          "summary": "最新 A 表牌价(美元欧元等主流货币)",
+          "method": "GET",
+          "path": "/exchangerates/tables/A",
+          "params": [
+            {
+              "name": "format",
+              "description": "固定 json",
+              "required": false,
+              "type": "string",
+              "default": "json"
+            }
+          ]
+        },
+        {
+          "name": "single_rate",
+          "summary": "查询单个货币对兹罗提汇率",
+          "method": "GET",
+          "path": "/exchangerates/rates/A/{code}",
+          "params": [
+            {
+              "name": "code",
+              "description": "货币代码,如 USD,EUR,CHF",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.nbp.pl&sz=64"
+    },
+    {
+      "id": "wikimedia_onthisday",
+      "name": "维基历史上的今天",
+      "description": "维基百科历史上的今天精选事件/人物/节日。免密钥。",
+      "category": "知识百科",
+      "auth_type": "none",
+      "base_url": "https://api.wikimedia.org/feed/v1/wikipedia",
+      "tools": [
+        {
+          "name": "onthisday",
+          "summary": "查询某月某日的历史事件",
+          "method": "GET",
+          "path": "/{lang}/onthisday/all/{month}/{day}",
+          "params": [
+            {
+              "name": "lang",
+              "description": "语言,如 zh,en",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "month",
+              "description": "月份 MM",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "day",
+              "description": "日期 DD",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.wikimedia.org&sz=64"
+    },
+    {
+      "id": "openlibrary_books",
+      "name": "OpenLibrary 图书",
+      "description": "千万级开放图书目录:搜书、查版本、ISBN 直取。免密钥。",
+      "category": "知识百科",
+      "auth_type": "none",
+      "base_url": "https://openlibrary.org",
+      "tools": [
+        {
+          "name": "search",
+          "summary": "按书名/作者搜索图书",
+          "method": "GET",
+          "path": "/search.json",
+          "params": [
+            {
+              "name": "q",
+              "description": "关键词,如 dune",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "limit",
+              "description": "条数",
+              "required": false,
+              "type": "string",
+              "default": "3"
+            }
+          ]
+        },
+        {
+          "name": "by_isbn",
+          "summary": "按 ISBN 查图书",
+          "method": "GET",
+          "path": "/isbn/{isbn}.json",
+          "params": [
+            {
+              "name": "isbn",
+              "description": "ISBN,如 9780441172719",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=openlibrary.org&sz=64"
+    },
+    {
+      "id": "met_museum",
+      "name": "大都会艺术馆藏",
+      "description": "纽约大都会博物馆 48 万+藏品检索。免密钥。",
+      "category": "知识百科",
+      "auth_type": "none",
+      "base_url": "https://collectionapi.metmuseum.org/public/collection/v1",
+      "tools": [
+        {
+          "name": "search",
+          "summary": "检索馆藏(关键词)",
+          "method": "GET",
+          "path": "/search",
+          "params": [
+            {
+              "name": "q",
+              "description": "关键词,如 sunflowers",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "object",
+          "summary": "取单件藏品详情",
+          "method": "GET",
+          "path": "/objects/{objectID}",
+          "params": [
+            {
+              "name": "objectID",
+              "description": "藏品 id,检索结果里的 objectID",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=collectionapi.metmuseum.org&sz=64"
+    },
+    {
+      "id": "restcountries",
+      "name": "国家信息",
+      "description": "全球国家首都/人口/语言/货币/区号速查。免密钥。",
+      "category": "知识百科",
+      "auth_type": "none",
+      "base_url": "https://restcountries.com/v3.1",
+      "tools": [
+        {
+          "name": "by_name",
+          "summary": "按国家名查询",
+          "method": "GET",
+          "path": "/name/{name}",
+          "params": [
+            {
+              "name": "name",
+              "description": "英文国名,如 china,japan",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "fields",
+              "description": "返回字段逗号分隔",
+              "required": false,
+              "type": "string",
+              "default": "name,capital,population,languages,currencies"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=restcountries.com&sz=64"
+    },
+    {
+      "id": "opentdb_quiz",
+      "name": "OpenTDB 题库",
+      "description": "开源问答题库,可出选择题考考自己。免密钥。",
+      "category": "知识百科",
+      "auth_type": "none",
+      "base_url": "https://opentdb.com",
+      "tools": [
+        {
+          "name": "get_questions",
+          "summary": "按数量/分类/难度出题",
+          "method": "GET",
+          "path": "/api.php",
+          "params": [
+            {
+              "name": "amount",
+              "description": "题数 1-50",
+              "required": false,
+              "type": "string",
+              "default": "3"
+            },
+            {
+              "name": "category",
+              "description": "分类id(如9综合,18计算机)",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "name": "difficulty",
+              "description": "easy/medium/hard",
+              "required": false,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=opentdb.com&sz=64"
+    },
+    {
+      "id": "jikan_anime",
+      "name": "Jikan 动漫",
+      "description": "MyAnimeList 非官方 API:动漫搜索排行。免密钥(低频)。",
+      "category": "影音资讯",
+      "auth_type": "none",
+      "base_url": "https://api.jikan.moe/v4",
+      "tools": [
+        {
+          "name": "search_anime",
+          "summary": "搜索动漫",
+          "method": "GET",
+          "path": "/anime",
+          "params": [
+            {
+              "name": "q",
+              "description": "关键词,如 naruto",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "limit",
+              "description": "条数",
+              "required": false,
+              "type": "string",
+              "default": "3"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.jikan.moe&sz=64"
+    },
+    {
+      "id": "tvmaze_shows",
+      "name": "TVMaze 剧集",
+      "description": "全球电视剧搜索与播出信息。免密钥。",
+      "category": "影音资讯",
+      "auth_type": "none",
+      "base_url": "https://api.tvmaze.com",
+      "tools": [
+        {
+          "name": "search_shows",
+          "summary": "搜索剧集",
+          "method": "GET",
+          "path": "/search/shows",
+          "params": [
+            {
+              "name": "q",
+              "description": "剧名,如 friends",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.tvmaze.com&sz=64"
+    },
+    {
+      "id": "dogceo_dogs",
+      "name": "Dog CEO 狗狗图",
+      "description": "随机狗狗图片,可按品种筛选。免密钥。",
+      "category": "影音资讯",
+      "auth_type": "none",
+      "base_url": "https://dog.ceo/api",
+      "tools": [
+        {
+          "name": "random_image",
+          "summary": "随机一张狗狗图",
+          "method": "GET",
+          "path": "/breeds/image/random",
+          "params": []
+        },
+        {
+          "name": "breed_image",
+          "summary": "指定品种随机图",
+          "method": "GET",
+          "path": "/breed/{breed}/images/random",
+          "params": [
+            {
+              "name": "breed",
+              "description": "品种小写,如 shiba",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=dog.ceo&sz=64"
+    },
+    {
+      "id": "chuck_norris",
+      "name": "Chuck Norris 笑话",
+      "description": "随机大 Chuck 笑话,提神用。免密钥。",
+      "category": "实用工具",
+      "auth_type": "none",
+      "base_url": "https://api.chucknorris.io",
+      "tools": [
+        {
+          "name": "random",
+          "summary": "随机一条",
+          "method": "GET",
+          "path": "/jokes/random",
+          "params": []
+        },
+        {
+          "name": "categories",
+          "summary": "笑话分类列表",
+          "method": "GET",
+          "path": "/jokes/categories",
+          "params": []
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.chucknorris.io&sz=64"
+    },
+    {
+      "id": "advice_slip",
+      "name": "人生建议",
+      "description": "随机一条人生建议,丧时服用。免密钥。",
+      "category": "实用工具",
+      "auth_type": "none",
+      "base_url": "https://api.adviceslip.com",
+      "tools": [
+        {
+          "name": "random",
+          "summary": "随机一条建议",
+          "method": "GET",
+          "path": "/advice",
+          "params": []
+        },
+        {
+          "name": "by_id",
+          "summary": "按 id 取建议",
+          "method": "GET",
+          "path": "/advice/{id}",
+          "params": [
+            {
+              "name": "id",
+              "description": "建议 id,如 42",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.adviceslip.com&sz=64"
+    },
+    {
+      "id": "agify_age",
+      "name": "姓名测龄",
+      "description": "按名字预测年龄(统计学)。免密钥。",
+      "category": "实用工具",
+      "auth_type": "none",
+      "base_url": "https://api.agify.io",
+      "tools": [
+        {
+          "name": "predict",
+          "summary": "按名字预测年龄与样本数",
+          "method": "GET",
+          "path": "/",
+          "params": [
+            {
+              "name": "name",
+              "description": "英文名,如 michael",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.agify.io&sz=64"
+    },
+    {
+      "id": "zippopotam_zip",
+      "name": "全球邮编查询",
+      "description": "各国邮编反查城市州省。免密钥。",
+      "category": "实用工具",
+      "auth_type": "none",
+      "base_url": "https://api.zippopotam.us",
+      "tools": [
+        {
+          "name": "lookup",
+          "summary": "按国家与邮编查地名",
+          "method": "GET",
+          "path": "/{country}/{zip}",
+          "params": [
+            {
+              "name": "country",
+              "description": "国家码,如 us,cn,de",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "zip",
+              "description": "邮编,如 90210",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.zippopotam.us&sz=64"
+    },
+    {
+      "id": "ipwho_ip",
+      "name": "IP 归属查询",
+      "description": "IP 查国家城市运营商与时区。免密钥(低频)。",
+      "category": "实用工具",
+      "auth_type": "none",
+      "base_url": "https://ipwho.is",
+      "tools": [
+        {
+          "name": "lookup",
+          "summary": "查询 IP 归属",
+          "method": "GET",
+          "path": "/{ip}",
+          "params": [
+            {
+              "name": "ip",
+              "description": "IPv4,如 8.8.8.8",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=ipwho.is&sz=64"
+    },
+    {
+      "id": "themealdb_recipes",
+      "name": "MealDB 菜谱",
+      "description": "全球菜谱搜索,附做法与配料。免密钥。",
+      "category": "饮食健康",
+      "auth_type": "none",
+      "base_url": "https://www.themealdb.com/api/json/v1/1",
+      "tools": [
+        {
+          "name": "search",
+          "summary": "按菜名搜索菜谱",
+          "method": "GET",
+          "path": "/search.php",
+          "params": [
+            {
+              "name": "s",
+              "description": "关键词,如 chicken",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "lookup",
+          "summary": "按 id 取完整做法",
+          "method": "GET",
+          "path": "/lookup.php",
+          "params": [
+            {
+              "name": "i",
+              "description": "菜谱 id,搜索结果里的 idMeal",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=www.themealdb.com&sz=64"
+    },
+    {
+      "id": "openbrewerydb",
+      "name": "Open Brewery 精酿",
+      "description": "全球精酿酒厂名录,可按城市搜。免密钥。",
+      "category": "饮食健康",
+      "auth_type": "none",
+      "base_url": "https://api.openbrewerydb.org/v1",
+      "tools": [
+        {
+          "name": "by_city",
+          "summary": "按城市搜酒厂",
+          "method": "GET",
+          "path": "/breweries",
+          "params": [
+            {
+              "name": "by_city",
+              "description": "城市英文,如 san_diego",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "name": "per_page",
+              "description": "条数",
+              "required": false,
+              "type": "string",
+              "default": "3"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.openbrewerydb.org&sz=64"
+    },
+    {
+      "id": "pokeapi_pokemon",
+      "name": "宝可梦图鉴",
+      "description": "全世代宝可梦数值特性图鉴。免密钥。",
+      "category": "游戏娱乐",
+      "auth_type": "none",
+      "base_url": "https://pokeapi.co/api/v2",
+      "tools": [
+        {
+          "name": "pokemon",
+          "summary": "查宝可梦(英文小写名)",
+          "method": "GET",
+          "path": "/pokemon/{name}",
+          "params": [
+            {
+              "name": "name",
+              "description": "英文小写名,如 pikachu",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=pokeapi.co&sz=64"
+    },
+    {
+      "id": "scryfall_cards",
+      "name": "Scryfall 万智牌",
+      "description": "万智牌全卡牌检索(模糊名可查)。免密钥。",
+      "category": "游戏娱乐",
+      "auth_type": "none",
+      "base_url": "https://api.scryfall.com",
+      "tools": [
+        {
+          "name": "named",
+          "summary": "按牌名查卡(支持模糊)",
+          "method": "GET",
+          "path": "/cards/named",
+          "params": [
+            {
+              "name": "fuzzy",
+              "description": "牌名关键词,如 black lotus",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.scryfall.com&sz=64"
+    },
+    {
+      "id": "cheapshark_deals",
+      "name": "CheapShark 游戏折扣",
+      "description": "Steam 等多商店游戏折扣聚合。免密钥。",
+      "category": "游戏娱乐",
+      "auth_type": "none",
+      "base_url": "https://www.cheapshark.com/api/1.0",
+      "tools": [
+        {
+          "name": "deals",
+          "summary": "按商店查特价游戏",
+          "method": "GET",
+          "path": "/deals",
+          "params": [
+            {
+              "name": "storeID",
+              "description": "商店id,1=Steam",
+              "required": false,
+              "type": "string",
+              "default": "1"
+            },
+            {
+              "name": "pageSize",
+              "description": "条数",
+              "required": false,
+              "type": "string",
+              "default": "5"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=www.cheapshark.com&sz=64"
+    },
+    {
+      "id": "github_repos",
+      "name": "GitHub 仓库",
+      "description": "查任意公开仓库星数/fork/简介,附带真实 star 数。免密钥(低频)。",
+      "category": "开发运维",
+      "auth_type": "none",
+      "base_url": "https://api.github.com",
+      "tools": [
+        {
+          "name": "repo",
+          "summary": "查仓库信息(含 star 数)",
+          "method": "GET",
+          "path": "/repos/{owner}/{repo}",
+          "params": [
+            {
+              "name": "owner",
+              "description": "属主,如 openai",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "repo",
+              "description": "仓库名,如 codex",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "search_repos",
+          "summary": "搜索仓库(按星排序)",
+          "method": "GET",
+          "path": "/search/repositories",
+          "params": [
+            {
+              "name": "q",
+              "description": "关键词,如 agent+language:kotlin",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "per_page",
+              "description": "条数",
+              "required": false,
+              "type": "string",
+              "default": "3"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.github.com&sz=64"
+    },
+    {
+      "id": "npm_stats",
+      "name": "npm 包数据",
+      "description": "查 npm 包上月真实下载量与版本。免密钥。",
+      "category": "开发运维",
+      "auth_type": "none",
+      "base_url": "https://api.npmjs.org",
+      "tools": [
+        {
+          "name": "downloads",
+          "summary": "上月下载量",
+          "method": "GET",
+          "path": "/downloads/point/last-month/{package}",
+          "params": [
+            {
+              "name": "package",
+              "description": "包名,如 react",
+              "required": true,
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "icon": "https://www.google.com/s2/favicons?domain=api.npmjs.org&sz=64"
     },
     {
       "id": "exa_search",
@@ -69,12 +948,33 @@
           "method": "POST",
           "path": "/search",
           "params": [
-            { "name": "query", "description": "搜索 query(自然语言)", "required": true, "type": "string", "body": true },
-            { "name": "numResults", "description": "返回结果条数,默认 5", "required": false, "type": "integer", "default": 5, "body": true },
-            { "name": "type", "description": "检索类型:auto / neural / keyword", "required": false, "type": "string", "default": "auto", "body": true }
+            {
+              "name": "query",
+              "description": "搜索 query(自然语言)",
+              "required": true,
+              "type": "string",
+              "body": true
+            },
+            {
+              "name": "numResults",
+              "description": "返回结果条数,默认 5",
+              "required": false,
+              "type": "integer",
+              "default": 5,
+              "body": true
+            },
+            {
+              "name": "type",
+              "description": "检索类型:auto / neural / keyword",
+              "required": false,
+              "type": "string",
+              "default": "auto",
+              "body": true
+            }
           ]
         }
-      ]
+      ],
+      "category": "开发运维"
     }
   ]
 }

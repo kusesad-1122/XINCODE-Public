@@ -35,7 +35,8 @@ class CodeGraphTool(
         "查代码结构:符号定义在哪、谁调用了它、它依赖谁、某个文件里有什么。" +
             "比 grep 准(基于语法树,不会命中注释和字符串里的同名词),而且不用把文件读进上下文。" +
             "回答「这个函数在哪」「改它会影响什么」「这个文件都有些什么」时优先用它;" +
-            "找字面字符串或配置值仍然用 grep。"
+            "找字面字符串或配置值仍然用 grep。" +
+            "库空时首次查询会自动建索引（稍慢），之后秒回，无需让用户去索引屏。"
 
     override val parametersSchema: JSONObject = JSONObject().apply {
         put("type", "object")
@@ -64,6 +65,15 @@ class CodeGraphTool(
         }
         val dao = database.codeIndexDao()
         val root = WorkspaceContext.workspaceRoot
+
+        // 按需自建索引：库空且工作区已定时，直接就地建一次再查。
+        // 模型不用先去索引屏；增量指纹+5000文件/1MB上限都在 CodeIndexer 里，
+        // 建失败就当没这回事（下面查不到会如实返回空，不炸）。
+        if (params["action"] != "status" && root.isNotBlank()) {
+            if (runCatching { dao.fileCount(root) }.getOrDefault(0) == 0) {
+                runCatching { CodeIndexer.index(database, root, force = false) }
+            }
+        }
 
         return when (params["action"]) {
             "status" -> {

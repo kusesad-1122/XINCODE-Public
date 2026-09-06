@@ -2,6 +2,7 @@ package com.xincode.app
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -13,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -126,34 +128,49 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
                     }
                 }
             } else {
-                // 总览
+                // 总览：Hero 大卡（总量 + 关键三率）+ 2×2 明细盒。
+                val grandTotal = totalInput + totalOutput
+                val avgPerDay = if (daily.isNotEmpty()) grandTotal / daily.size else 0L
+                val heroCost = byModel.sumOf { estimateCostCny(it) }
+                Column(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(xc.bgElevated)
+                        .border(1.dp, xc.border, RoundedCornerShape(18.dp))
+                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                ) {
+                    Text(t("累计 Token"), fontSize = 10.sp, fontFamily = Mono, color = xc.faint)
+                    Text(fmtTokens(grandTotal), fontSize = 30.sp, fontFamily = Mono,
+                        fontWeight = FontWeight.Bold, color = xc.ink,
+                        modifier = Modifier.padding(top = 2.dp))
+                    Spacer(Modifier.height(8.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        HeroMini(t("调用"), calls.toString(), xc)
+                        HeroMini(t("缓存命中"), String.format("%.1f%%", hitRate), xc)
+                        HeroMini(t("日均"), fmtTokens(avgPerDay), xc)
+                        HeroMini(t("花费约"), String.format("¥%.2f", heroCost), xc)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     StatBox(t("输入"), fmtTokens(totalInput), xc, Modifier.weight(1f))
                     StatBox(t("输出"), fmtTokens(totalOutput), xc, Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatBox(t("调用次数"), calls.toString(), xc, Modifier.weight(1f))
-                    StatBox(t("缓存命中"), String.format("%.1f%%", hitRate), xc, Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(8.dp))
-                val avgPerDay = if (daily.isNotEmpty()) (totalInput + totalOutput) / daily.size else 0L
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    StatBox(t("日均 token"), fmtTokens(avgPerDay), xc, Modifier.weight(1f))
                     StatBox(t("缓存读"), fmtTokens(totalCacheRead), xc, Modifier.weight(1f))
+                    StatBox(t("有价目模型"), "${byModel.count { m -> PRICES.keys.any { k -> m.model.contains(k, true) } }} / ${byModel.size}", xc, Modifier.weight(1f))
                 }
 
                 // 趋势
                 Spacer(Modifier.height(20.dp))
-                Text(t("每日 token(输入 + 输出)"), fontSize = 12.sp, fontFamily = Mono,
-                    fontWeight = FontWeight.Bold, color = xc.ink)
+                SectionHead(t("每日 token(输入 + 输出)"), null, xc)
                 Spacer(Modifier.height(8.dp))
                 DailyBars(daily, xc)
 
                 // 模型分布
                 Spacer(Modifier.height(20.dp))
-                Text(t("模型分布"), fontSize = 12.sp, fontFamily = Mono,
-                    fontWeight = FontWeight.Bold, color = xc.ink)
+                SectionHead(t("模型分布"), t("${byModel.size} 个"), xc)
                 Spacer(Modifier.height(8.dp))
                 val grand = byModel.sumOf { it.input + it.output }.coerceAtLeast(1)
                 byModel.forEach { m ->
@@ -178,25 +195,53 @@ fun UsageStatsScreen(database: AppDatabase, onBack: () -> Unit) {
 
                 // 成本
                 Spacer(Modifier.height(20.dp))
-                Text(t("成本估算"), fontSize = 12.sp, fontFamily = Mono,
-                    fontWeight = FontWeight.Bold, color = xc.ink)
+                val cost = byModel.sumOf { estimateCostCny(it) }
+                SectionHead(t("成本估算"), String.format("¥ %.2f", cost), xc)
                 Text(
                     t("按 2026-01 各家官方价目(美元价×7.2,国产为人民币官价)粗算,仅供参考。未收录的模型不计入,实际以供应商账单为准。"),
                     fontSize = 10.sp, fontFamily = Mono, color = xc.faint, lineHeight = 14.sp,
                     modifier = Modifier.padding(top = 2.dp, bottom = 6.dp)
                 )
-                val cost = byModel.sumOf { estimateCostCny(it) }
-                val known = byModel.count { PRICES.keys.any { k -> it.model.contains(k, true) } }
-                StatBox(t("估算(人民币)"), String.format("¥ %.2f", cost), xc, Modifier.fillMaxWidth())
-                Text(
-                    tx("有价目数据 %s / %s 个模型", known, byModel.size),
-                    fontSize = 9.sp, fontFamily = Mono, color = xc.faint,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
+                byModel.map { it to estimateCostCny(it) }
+                    .filter { it.second > 0.005 }
+                    .sortedByDescending { it.second }
+                    .take(3)
+                    .forEach { (m, c) ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(m.model, fontSize = 11.sp, fontFamily = Mono, color = xc.sub,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(String.format("¥ %.2f", c), fontSize = 11.sp, fontFamily = Mono, color = xc.ink)
+                        }
+                    }
             }
 
             Spacer(Modifier.height(48.dp))
         }
+    }
+}
+
+@Composable
+private fun SectionHead(title: String, right: String?, xc: XinColors) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(width = 3.dp, height = 12.dp).clip(RoundedCornerShape(2.dp)).background(xc.green))
+        Spacer(Modifier.width(8.dp))
+        Text(title, fontSize = 12.sp, fontFamily = Mono, fontWeight = FontWeight.Bold, color = xc.ink,
+            modifier = Modifier.weight(1f))
+        if (right != null) {
+            Text(right, fontSize = 11.sp, fontFamily = Mono, fontWeight = FontWeight.Bold, color = xc.green)
+        }
+    }
+}
+
+@Composable
+private fun HeroMini(label: String, value: String, xc: XinColors) {
+    Column {
+        Text(label, fontSize = 9.sp, fontFamily = Mono, color = xc.faint)
+        Text(value, fontSize = 13.sp, fontFamily = Mono, fontWeight = FontWeight.Bold, color = xc.ink,
+            modifier = Modifier.padding(top = 1.dp))
     }
 }
 
@@ -222,10 +267,12 @@ private fun DailyBars(daily: List<DailyUsage>, xc: XinColors) {
         daily.forEachIndexed { i, d ->
             val v = (d.input + d.output).toFloat() / maxV
             val h = (size.height * v).coerceAtLeast(1f)
-            drawRect(
-                color = green,
+            // 圆头柱 + 按量渐显：高峰实、低谷虚，一眼看出哪天烧得多。
+            drawRoundRect(
+                color = green.copy(alpha = 0.35f + 0.65f * v),
                 topLeft = Offset(i * (barW + gap), size.height - h),
-                size = Size(barW, h)
+                size = Size(barW, h),
+                cornerRadius = CornerRadius(barW / 2, barW / 2)
             )
         }
         // 底线

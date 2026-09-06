@@ -59,7 +59,14 @@ data class PluginDescriptor(
     /** SKILL 形态对应的技能名(assets/skills 目录名) */
     val skillName: String = "",
     /** 在线插件对应的远程目录条目(ONLINE 形态非空) */
-    val remote: PluginRegistry.RemotePlugin? = null
+    val remote: PluginRegistry.RemotePlugin? = null,
+    /** 市场分类(气象预报/金融财经/…);内置项缺省为空,UI 按形态归组。 */
+    val category: String = "",
+    /** 市场统计(下载/星/收藏/发布时间戳),0 = 未知,不展示不参与排序。 */
+    val downloads: Long = 0L,
+    val stars: Long = 0L,
+    val favorites: Long = 0L,
+    val publishedAt: Long = 0L
 )
 
 /** 插件详情页展示的一行能力说明。 */
@@ -183,7 +190,12 @@ fun PluginRegistry.RemotePlugin.toDescriptor(): PluginDescriptor = PluginDescrip
     iconUrl = icon,
     requiresAuth = authType == "api_key",
     defaultUrl = baseUrl,
-    remote = this
+    remote = this,
+    category = category.ifBlank { "未分类" },
+    downloads = downloads,
+    stars = stars,
+    favorites = favorites,
+    publishedAt = publishedAt
 )
 
 /** 插件安装/卸载的编排层:复用 McpManager / SkillDao / ToolRegistry / GithubAuth。 */

@@ -88,6 +88,9 @@ class OnlineApiTool(
 
             val url = baseUrl.trimEnd('/') + urlPath
             val key = keyProvider()
+            // 部分公共 API(CheapShark 等)拒绝无 UA 的请求;提案约定的客户端标识。
+            // 注意:NetGuard 只校验 URL,UA 不影响安全边界。
+            val userAgent = "XINCOD-Agent/1.14"
 
             val request = when (spec.method) {
                 "POST", "PUT", "PATCH" -> {
@@ -98,6 +101,7 @@ class OnlineApiTool(
                         if (!urlPath.contains("{$k}")) body.putOpt(k, effectiveArgs.opt(k))
                     }
                     Request.Builder().url(url)
+                        .header("User-Agent", userAgent)
                         .applyAuth(authHeader, key)
                         .post(body.toString().toRequestBody(JSON))
                         .build()
@@ -114,6 +118,7 @@ class OnlineApiTool(
                         first = false
                     }
                     Request.Builder().url(sb.toString())
+                        .header("User-Agent", userAgent)
                         .applyAuth(authHeader, key)
                         .get()
                         .build()

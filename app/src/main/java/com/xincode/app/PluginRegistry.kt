@@ -48,7 +48,17 @@ object PluginRegistry {
         val authType: String,      // none / api_key
         val authHeader: String,
         val baseUrl: String,
-        val tools: List<RemoteTool>
+        val tools: List<RemoteTool>,
+        /** 注册表 category(气象预报/金融财经/…);老条目缺省为空,UI 按“未分类”归组。 */
+        val category: String = "",
+        /**
+         * 市场统计(下载/星/收藏/发布时间戳),注册表可选携带,缺省 0 = 未知。
+         * 公共源(APIs.guru 等)不提供这些数,不编造;后端/精选源给了,UI 自动出现对应排序。
+         */
+        val downloads: Long = 0L,
+        val stars: Long = 0L,
+        val favorites: Long = 0L,
+        val publishedAt: Long = 0L
     )
 
     private val http = OkHttpClient.Builder()
@@ -140,7 +150,12 @@ object PluginRegistry {
                     authType = p.optString("auth_type", "none").ifBlank { "none" },
                     authHeader = p.optString("auth_header"),
                     baseUrl = baseUrl,
-                    tools = tools
+                    tools = tools,
+                    category = p.optString("category"),
+                    downloads = p.optLong("downloads"),
+                    stars = p.optString("stars").toLongOrNull() ?: p.optLong("stars"),
+                    favorites = p.optLong("favorites"),
+                    publishedAt = p.optLong("published_at")
                 )
             )
         }

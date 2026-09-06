@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -261,6 +262,71 @@ fun PluginStoreScreen(
         }
     }
 
+    // —— 四页签:连接器 / MCP / 在线插件 / 技能包，各占一页 ——
+    var tab by remember { mutableStateOf(0) }
+    // —— 在线插件页的筛选：搜索 + 分类 + 授权 + 排序 ——
+    var query by remember { mutableStateOf("") }
+    var catFilter by remember { mutableStateOf("") } // 空 = 全部
+    var authFilter by remember { mutableStateOf(0) } // 0全部 1免登 2需Key
+    var sortMode by remember { mutableStateOf(0) } // 0名称 1分类 2星数 3下载(后两者有数才出现)
+
+    val tabs = listOf(PluginKind.CONNECTOR, PluginKind.MCP, PluginKind.ONLINE, PluginKind.SKILL)
+    val tabItems: List<PluginDescriptor> = when (tabs[tab]) {
+        PluginKind.ONLINE -> onlinePlugins
+        else -> PluginCatalog.all.filter { it.kind == tabs[tab] }
+    }
+
+    // 在线页过滤管线：搜索(名/简介/分类) → 分类 → 授权 → 排序。
+    // 星数/下载/收藏/发布时间注册表给了才参与（缺省 0 = 未知，不展示不排序）。
+    val categories = remember(onlinePlugins) {
+        onlinePlugins.map { it.category.ifBlank { "未分类" } }.distinct().sorted()
+    }
+    val hasStars = onlinePlugins.any { it.stars > 0 }
+    val hasDownloads = onlinePlugins.any { it.downloads > 0 }
+    val visibleItems = if (tabs[tab] != PluginKind.ONLINE) {
+        tabItems
+    } else {
+        var list = tabItems
+        val q = query.trim()
+        if (q.isNotEmpty()) {
+            list = list.filter {
+                it.name.contains(q, ignoreCase = true) ||
+                    it.summary.contains(q, ignoreCase = true) ||
+                    it.category.contains(q, ignoreCase = true)
+            }
+        }
+        if (catFilter.isNotEmpty()) list = list.filter { it.category == catFilter }
+        if (authFilter == 1) list = list.filter { !it.requiresAuth }
+        if (authFilter == 2) list = list.filter { it.requiresAuth }
+        list = when {
+            sortMode == 2 && hasStars -> list.sortedByDescending { it.stars }
+            sortMode == 3 && hasDownloads -> list.sortedByDescending { it.downloads }
+            sortMode == 1 -> list.sortedWith(compareBy({ it.category }, { it.name }))
+            else -> list.sortedBy { it.name }
+        }
+        list
+    }
+
+    @Composable
+    fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
+        val xc = LocalXinColors.current
+        Text(
+            label, fontSize = 11.sp, fontFamily = JetBrainsMono,
+            color = if (selected) xc.ink else xc.sub,
+            modifier = Modifier
+                .background(
+                    if (selected) xc.activeBg else xc.bgElevated,
+                    RoundedCornerShape(12.dp)
+                )
+                .border(1.dp, if (selected) xc.ink else xc.border, RoundedCornerShape(12.dp))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) { onClick() }
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        )
+    }
+
     Column(
         Modifier.fillMaxSize().background(Bg).verticalScroll(rememberScrollState()).padding(16.dp)
     ) {
@@ -273,41 +339,87 @@ fun PluginStoreScreen(
                 modifier = Modifier.padding(bottom = 8.dp))
         }
 
+        // 页签：一项一页。
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            tabs.forEachIndexed { i, kind ->
+                val count = when (kind) {
+                    PluginKind.ONLINE -> onlinePlugins.size
+                    else -> PluginCatalog.all.count { it.kind == kind }
+                }
+                Box(Modifier.weight(1f)) {
+                    FilterPill(
+                        label = "${t(kind.label)} $count",
+                        selected = tab == i,
+                        onClick = { tab = i }
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
         if (loaded) {
-            val totalCount = PluginCatalog.all.size + onlinePlugins.size
             val installedCount = installed.count { it.value }
             Text(
-                tx("共 %s 个插件 · 已安装 %s 个", totalCount.toString(), installedCount.toString()),
+                tx("本页 %s 个 · 共已安装 %s 个", visibleItems.size.toString(), installedCount.toString()),
                 fontSize = 11.sp, fontFamily = JetBrainsMono, color = Faint,
                 modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
             )
-            store.remoteError?.let {
-                Text(it, fontSize = 10.sp, fontFamily = JetBrainsMono, color = Faint,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+            if (tabs[tab] == PluginKind.ONLINE) {
+                store.remoteError?.let {
+                    Text(it, fontSize = 10.sp, fontFamily = JetBrainsMono, color = Faint,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 4.dp))
+                }
             }
         }
 
-        listOf(PluginKind.CONNECTOR, PluginKind.MCP, PluginKind.ONLINE, PluginKind.SKILL).forEach { kind ->
-            if (kind == PluginKind.ONLINE && onlinePlugins.isEmpty()) return@forEach
-            val items = when (kind) {
-                PluginKind.ONLINE -> onlinePlugins
-                else -> PluginCatalog.all.filter { it.kind == kind }
-            }
-            Text(
-                t(kind.label), fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                fontFamily = JetBrainsMono, color = Sub,
-                modifier = Modifier.padding(start = 4.dp, top = 10.dp, bottom = 6.dp)
+        // 在线插件页：搜索框 + 分类 + 授权 + 排序。
+        if (tabs[tab] == PluginKind.ONLINE) {
+            TextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text(t("搜索名称 / 功能 / 分类…"), fontSize = 11.sp, fontFamily = JetBrainsMono) },
+                singleLine = true,
+                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, fontFamily = JetBrainsMono),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
             )
-            items.forEach { p ->
-                PluginCard(
-                    p = p,
-                    installedState = installed[p.id] == true,
-                    disabled = !loaded || busyId != null,
-                    onOpenDetail = { detailPlugin = p },
-                    onInstall = { onInstallClicked(p) },
-                    onUninstall = { confirmUninstall = p }
-                )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                FilterPill(t("全部"), catFilter.isEmpty()) { catFilter = "" }
+                categories.forEach { c ->
+                    FilterPill(c, catFilter == c) {
+                        catFilter = if (catFilter == c) "" else c
+                    }
+                }
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterPill(t("全部授权"), authFilter == 0) { authFilter = 0 }
+                FilterPill(t("免登"), authFilter == 1) { authFilter = 1 }
+                FilterPill(t("需 Key"), authFilter == 2) { authFilter = 2 }
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                FilterPill(t("按名称"), sortMode == 0) { sortMode = 0 }
+                FilterPill(t("按分类"), sortMode == 1) { sortMode = 1 }
+                if (hasStars) FilterPill(t("按星数"), sortMode == 2) { sortMode = 2 }
+                if (hasDownloads) FilterPill(t("按下载"), sortMode == 3) { sortMode = 3 }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
+
+        visibleItems.forEach { p ->
+            PluginCard(
+                p = p,
+                // 在线页徽标：分类 · 授权 · 有数才显示星/下载。
+                badge = if (tabs[tab] == PluginKind.ONLINE) onlineBadge(p) else null,
+                installedState = installed[p.id] == true,
+                disabled = !loaded || busyId != null,
+                onOpenDetail = { detailPlugin = p },
+                onInstall = { onInstallClicked(p) },
+                onUninstall = { confirmUninstall = p }
+            )
         }
         Spacer(Modifier.height(24.dp))
     }
@@ -395,6 +507,23 @@ fun PluginStoreScreen(
     }
 }
 
+/** 在线徽标：分类 · 授权 · 有数才显示星/下载/收藏（没数的注册表不编造）。 */
+private fun onlineBadge(p: PluginDescriptor): String {
+    val parts = mutableListOf(p.category.ifBlank { "未分类" })
+    parts.add(if (p.requiresAuth) "需 Key" else "免登")
+    if (p.stars > 0) parts.add("★${formatCount(p.stars)}")
+    if (p.downloads > 0) parts.add("⬇${formatCount(p.downloads)}")
+    if (p.favorites > 0) parts.add("♥${formatCount(p.favorites)}")
+    return parts.joinToString(" · ")
+}
+
+private fun formatCount(n: Long): String = when {
+    n >= 100_000_000 -> "${n / 100_000_000}亿+"
+    n >= 10_000 -> "${n / 10_000}万+"
+    n >= 1_000 -> "${n / 1_000}k+"
+    else -> n.toString()
+}
+
 @Composable
 private fun PluginCard(
     p: PluginDescriptor,
@@ -402,7 +531,9 @@ private fun PluginCard(
     disabled: Boolean,
     onOpenDetail: () -> Unit,
     onInstall: () -> Unit,
-    onUninstall: () -> Unit
+    onUninstall: () -> Unit,
+    /** 在线页徽标行（分类 · 授权 · 星/下载），其他页传 null 不占位。 */
+    badge: String? = null
 ) {
     val xc = LocalXinColors.current
     Row(
@@ -436,6 +567,13 @@ private fun PluginCard(
                 lineHeight = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp)
             )
+            if (badge != null) {
+                Text(
+                    badge, fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.faint,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
             Text(
                 t("查看功能 ›"),
                 fontSize = 10.sp, fontFamily = JetBrainsMono, color = xc.green,
