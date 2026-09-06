@@ -521,9 +521,12 @@
         seenTitle = true;
         if (t.charAt(0) === ">") return;                                      // 结尾引言行跳过
         if (/^-{3,}$/.test(t)) return;
-        var safe = esc(t).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");           // 先转义再转粗体,无注入面
-        if (t.indexOf("## ") === 0) html += '<div class="rl-h">' + safe + "</div>";
-        else if (t.indexOf("- ") === 0) html += '<div class="rl-li">' + safe + "</div>";
+        var kind = "p", content = t;
+        if (t.indexOf("## ") === 0) { kind = "h"; content = t.slice(3); }
+        else if (t.indexOf("- ") === 0) { kind = "li"; content = t.slice(2); }
+        var safe = esc(content).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>");     // 先转义再转粗体,无注入面
+        if (kind === "h") html += '<div class="rl-h">' + safe + "</div>";
+        else if (kind === "li") html += '<div class="rl-li">' + safe + "</div>";
         else html += '<div class="rl-p">' + safe + "</div>";
       });
       return html;
