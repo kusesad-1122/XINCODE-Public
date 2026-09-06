@@ -247,17 +247,7 @@ fun SettingsScreen(
                         Text(t("暗色模式"), fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
                         Text(if (darkMode) t("近黑终端配色") else t("羊皮纸浅色配色"), fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
                     }
-                    Switch(
-                        checked = darkMode,
-                        onCheckedChange = onUpdateDarkMode,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = xc.bgElevated,
-                            checkedTrackColor = Green,
-                            uncheckedThumbColor = Faint,
-                            uncheckedTrackColor = Border,
-                            uncheckedBorderColor = Border
-                        )
-                    )
+                    GlassSwitch(checked = darkMode, onCheckedChange = onUpdateDarkMode)
                 }
 
                 // 回车发送开关(App 层可观察设置,立即生效)
@@ -277,17 +267,7 @@ fun SettingsScreen(
                         Text(t("回车发送"), fontSize = 14.sp, fontFamily = JetBrainsMono, color = Ink)
                         Text(if (app.enterToSend) t("回车直接发送(换行用输入法组合键)") else t("回车换行(发送靠 [→] 键)"), fontSize = 10.sp, fontFamily = JetBrainsMono, color = Sub)
                     }
-                    Switch(
-                        checked = app.enterToSend,
-                        onCheckedChange = { app.updateEnterToSend(it) },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = xc.bgElevated,
-                            checkedTrackColor = Green,
-                            uncheckedThumbColor = Faint,
-                            uncheckedTrackColor = Border,
-                            uncheckedBorderColor = Border
-                        )
-                    )
+                    GlassSwitch(checked = app.enterToSend, onCheckedChange = { app.updateEnterToSend(it) })
                 }
 
                 // 界面语言切换(中文 / English,持久化到 app_language)

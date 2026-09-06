@@ -21,8 +21,8 @@ android {
         applicationId = "com.xincode.app"
         minSdk = 28
         targetSdk = 34
-        versionCode = 133
-        versionName = "1.13.7"
+        versionCode = 134
+        versionName = "1.13.8"
     }
 
     // 只有在 keystore.properties 真实存在时才建 release 签名配置。
@@ -103,6 +103,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+    // 玻璃拟态背景高斯模糊(0.9.0-rc03 与 Compose 1.7/Kotlin 1.9 匹配;Android <12 自动降级为半透明)
+    implementation("dev.chrisbanes.haze:haze:0.9.0-rc03")
     implementation("androidx.activity:activity-compose:1.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.github.topjohnwu.libsu:core:5.2.2")

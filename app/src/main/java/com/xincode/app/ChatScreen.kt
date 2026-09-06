@@ -99,7 +99,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import dev.chrisbanes.haze.HazeDefaults
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.haze
+import dev.chrisbanes.haze.hazeChild
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -384,6 +391,17 @@ fun ChatScreen(
     val Green = xc.green
     val Red = xc.red
     val Border = xc.border
+
+    // 玻璃拟态:聊天列表为 hazeSource,输入岛为 hazeChild,实时高斯模糊背后滚动的消息
+    // (Android 12+ 真模糊;更旧系统由 Haze 自动降级为半透明 scrim)
+    val hazeState = remember { HazeState() }
+    val glassStyle = HazeStyle(
+        backgroundColor = xc.bg,
+        tints = listOf(HazeTint(xc.bgElevated.copy(alpha = 0.7f))),
+        blurRadius = 20.dp,
+        noiseFactor = HazeDefaults.noiseFactor,
+        fallbackTint = HazeTint(xc.bgElevated.copy(alpha = 0.94f))
+    )
 
     // Menu visibility
     var showMainMenu by remember { mutableStateOf(false) }
@@ -789,12 +807,14 @@ fun ChatScreen(
             derivedStateOf { chatState.messages.toList().groupByTurn() }
         }
 
+        // ── 玻璃拟态外层:列表 fillMaxSize 穿过底部输入岛身后,岛体 hazeChild 实时模糊 ──
         Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+            modifier = Modifier.fillMaxSize().haze(hazeState).padding(horizontal = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = PaddingValues(vertical = 12.dp)
+            contentPadding = PaddingValues(top = 12.dp, bottom = 128.dp)
         ) {
             if (turnGroups.isEmpty()) {
                 item(key = "claude_greeting_hero") {
@@ -877,7 +897,7 @@ fun ChatScreen(
             Box(
                 Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp)
+                    .padding(end = 16.dp, bottom = 132.dp)
                     .size(36.dp)
                     .graphicsLayer(scaleX = fabScale, scaleY = fabScale, alpha = fabScale)
                     .background(Ink, RoundedCornerShape(18.dp))
@@ -1250,14 +1270,20 @@ fun ChatScreen(
             chatState.send()
         }
 
+        // ── 底部玻璃输入岛:悬浮于聊天列表之上,消息从它身后滚过 ──
         Box(
             Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp)
                 .padding(bottom = 12.dp)
                 .clip(RoundedCornerShape(28.dp))
-                .background(xc.bgElevated)
-                .border(0.8.dp, Border, RoundedCornerShape(28.dp))
+                .hazeChild(hazeState, style = glassStyle)
+                .border(
+                    1.dp,
+                    Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.55f), Color.White.copy(alpha = 0.12f))),
+                    RoundedCornerShape(28.dp)
+                )
         ) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                 // Line 1: attachment chips (only if any)
@@ -1551,6 +1577,7 @@ fun ChatScreen(
                 }
             }
         }
+        } // ── 玻璃拟态外层 Box ──
     }
 
     // ---- model switch warning ----
@@ -3259,14 +3286,7 @@ private fun SelectModelBottomSheet(
                 Text(t("多Agent协同"), fontFamily = XinUiFont, fontSize = 15.sp, color = xc.ink)
                 Text(if (collabOn) t("已开启：主脑+子智能体并行") else t("已关闭"), fontFamily = XinUiFont, fontSize = 12.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            Switch(
-                checked = collabOn,
-                onCheckedChange = { onToggleCollab() },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color.White,
-                    checkedTrackColor = Color(0xFF2C64E3)
-                )
-            )
+            GlassSwitch(checked = collabOn, onCheckedChange = { onToggleCollab() })
         }
 
         Spacer(Modifier.height(12.dp))
@@ -3580,15 +3600,7 @@ private fun AddSheetToggleRow(
                 Text(subtitle, fontFamily = XinUiFont, fontSize = 11.sp, color = xc.sub, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = Color(0xFF2C64E3)
-            )
-        )
+        GlassSwitch(checked = checked, onCheckedChange = if (enabled) onCheckedChange else null)
     }
 }
 
