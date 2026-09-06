@@ -78,13 +78,14 @@ class HarnessEvents(
                     val name = json?.optString("tool").orEmpty().ifBlank { "(未知工具)" }
                     // 移植3:优先读 status 列(与 Codex ExecutionStatus 同词汇);
                     // 老行 status 为空才回退读 payload 的 ok 字段。
-                    val completed = when (ExecutionStatus.ofWire(e.status)) {
+                    // 注意局部名避开外层 completed 列表(曾影子导致编译失败)。
+                    val isCompleted = when (ExecutionStatus.ofWire(e.status)) {
                         ExecutionStatus.COMPLETED -> true
                         ExecutionStatus.FAILED, ExecutionStatus.CANCELLED, ExecutionStatus.ABORTED -> false
                         ExecutionStatus.RUNNING, null ->
                             json != null && e.payload.contains("\"ok\":true")
                     }
-                    if (completed) completed.add(name)
+                    if (isCompleted) completed.add(name)
                     else failed.add("$name:${json?.optString("digest").orEmpty().take(120)}")
                 }
                 APPROVAL_REQUEST -> {
