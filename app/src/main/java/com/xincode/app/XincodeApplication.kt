@@ -80,6 +80,9 @@ class XincodeApplication : Application() {
 
     lateinit var database: AppDatabase
         private set
+    /** 步骤G:Rollout 记录器(onCreate 中 database 就绪后赋值,先用 database 的调用方注意顺序)。 */
+    lateinit var harnessRecorder: HarnessEventRecorder
+        private set
     lateinit var keystore: KeystoreProvider
         private set
     lateinit var openAiClient: OpenAiClient
@@ -323,6 +326,15 @@ override fun onCreate() {
         GlobalScope.launch(Dispatchers.IO) {
             runCatching { database.kanbanTaskDao().reclaimStuckRunning() }
         }
+        // 步骤G:Rollout 记录器 + 悬挂 Turn 回收(与看板同 pattern:open 状态收回 cancelled,
+        // 事件不动 —— 重建靠读 Rollout,不是靠内存)。
+        harnessRecorder = HarnessEventRecorder(
+            applicationScope,
+            com.xincode.data.HarnessEvents(database.harnessEventDao(), database.harnessThreadDao())
+        )
+        GlobalScope.launch(Dispatchers.IO) {
+            runCatching { database.harnessThreadDao().reclaimStuckTurns() }
+        }
         keystore = KeystoreProvider()
         openAiClient = OpenAiClient(database, keystore)
         // 按功能绑定的 client:各自去读【功能模型配置】,没配就自动回落到活跃配置。
@@ -426,6 +438,14 @@ override fun onCreate() {
             com.xincode.service.AgentServer.setTaskState(
                 com.xincode.service.AgentServer.AgentTaskState.WAITING_TOOL
             )
+            // 步骤G:Rollout 记录(会话归因走 ToolSessionContext;派发正处在该会话元素内)。
+            // harnessRecorder 在 onCreate 前文已就绪(若极端早调则 runCatching 兜底)。
+            // 移植3:call.id 即 Codex 的 tool_call_id,Begin/End 配对键。
+            runCatching {
+                harnessRecorder.recordToolCall(
+                    com.xincode.core.ToolSessionContext.sessionId ?: 0L, call.name, call.arguments, call.id
+                )
+            }
         }
         toolRegistry.onExecuted = { call, result ->
             val digest = when (result) {
@@ -438,6 +458,16 @@ override fun onCreate() {
             com.xincode.service.AgentServer.setTaskState(
                 com.xincode.service.AgentServer.AgentTaskState.RUNNING
             )
+            // 步骤G:Rollout 记录(ok 供 rebuild 区分完成/失败;call.id 配对 Begin)。
+            runCatching {
+                harnessRecorder.recordToolResult(
+                    com.xincode.core.ToolSessionContext.sessionId ?: 0L,
+                    call.name,
+                    result is com.xincode.core.ToolResult.Success,
+                    digest,
+                    call.id
+                )
+            }
         }
         shellExecTool = ShellExecTool()
         toolRegistry.register(shellExecTool)
@@ -855,6 +885,8 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             override suspend fun onTurnStart(input: String) {
                 val threadId = harness.activeOrStart(sessionId, input.take(120))
                 harnessTurnId = harness.startTurn(threadId, input)
+                // 步骤G:Turn 起止进 Rollout(精确归因;记录器内部后台落盘)。
+                runCatching { harnessRecorder.trackStart(sessionId, threadId, harnessTurnId, input) }
                 com.xincode.service.AgentServer.setTaskState(
                     com.xincode.service.AgentServer.AgentTaskState.RUNNING
                 )
@@ -865,6 +897,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
                     harness.finishTurn(harnessTurnId, ok, summary, "")
                     harnessTurnId = 0L
                 }
+                runCatching { harnessRecorder.trackFinish(sessionId, ok, summary) }
                 com.xincode.service.AgentServer.setTaskState(
                     com.xincode.service.AgentServer.AgentTaskState.FINISHED
                 )
@@ -881,10 +914,15 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
                         id, toolName, preview.take(300)
                     )
                 )
+                // 步骤G:审批请求/裁决进 Rollout(未裁决的请求重建时可见,见 rebuild.pendingApprovals)。
+                runCatching { harnessRecorder.recordApprovalRequest(sessionId, id, toolName) }
                 server.setTaskState(
                     com.xincode.service.AgentServer.AgentTaskState.WAITING_APPROVAL
                 )
                 val verdict = server.awaitApproval(id, timeoutMs)
+                if (verdict != null) {
+                    runCatching { harnessRecorder.recordApprovalResult(sessionId, id, verdict) }
+                }
                 server.setTaskState(
                     com.xincode.service.AgentServer.AgentTaskState.RUNNING
                 )

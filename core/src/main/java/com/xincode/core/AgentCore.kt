@@ -10,6 +10,7 @@ import com.xincode.security.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.selects.select
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -59,9 +60,15 @@ class AgentCore(
     private val systemPrompt: String = "You are a helpful assistant. Respond in Chinese.",
     private val securityGate: SecurityGate? = null,
     private var confirmHandler: (suspend (GateCommand, String) -> ToolConfirmResult)? = null,
+    /** 步骤E:远端审批桥(通知栏批复/自动化)。null = 只有本地确认框(行为与原来一致)。 */
+    var remoteApproval: RemoteApprovalBridge? = null,
+    /** 远端回执等待超时;<=0 无限等(由 totalTimeoutMs 兜底,审批可能第二天才回)。 */
+    var remoteApprovalTimeoutMs: Long = 0L,
     private val cursorDao: StateCursorDao? = null,
     /** Current session ID. Can be updated when switching sessions (see [switchSession]). */
-    private var sessionId: Long = 0L
+    private var sessionId: Long = 0L,
+    /** 步骤C:Turn 生命周期钩(拥有方装配,不装则行为与原来完全一致)。 */
+    var turnHooks: AgentTurnHooks? = null
 ) {
     companion object {
         private const val TAG = "AgentCore"
@@ -100,6 +107,13 @@ class AgentCore(
     /** 上一次工具失败的「工具名|错误信息」指纹,与 [repeatedToolErrors] 一起做死循环刹车。 */
     private var lastToolErrorSignature: String? = null
     private var repeatedToolErrors = 0
+
+    /**
+     * 步骤F:本轮是否有“模型还没看过的工具结果”。true 时禁止以“最终回答”结束循环。
+     * 循环体每走完一遍必定追加且仅追加一条 tool 消息(3 条拒批分支 + 1 条执行落点),
+     * 故在拿到 call 后统一置 true;下一次 callModel 成功返回(结果已进请求)即清零。
+     */
+    private var needsFollowUp = false
 
     /** L3:本次 run(整轮/整任务)累计 token —— 供子智能体统计避免只算最后一次调用而少计。 */
     var cumulativePromptTokens: Long = 0L
@@ -169,6 +183,9 @@ class AgentCore(
     }
 
     private var currentJob: Job? = null
+
+    /** 步骤D:执行边界(会话元素+pre/post钩+计时)。lazy 避开构造期取 this 方法引用。 */
+    private val orchestrator by lazy { ToolOrchestrator(toolRegistry, ::fireHook) }
     private var pendingToolCallJson: String? = null
     private var pendingToolResultJson: String? = null
 
@@ -298,7 +315,57 @@ class AgentCore(
         cursorDao?.deleteBySessionId(sessionId)
     }
 
+    /**
+     * 步骤C:本轮最后一条助手文本(截断 500 字),供 Turn 收尾“摘要继承”。
+     * 只认 role=assistant 且 content 为非空字符串的消息;多模态/空内容跳过。
+     */
+    private fun lastAssistantText(): String {
+        for (i in messages.size - 1 downTo 0) {
+            val msg = messages[i]
+            if (msg.optString("role") != "assistant") continue
+            val content = msg.opt("content")
+            if (content is String && content.isNotBlank()) return content.take(500)
+        }
+        return ""
+    }
+
     // ---- public API ----
+
+    /**
+     * 步骤E:本地确认框与远端回执赛跑,先到为准(真暂停:Turn 停在 WaitingConfirm,谁先回执谁裁决)。
+     * - 无桥 → 原行为:等本地框。
+     * - 远端先回 true → 仅本次放行(ALLOW_ONCE);false → DENY(走“用户拒绝”分支,模型重判)。
+     * - 远端 null(超时/无人等待) → 转回等本地:不擅自放行,更不擅自拒绝。
+     * 输家协程 cancel,不泄漏;handler 抛异常与原来一致上抛(→整轮 Error)。
+     */
+    private suspend fun resolveConfirm(
+        cmd: GateCommand,
+        preview: String,
+        handler: suspend (GateCommand, String) -> ToolConfirmResult
+    ): ToolConfirmResult {
+        val bridge = remoteApproval ?: return handler(cmd, preview)
+        return coroutineScope {
+            val local = async { handler(cmd, preview) }
+            val remote = async { bridge.awaitRemote(cmd.toolName, preview, remoteApprovalTimeoutMs) }
+            // select 不会自动 cancel 输家:本地先决必须掐掉远端等待(否则 rendezvous 条目永久泄漏),
+            // 反之亦然;任何异常路径 finally 兜底双掐(远端 awaitApproval 的 finally 会清掉挂起条目)。
+            try {
+                select {
+                    local.onAwait { it.also { remote.cancel() } }
+                    remote.onAwait { r ->
+                        if (r == null) local.await()
+                        else {
+                            local.cancel()
+                            if (r) ToolConfirmResult.ALLOW_ONCE else ToolConfirmResult.DENY
+                        }
+                    }
+                }
+            } finally {
+                local.cancel()
+                remote.cancel()
+            }
+        }
+    }
 
     /** Cancel current run. Safe to call from any state. */
     fun stop() {
@@ -492,6 +559,19 @@ class AgentCore(
                 // 不丢尾部 token;对异常/取消路径同样兜底。
                 tokenChannel.close()
                 reasoningChannel.close()
+                // 步骤C:Turn 收尾(取消上下文中必须 NonCancellable,否则 Room 写直接被掐)。
+                // 状态判 ok:Error/Interrupted 为 false,其余(Idle/Responding 等)为 true。
+                turnHooks?.let { hooks ->
+                    withContext(NonCancellable) {
+                        try {
+                            val terminal = _state.value
+                            val ok = terminal !is AgentState.Error && terminal !is AgentState.Interrupted
+                            hooks.onTurnFinish(ok, lastAssistantText())
+                        } catch (_: Exception) {
+                            Log.w(TAG, "turnHooks.onTurnFinish failed (ignored)")
+                        }
+                    }
+                }
                 currentJob = null
                 if (!_state.value.isTerminal) {
                     _state.value = AgentState.Idle
@@ -526,10 +606,19 @@ class AgentCore(
             currentTurnId = System.currentTimeMillis()
         }
         // 不再有 onTurnStart 回调:AgentChatState 直接读 currentTurnId
+        // 步骤C:Turn 开始钩(拥有方开 Harness Turn + 推 RUNNING)。异常吞掉,主循环不受影响。
+        try {
+            turnHooks?.onTurnStart(initialUserMessage)
+        } catch (c: CancellationException) {
+            throw c
+        } catch (e: Exception) {
+            Log.w(TAG, "turnHooks.onTurnStart failed (ignored): ${e.message}")
+        }
 
         var iteration = 0
         consecutiveTruncations = 0
         lastToolErrorSignature = null; repeatedToolErrors = 0
+        needsFollowUp = false
         while (iteration < maxIterations) {
             iteration++
             // 循环内不再重新计算 turnId
@@ -577,8 +666,16 @@ class AgentCore(
             onPrefixHashComputed?.invoke(currentHash, sessionId)
 
             // Call model
-            val result = callModel(messagesSnapshot, toolsJson, iteration, thinkingEnabled, thinkingLevel) ?: return
+            // 步骤F:callModel 硬失败(非截断,是压根没回包)绝不能静默 Idle 结束:
+            // 已执行的工具结果躺在库里但模型一眼没见过。记 Error(不清 cursor,可重发续跑)。
+            val result = callModel(messagesSnapshot, toolsJson, iteration, thinkingEnabled, thinkingLevel) ?: run {
+                Log.w(TAG, "callModel hard failure at iter=$iteration, tool results unseen by model")
+                _state.value = AgentState.Error("模型调用失败(网络/服务异常)。已执行的工具结果已落库,重发本轮可继续。", iteration)
+                return
+            }
             Log.d(TAG, "callModel returned: contentLen=${result.content.length}, toolCalls=${result.toolCalls.size}")
+            // 步骤F:这次请求带上了此前追加的全部 tool 结果且成功回包 → 模型已经看过,清零。
+            needsFollowUp = false
 
             // Add assistant response to history
             messages.add(buildAssistantMessage(result))
@@ -616,6 +713,14 @@ class AgentCore(
 
             // Check: no tool_calls → final response, done
             if (result.toolCalls.isEmpty()) {
+                // 步骤F:还有模型没看过的工具结果时,禁止以“最终回答”结束,强制再跑一轮送达。
+                // 正常流程下恒为 false(结果总在下一次 callModel 前落 messages);它是防回归熔断。
+                if (needsFollowUp) {
+                    Log.w(TAG, "final answer with unseen tool results → force follow-up iteration")
+                    needsFollowUp = false
+                    _state.value = AgentState.Thinking(iteration)
+                    continue
+                }
                 // 中途插话修复:用户最常在「AI 正在输出最终回答」时插话,而这一步本会直接 return,
                 // 导致排队的 pendingRedirect 永远没人消费——表现为「发了消息但 AI 毫无反应」。
                 // 此处若发现有排队指令,就不结束循环,继续下一轮,由循环顶部把它作为新 user 消息注入。
@@ -638,8 +743,14 @@ class AgentCore(
                 // 工具名纠偏必须发生在【权限闸门之前】:闸门是按名字分类的,
                 // 如果只在派发处纠正,判权限用的是 `search_web`、真正执行的是 `web_search`,
                 // 两边对不上比不纠正更危险。这里换完之后,下游全程只见真名。
-                val call = if (toolRegistry.get(rawCall.name) != null) rawCall
-                    else rawCall.copy(name = toolRegistry.canonicalName(rawCall.name))
+                // 步骤D:纠偏收敛到 ToolRouter.resolve(与原两行内联逻辑等价,见 ToolRouter 注释)。
+                val call = when (val routed = ToolRouter.resolve(toolRegistry, rawCall.name)) {
+                    is ToolRouter.Route.Found -> rawCall.copy(name = routed.canonicalName)
+                    is ToolRouter.Route.Unknown -> rawCall
+                }
+                // 步骤F:本遍循环必定追加一条 tool 消息(拒批×3/执行×1,取消则走 Interrupted 不经此处),
+                // 先标记“有模型没看过的结果”,下一次 callModel 成功返回即清零。
+                needsFollowUp = true
                 callIndex++
                 _state.value = AgentState.CallingTool(iteration, call.name, call.arguments)
 
@@ -690,7 +801,8 @@ class AgentCore(
                                 }
                                 _state.value = AgentState.WaitingConfirm(
                                     iteration = iteration, toolName = call.name, preview = decision.preview)
-                                val confirmResult = handler(cmd, decision.preview)
+                                // 步骤E:本地框与远端回执赛跑(无桥时等价于原来的 handler 直调)。
+                                val confirmResult = resolveConfirm(cmd, decision.preview, handler)
                                 when (confirmResult) {
                                     ToolConfirmResult.DENY -> {
                                         gate.audit(cmd, decision, "用户拒绝")
@@ -719,22 +831,14 @@ class AgentCore(
                 // --- End Security Gate ---
 
                 _state.value = AgentState.Executing(iteration, call.name)
-                // gap-24 pre_tool hook
-                fireHook("pre_tool", mapOf("tool" to call.name, "args" to call.arguments))
-                val startTime = System.currentTimeMillis()
-                val toolResult = withContext(ToolSessionElement(sessionId)) {
-                    toolRegistry.execute(call)
-                }
-                val durationMs = System.currentTimeMillis() - startTime
+                // 步骤D:执行边界(会话元素+pre/post钩+计时)收敛到 ToolOrchestrator,
+                // 顺序与原来内联代码逐行一致;结果映射(成功/失败写 tool 消息)留在原地。
+                val execution = orchestrator.runBounded(call, sessionId)
+                val toolResult = execution.result
+                val durationMs = execution.durationMs
                 // 生图是外部能力边界：失败后禁止 Agent 继续猜测聊天模型并重复调用。
                 // 工具卡已经收到失败结果，下面仍会写入工具消息并 checkpoint。
                 val stopAfterToolFailure = call.name == "generate_image" && toolResult is ToolResult.Error
-                // gap-24 post_tool hook
-                fireHook("post_tool", mapOf(
-                    "tool" to call.name,
-                    "status" to (if (toolResult is ToolResult.Success) "SUCCESS" else "FAIL"),
-                    "output_head" to (if (toolResult is ToolResult.Success) toolResult.output.take(200) else "")
-                ))
 
                 val stdout = when (toolResult) {
                     is ToolResult.Success -> toolResult.output

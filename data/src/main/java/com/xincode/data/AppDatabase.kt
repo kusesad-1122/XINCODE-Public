@@ -10,7 +10,7 @@ import androidx.room.migration.Migration
 import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [SettingEntity::class, MessageEntity::class, ProviderConfigEntity::class, SessionEntity::class, StateCursorEntity::class, AuditLogEntity::class, MemoryEntity::class, TrajectoryEntity::class, SkillEntity::class, McpServerEntity::class, GlobalSettingsEntity::class, ProjectEntity::class, IdentityEntity::class, PermissionRuleEntity::class, HookEntity::class, CronJobEntity::class, SubAgentEntity::class, UsageRecordEntity::class, KanbanTaskEntity::class, GroupRoomEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupRoomSummaryEntity::class, KanbanRunEntity::class, CodeSymbolEntity::class, CodeEdgeEntity::class, CodeFileEntity::class], version = 47, exportSchema = true)
+@Database(entities = [SettingEntity::class, MessageEntity::class, ProviderConfigEntity::class, SessionEntity::class, StateCursorEntity::class, AuditLogEntity::class, MemoryEntity::class, TrajectoryEntity::class, SkillEntity::class, McpServerEntity::class, GlobalSettingsEntity::class, ProjectEntity::class, IdentityEntity::class, PermissionRuleEntity::class, HookEntity::class, CronJobEntity::class, SubAgentEntity::class, UsageRecordEntity::class, KanbanTaskEntity::class, GroupRoomEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupRoomSummaryEntity::class, KanbanRunEntity::class, CodeSymbolEntity::class, CodeEdgeEntity::class, CodeFileEntity::class, HarnessThreadEntity::class, HarnessTurnEntity::class, HarnessEventEntity::class], version = 50, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
@@ -39,6 +39,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun groupRoomDao(): GroupRoomDao
     abstract fun kanbanRunDao(): KanbanRunDao
     abstract fun codeIndexDao(): CodeIndexDao
+    abstract fun harnessThreadDao(): HarnessThreadDao   // 步骤B:Thread/Turn 身份
+    abstract fun harnessEventDao(): HarnessEventDao     // 步骤G:Rollout 事件
 
     companion object {
         @Volatile
@@ -762,6 +764,76 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 步骤B:Thread/Turn 身份两张表。
+         *
+         * 列/类型/默认值与 HarnessThreadEntity/HarnessTurnEntity 逐项对应;
+         * 实体声明的索引(sessionId/threadId/parentTurnId)必须在这里也建,
+         * 否则 Room 升级校验直接抛异常崩在启动(本项目踩过两次,见 MIGRATION_39_40 注释)。
+         */
+        private val MIGRATION_47_48 = object : Migration(47, 48) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS harness_threads (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        sessionId INTEGER NOT NULL DEFAULT 0,
+                        goal TEXT NOT NULL DEFAULT '',
+                        status TEXT NOT NULL DEFAULT 'active',
+                        createdAt INTEGER NOT NULL DEFAULT 0,
+                        updatedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_harness_threads_sessionId ON harness_threads(sessionId)")
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS harness_turns (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        threadId INTEGER NOT NULL,
+                        parentTurnId INTEGER NOT NULL DEFAULT 0,
+                        status TEXT NOT NULL DEFAULT 'running',
+                        input TEXT NOT NULL DEFAULT '',
+                        summary TEXT NOT NULL DEFAULT '',
+                        evidence TEXT NOT NULL DEFAULT '',
+                        createdAt INTEGER NOT NULL DEFAULT 0,
+                        updatedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_harness_turns_threadId ON harness_turns(threadId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_harness_turns_parentTurnId ON harness_turns(parentTurnId)")
+            }
+        }
+
+        /**
+         * 步骤G:Rollout 事件表(只追加不改写,无 Delete/Update 与之对应)。
+         * 列/索引与 HarnessEventEntity 逐项对应(校验规则见 MIGRATION_39_40 注释)。
+         */
+        private val MIGRATION_48_49 = object : Migration(48, 49) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS harness_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        threadId INTEGER NOT NULL DEFAULT 0,
+                        turnId INTEGER NOT NULL DEFAULT 0,
+                        type TEXT NOT NULL DEFAULT '',
+                        payload TEXT NOT NULL DEFAULT '',
+                        createdAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_harness_events_threadId ON harness_events(threadId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_harness_events_turnId ON harness_events(turnId)")
+            }
+        }
+
+        /**
+         * 移植3:Rollout 对齐 Codex 三 id 词汇,事件表加 callId(工具调用 id,Begin/End 配对键)
+         * 与 status(ExecutionStatus wire 值)。纯 ADD COLUMN,老行留空,重建时回退读 payload。
+         */
+        private val MIGRATION_49_50 = object : Migration(49, 50) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE harness_events ADD COLUMN callId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE harness_events ADD COLUMN status TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: openOrRecover(context.applicationContext).also { INSTANCE = it }
@@ -773,7 +845,7 @@ abstract class AppDatabase : RoomDatabase() {
             AppDatabase::class.java,
             DB_NAME
         )
-            .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46, MIGRATION_46_47)
+            .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)

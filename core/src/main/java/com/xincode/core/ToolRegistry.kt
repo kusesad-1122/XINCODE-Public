@@ -155,6 +155,12 @@ class ToolRegistry {
         return arr
     }
 
+    // 步骤C:派发观测钩(只读)。
+    // 全仓工具执行只走 execute(自检结论见方案),D 步 Router/Orchestrator 与 A 步
+    // AgentServer 事件都挂这里。回调异常一律吞掉;取消必须原样上抛,“停止”按钮不能失灵。
+    var onDispatch: ((ToolCall) -> Unit)? = null
+    var onExecuted: ((ToolCall, ToolResult) -> Unit)? = null
+
     /**
      * Execute a [ToolCall] by dispatching to the registered tool.
      * @return [ToolResult.Error] if the tool name is not registered, or the tool's result.
@@ -184,16 +190,20 @@ class ToolRegistry {
         // gap-05:把原始 arguments 解析为 JSONObject 后经 executeJson 透传(保留 array/object 类型)。
         // 默认 executeJson 会压平成 Map<String,String> 委托 execute,老工具行为不变。
         val argsJson = parseArgumentsJson(call.arguments)
-        return try {
+        // 步骤C:真实派发前通知观察者(未知工具/前置拦截的早退路径不算派发)。
+        runCatching { onDispatch?.invoke(call) }
+        val result: ToolResult = try {
             tool.executeJson(argsJson)
         } catch (c: kotlinx.coroutines.CancellationException) {
-            throw c  // 协程取消必须原样上抛,否则「停止」按钮会失灵
+            throw c  // 协程取消必须原样上抛,否则「停止」按钮会失灵(注意:取消不触发 onExecuted)
         } catch (t: Throwable) {
             // 这里是所有工具的唯一派发点,捕 Throwable 而非 Exception 是刻意的:
             // OutOfMemoryError(抓取/读取超大内容)、StackOverflowError(脚本深递归)等属于 Error,
             // 漏掉就会直接杀死进程(用户看到的"闪退")。转成模型可见的错误,让它自我纠正。
             ToolResult.Error("${tool.name} 执行异常(${t::class.java.simpleName}): ${t.message}")
         }
+        runCatching { onExecuted?.invoke(call, result) }
+        return result
     }
 
     /** Parse model-generated JSON arguments string into a JSONObject (empty on failure). */
