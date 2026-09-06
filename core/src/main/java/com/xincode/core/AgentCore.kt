@@ -314,20 +314,7 @@ class AgentCore(
     private suspend fun clearCursor() {
         cursorDao?.deleteBySessionId(sessionId)
     }
-
-    /**
-     * 步骤C:本轮最后一条助手文本(截断 500 字),供 Turn 收尾“摘要继承”。
-     * 只认 role=assistant 且 content 为非空字符串的消息;多模态/空内容跳过。
-     */
-    private fun lastAssistantText(): String {
-        for (i in messages.size - 1 downTo 0) {
-            val msg = messages[i]
-            if (msg.optString("role") != "assistant") continue
-            val content = msg.opt("content")
-            if (content is String && content.isNotBlank()) return content.take(500)
-        }
-        return ""
-    }
+    // 步骤C:Turn 收尾摘要直接复用既有 lastAssistantText()(快照防并发版),不另造轮子。
 
     // ---- public API ----
 
@@ -566,7 +553,7 @@ class AgentCore(
                         try {
                             val terminal = _state.value
                             val ok = terminal !is AgentState.Error && terminal !is AgentState.Interrupted
-                            hooks.onTurnFinish(ok, lastAssistantText())
+                            hooks.onTurnFinish(ok, lastAssistantText().orEmpty())
                         } catch (_: Exception) {
                             Log.w(TAG, "turnHooks.onTurnFinish failed (ignored)")
                         }
