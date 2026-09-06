@@ -189,7 +189,7 @@ fun PluginRegistry.RemotePlugin.toDescriptor(): PluginDescriptor = PluginDescrip
 /** 插件安装/卸载的编排层:复用 McpManager / SkillDao / ToolRegistry / GithubAuth。 */
 class PluginStoreManager(
     private val context: Context,
-    private val database: AppDatabase,
+    val database: AppDatabase,
     private val keystore: KeystoreProvider,
     private val mcpManager: McpManager,
     private val toolRegistry: ToolRegistry
@@ -214,7 +214,7 @@ class PluginStoreManager(
     /** 拉取远程插件目录(失败回退缓存),返回 ONLINE 描述符列表。remoteError 反映加载状态。 */
     suspend fun refreshRemoteCatalog(): List<PluginDescriptor> = withContext(Dispatchers.IO) {
         val (raw, ok) = PluginRegistry.fetch(database)
-        remoteRaw = raw
+        remotePlugins = raw
         remoteError = if (ok) null else "远程目录加载失败,已使用上次缓存"
         raw.map { it.toDescriptor() }
     }
@@ -336,7 +336,7 @@ class PluginStoreManager(
 
     /** 卸载在线插件:清状态并注销其全部工具。 */
     suspend fun uninstallOnline(p: PluginDescriptor) = withContext(Dispatchers.IO) {
-        val rawId = p.removePrefix("online_")
+        val rawId = p.id.removePrefix("online_")
         database.settingDao().put(onlineKey(rawId), "")
         database.settingDao().put(onlineKeyKey(rawId), "")
         syncOnlineTools()
@@ -358,10 +358,12 @@ class PluginStoreManager(
 
         val newNames = mutableListOf<String>()
         for (raw in installed) {
+            // Key 预读到局部变量:keyProvider 是同步闭包(() -> String?),不能在里面调挂起 DAO。
+            // 同步周期内 Key 不会变,预读与使用一致。
+            val enc = runCatching {
+                database.settingDao().get(onlineKeyKey(raw.id))
+            }.getOrNull()
             val keyProvider = {
-                val enc = runCatching {
-                    database.settingDao().get(onlineKeyKey(raw.id))
-                }.getOrNull()
                 if (enc.isNullOrBlank()) null else try {
                     keystore.decrypt(android.util.Base64.decode(enc, android.util.Base64.NO_WRAP))
                 } catch (_: Exception) { null }

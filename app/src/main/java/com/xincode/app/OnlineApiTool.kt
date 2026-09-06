@@ -31,7 +31,7 @@ class OnlineApiTool(
 ) : Tool {
 
     override val name: String =
-        "online_${pluginId.replace(Regex("[^a-zA-Z0-9_]", "__"), "_")}__${spec.name}"
+        "online_${pluginId.replace(Regex("[^a-zA-Z0-9_]"), "__")}__${spec.name}"
 
     override val description: String =
         "[${pluginName}在线插件] ${spec.summary.ifBlank { spec.name }}"

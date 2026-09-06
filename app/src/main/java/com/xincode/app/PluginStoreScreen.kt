@@ -41,7 +41,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -451,6 +453,7 @@ private fun PluginCard(
 }
 
 /** 复用玻璃拟态底部抽屉样式的插件详情:功能清单 + 安装/卸载操作。 */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ModalBottomSheetGlass(
     onDismiss: () -> Unit,
