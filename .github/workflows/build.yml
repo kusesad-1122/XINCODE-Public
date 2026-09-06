@@ -133,6 +133,23 @@ jobs:
       - name: Build Release APK
         run: ./gradlew :app:assembleRelease
 
+      # 下次发版零手工:从 CHANGELOG 截取本 tag 对应段落做 Release notes。
+      # tag 形如 v1.14.0,CHANGELOG 段头形如 "## [1.14.0] - 日期",去 v 匹配前缀。
+      # 截不到(忘写 CHANGELOG)则给一行兜底,不空着发。
+      - name: Extract release notes from CHANGELOG
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VER" '
+            index($0, "## [" ver "]") == 1 {flag=1; next}
+            /^## \[/ {if (flag) exit}
+            flag
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "更新说明见仓库 CHANGELOG 全文。" > release-notes.md
+          fi
+          printf '\n> 正式签名版 APK 已自动附带.\n' >> release-notes.md
+          head -n 5 release-notes.md
+
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
@@ -144,7 +161,6 @@ jobs:
         with:
           files: app/build/outputs/apk/release/app-release.apk
           tag_name: ${{ github.ref_name }}
-          append_body: true
-          body: "\n> 正式签名版 APK 已自动附带."
+          body_path: release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
