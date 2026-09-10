@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>功能详解 — XINCODE</title>
+<meta name="description" content="XINCODE 功能详解:多供应商模型、工具调用循环、运行链(通知栏中断与审批、多轮继承、断点续跑)、计划与协作模式、指挥室、终端与 Ubuntu、长期记忆、上下文与成本、插件与 MCP。">
+<link rel="canonical" href="https://kusesad-1122.github.io/XINCODE-Public/features.html">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FAF8F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#181715" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/img/app-icon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/app-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="XINCODE">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="XINCODE 功能详解">
+<meta property="og:description" content="XINCODE 功能详解:多供应商模型、工具调用循环、运行链(通知栏中断与审批、多轮继承、断点续跑)、计划与协作模式、指挥室、终端与 Ubuntu、长期记忆、上下文与成本、插件与 MCP。">
+<meta property="og:url" content="https://kusesad-1122.github.io/XINCODE-Public/features.html">
+<meta property="og:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="XINCODE 功能详解">
+<meta name="twitter:description" content="XINCODE 功能详解:多供应商模型、工具调用循环、运行链(通知栏中断与审批、多轮继承、断点续跑)、计划与协作模式、指挥室、终端与 Ubuntu、长期记忆、上下文与成本、插件与 MCP。">
+<meta name="twitter:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<link rel="stylesheet" href="assets/site.css">
+<script>/* 首屏前定主题,避免闪白/闪黑 */
+(function(){try{var t=localStorage.getItem("xincode-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
+</script>
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html">
+      <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+      <span>XIN<span class="code">CODE</span></span>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+        <a href="features.html" aria-current="page">功能</a>
+        <a href="plugins.html">插件与技能</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="guide.html">上手</a>
+        <a href="security.html">安全</a>
+        <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="切换到深色主题"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.4M12 19v2.4M2.6 12H5M19 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7"/></svg></button>
+      <a class="btn btn-sm" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载 APK</a>
+      <button class="icon-btn nav-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-menu" aria-label="打开导航菜单"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+  <nav id="site-menu" class="wrap" aria-label="移动端导航" hidden>
+      <a href="features.html" aria-current="page">功能</a>
+      <a href="plugins.html">插件与技能</a>
+      <a href="changelog.html">更新日志</a>
+      <a href="guide.html">上手</a>
+      <a href="security.html">安全</a>
+      <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+      <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载最新 APK</a>
+  </nav>
+</header>
+<main id="main" tabindex="-1">
+<div class="wrap page-head">
+  <p class="crumbs"><a href="index.html">首页</a> / 功能详解</p>
+  <h1>功能详解</h1>
+  <p class="lede">这一页把 XINCODE 的能力按"从模型到运行链、从记忆到终端"的顺序讲清楚,方便你判断它适不适合你的用法。</p>
+</div>
+
+<div class="wrap doc-layout">
+  <nav class="toc" aria-label="本页目录" data-toc>
+    <h2 id="toc-title">本页目录</h2>
+    <ol aria-labelledby="toc-title">
+        <li><a href="#provider">多供应商模型,不被一家绑死</a></li>
+        <li><a href="#tools">工具调用循环:结果一定回到模型</a></li>
+        <li><a href="#runtime">运行链:长任务跑得完,也停得住</a></li>
+        <li><a href="#collab">计划模式与协作模式</a></li>
+        <li><a href="#room">指挥室:进度看得见</a></li>
+        <li><a href="#terminal">终端与 Ubuntu 环境</a></li>
+        <li><a href="#memory">长期记忆:互通,也隔离</a></li>
+        <li><a href="#context">上下文与成本,全都摆在明面上</a></li>
+        <li><a href="#automation">效率与自动化</a></li>
+        <li><a href="#plugins">插件、技能与 MCP</a></li>
+        <li><a href="#engineering">工程结构:多模块 Gradle</a></li>
+        <li><a href="#security">安全与隐私</a></li>
+    </ol>
+  </nav>
+
+  <div class="prose">
+    <section id="provider" aria-labelledby="h-provider">
+      <p class="eyebrow-line">Agent Core</p>
+      <h2 id="h-provider">多供应商模型,不被一家绑死</h2>
+      <p>XINCODE 不内置任何托管密钥,也不绑定某一家模型服务。你在设置里填自己的端点、API Key 与模型清单,想换随时换。</p>
+    <ul>
+      <li><b>OpenAI Chat Completions</b>——最常见的兼容端点,第三方中转同样适用。</li>
+      <li><b>OpenAI Responses</b>——走 <code>/v1/responses</code>,把工具调用、结构化输出与流式事件转换成应用内部格式。</li>
+      <li><b>DeepSeek / Anthropic</b>——各自原生协议路径,不靠"兼容层"硬凑。</li>
+      <li><b>自定义端点与模型清单</b>——本地网关、自建服务、冷门兼容服务都能接。</li>
+    </ul>
+    <p>API Key 只保存在设备上,经 Android Keystore 加密的配置存储落库;正式包不包含任何 Key。</p>
+    </section>
+
+    <section id="tools" aria-labelledby="h-tools">
+      <p class="eyebrow-line">Tool Loop</p>
+      <h2 id="h-tools">工具调用循环:结果一定回到模型</h2>
+      <p>智能体的可信度取决于"它做的事有没有被如实记录"。XINCODE 的工具循环遵守三条纪律:</p>
+    <ul>
+      <li><b>结构化输出</b>——模型返回的调用意图先解析成结构,再交给工具,不靠字符串猜。</li>
+      <li><b>工具结果必回模型</b>——失败就如实回失败与原因,不静默吞掉,也不伪造成功。</li>
+      <li><b>Prompt 缓存纪律</b>——稳定的前缀不随每轮变化,缓存命中率因此可观测、可优化。</li>
+    </ul>
+    <p>每次调用的耗时、产出与状态都留在对话时间线里,而不是被折叠成一句"已完成"。</p>
+    </section>
+
+    <section id="runtime" aria-labelledby="h-runtime">
+      <p class="eyebrow-line">Runtime</p>
+      <h2 id="h-runtime">运行链:长任务跑得完,也停得住</h2>
+      <p>手机上的长任务最怕两件事:你管不了它,以及它做得不明不白。运行链把这两件事都变成可操作的按钮。</p>
+    <h3>通知栏就是控制面</h3>
+    <ul>
+      <li><b>一键中断</b>——切后台、杀 UI 也能真停。停的是执行链本身,不是只关掉界面。</li>
+      <li><b>敏感操作审批</b>——执行链真的停在等待位,通知栏同意 / 拒绝直达执行链;无回执不执行。</li>
+      <li><b>拒绝后可重判</b>——模型拿到拒绝理由后换方案重试,不是干等到超时。</li>
+    </ul>
+    <h3>任务有身份,多轮不断片</h3>
+    <ul>
+      <li><b>Thread / Turn</b>——Thread 是任务档案,Turn 是其中一轮。修一个 Bug 时第一轮查根因、第二轮按证据改码,第二轮自动继承第一轮结论,不再全文重灌。</li>
+      <li><b>续跑与分支</b>——运行流水落盘,进程被杀后可续跑,也可以从某个分支点重试。</li>
+    </ul>
+    <h3>调度与执行分离</h3>
+    <p>工具调度器只回答"交给谁"(纯函数、无副作用),执行管理器负责边界与顺序(审批 → 执行域 → 运行 → 收尾)。新增工具不必再写权限代码,意图与管控分开,行为可预测。</p>
+    </section>
+
+    <section id="collab" aria-labelledby="h-collab">
+      <p class="eyebrow-line">Plan &amp; Collaboration</p>
+      <h2 id="h-collab">计划模式与协作模式</h2>
+      <p><b>计划模式</b>把任务拆成可视化任务卡,先看清路径再开工,改计划比改代码便宜。</p>
+    <p><b>协作模式</b>下主脑把任务并行派发给多个专职子智能体,各自在自己的工位上干活,结果汇总回主脑。内置四个专职角色:</p>
+    <div class="table-scroll">
+    <table>
+      <caption>内置子智能体角色</caption>
+      <thead><tr><th scope="col">角色</th><th scope="col">负责什么</th></tr></thead>
+      <tbody>
+        <tr><td>探索者</td><td>在陌生仓库里找入口:目录结构、关键文件、调用链。</td></tr>
+        <tr><td>审查员</td><td>挑毛病:边界条件、安全风险、被忽略的失败路径。</td></tr>
+        <tr><td>编码员</td><td>按证据改代码,产出可运行的改动。</td></tr>
+        <tr><td>研究员</td><td>查文档与外部资料,把结论带回主脑。</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>四个角色随应用内置,即使被误删,升级后也会按名自动找回。</p>
+    </section>
+
+    <section id="room" aria-labelledby="h-room">
+      <p class="eyebrow-line">Command Room</p>
+      <h2 id="h-room">指挥室:进度看得见</h2>
+      <p>子智能体不是日志里的四行字,而是四个工位上的像素小人。派活即联动:谁在检索、谁在跑测试、谁在等审批,一眼就能看出来。</p>
+    <p>指挥室是应用内的一层 WebView + HTML5 Canvas 场景,像素素材为可再分发的开放授权(角色 CC0、家具装饰 MIT),随仓库一并公开。</p>
+    <p><a class="link-more" href="index.html#features">回到首页看指挥室示意 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
+    </section>
+
+    <section id="terminal" aria-labelledby="h-terminal">
+      <p class="eyebrow-line">Terminal &amp; Ubuntu</p>
+      <h2 id="h-terminal">终端与 Ubuntu 环境</h2>
+      <p>内置 root 终端;需要完整环境时,可一键部署 Ubuntu(root + chroot 自动完成),之后就像在一台小 Linux 机上工作。</p>
+    <ul>
+      <li><b>常用开发环境一键装</b>——JDK、构建工具链等按需安装。</li>
+      <li><b>技能包随装随用</b>——安全代码审计、逆向分析、APK 构建 / 更新 / 反编译、LSPosed 模块开发。</li>
+      <li><b>产物留在本机</b>——APK、日志与中间文件都在你的存储里,不上传第三方。</li>
+    </ul>
+    <div class="callout">
+      <span class="t">免 Root 也能用</span>
+      <p>不 Root 时基础功能完整可用;Root 之后终端与 Ubuntu 环境的权限更彻底,适合重度场景。</p>
+    </div>
+    </section>
+
+    <section id="memory" aria-labelledby="h-memory">
+      <p class="eyebrow-line">Memory</p>
+      <h2 id="h-memory">长期记忆:互通,也隔离</h2>
+      <p>记忆用两条腿走路:<b>FTS 全文检索</b>负责关键词命中,<b>向量语义检索</b>负责"意思相近"。两者结果融合后进入上下文,由模型判断该不该用。</p>
+    <ul>
+      <li><b>普通对话互通</b>——日常对话之间记忆共享,不用每次重新自我介绍。</li>
+      <li><b>项目对话隔离</b>——项目内对话按项目归档,不把 A 项目的细节漏进 B 项目。</li>
+      <li><b>精编两文件记忆</b>——用户画像与近况由后台复盘分身维护,长期不变的事实与近期状态分开存。</li>
+    </ul>
+    </section>
+
+    <section id="context" aria-labelledby="h-context">
+      <p class="eyebrow-line">Context &amp; Cost</p>
+      <h2 id="h-context">上下文与成本,全都摆在明面上</h2>
+      <p>输入框旁边的圆环按占用率变色(绿 → 蓝 → 黄 → 红),不用点进设置就知道还剩多少余量。</p>
+    <ul>
+      <li><b>实时 token 与缓存命中</b>——本轮用了多少、缓存省了多少,都看得见。</li>
+      <li><b>可配置压缩阈值</b>——接近上限时自动压缩,阈值由你定。</li>
+      <li><b>人民币成本显示</b>——按缓存感知计价,花的钱直接读得懂。</li>
+    </ul>
+    </section>
+
+    <section id="automation" aria-labelledby="h-automation">
+      <p class="eyebrow-line">Automation</p>
+      <h2 id="h-automation">效率与自动化</h2>
+      <ul>
+      <li><b>多引擎联网搜索</b>——必应 / 百度 / 搜狗 / DuckDuckGo 结果融合,并抓取正文,不只给标题。</li>
+      <li><b>Goal / Work 多任务</b>——丢一个目标进去,后台拆解执行;多任务并行不互相踩。</li>
+      <li><b>定时任务</b>——cron 表达式与 WorkManager 两种调度方式。</li>
+      <li><b>语音转写</b>——只在主动使用语音输入时录音。</li>
+      <li><b>视觉与深度推理委托</b>——把图片理解、复杂推理交给副模型,主模型专注编排。</li>
+    </ul>
+    </section>
+
+    <section id="plugins" aria-labelledby="h-plugins">
+      <p class="eyebrow-line">Plugins &amp; Skills</p>
+      <h2 id="h-plugins">插件、技能与 MCP</h2>
+      <p>插件页拆成四个页签,各占一页、带计数:</p>
+    <ul>
+      <li><b>连接器</b>——GitHub 连接器走 OAuth 设备流,Token 加密存本机,与 Git 操作复用同一份授权。</li>
+      <li><b>MCP</b>——本地 stdio 与远程 HTTP 双传输;免鉴权的官方远程 MCP 装完即用,也可自填地址接入自己的服务器。</li>
+      <li><b>在线插件</b>——远程 OpenAPI 轻量子集,目录从云端实时拉取,上架新插件不必等发版。</li>
+      <li><b>技能包</b>——六个内置技能可装卸;每回合按你的输入自动匹配技能,命中即附用法摘要进上下文,未命中零成本,也可以用 <code>/技能名</code> 主动调用。</li>
+    </ul>
+    <p><a class="link-more" href="plugins.html">查看插件与技能清单 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
+    </section>
+
+    <section id="engineering" aria-labelledby="h-engineering">
+      <p class="eyebrow-line">Engineering</p>
+      <h2 id="h-engineering">工程结构:多模块 Gradle</h2>
+      <p>纯 Kotlin 原生,没有跨端框架,也没有为了跨平台而引入的抽象层。</p>
+    <div class="table-scroll">
+    <table>
+      <caption>模块与职责</caption>
+      <thead><tr><th scope="col">模块</th><th scope="col">职责</th></tr></thead>
+      <tbody>
+        <tr><td><code>app</code></td><td>Android 入口、Compose UI、智能体编排、指挥室 WebView</td></tr>
+        <tr><td><code>core</code></td><td>AgentCore、工具注册表、调度循环</td></tr>
+        <tr><td><code>provider</code></td><td>各 LLM 供应商客户端(OpenAI 兼容 / Anthropic 等)</td></tr>
+        <tr><td><code>data</code></td><td>Room 持久化、记忆(FTS + 向量)、记忆抽取</td></tr>
+        <tr><td><code>security</code></td><td>权限模式、敏感操作门控、审计</td></tr>
+        <tr><td><code>tools</code></td><td>内置工具实现</td></tr>
+        <tr><td><code>service</code></td><td>前台服务、后台任务、通知</td></tr>
+        <tr><td><code>ui</code></td><td>共享 UI 组件与主题</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>语言 Kotlin · UI Jetpack Compose · 存储 Room · <code>minSdk 28</code> · <code>targetSdk 34</code>。</p>
+    </section>
+
+    <section id="security" aria-labelledby="h-security">
+      <p class="eyebrow-line">Security</p>
+      <h2 id="h-security">安全与隐私</h2>
+      <p>权限模式、敏感操作确认、审计日志、出站守卫——安全不是事后补的开关,而是执行链的一部分。</p>
+    <p><a class="link-more" href="security.html">阅读安全与隐私说明 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
+    </section>
+
+    <div class="callout" style="margin-top:48px">
+      <span class="t">这些能力的版本状态</span>
+      <p>页面描述对应 1.14.x 版本;每个版本具体改了什么写在更新日志与仓库 CHANGELOG 里。功能仍在快速迭代,遇到与描述不一致的地方,以仓库代码与实际界面为准。</p>
+    </div>
+    <div class="btn-row" style="margin-top:28px">
+      <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载最新 APK</a>
+      <a class="btn btn-ghost" href="guide.html">上手与构建</a>
+    </div>
+  </div>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="index.html" style="margin-bottom:10px">
+          <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+          <span>XIN<span class="code">CODE</span></span>
+        </a>
+        <p class="about">运行在 Android 上的自主 AI 智能体:多供应商模型、工具调用循环、子智能体并行协作、在线插件市场、长期记忆与内置终端。纯 Kotlin 原生,从零构建。</p>
+        <p class="meta">当前版本 <b data-version>v1.14.1</b> · GPL-3.0-or-later</p>
+      </div>
+      <nav aria-labelledby="foot-site">
+        <h2 id="foot-site">本站</h2>
+        <ul>
+          <li><a href="features.html">功能详解</a></li>
+          <li><a href="plugins.html">插件与技能</a></li>
+          <li><a href="changelog.html">更新日志</a></li>
+          <li><a href="guide.html">上手与构建</a></li>
+          <li><a href="security.html">安全与隐私</a></li>
+          <li><a href="accessibility.html">无障碍声明</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-res">
+        <h2 id="foot-res">资源</h2>
+        <ul>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener noreferrer">版本发布页<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">完整 CHANGELOG<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener noreferrer">第三方声明<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">许可证 GPL-3.0<span class="visually-hidden">(在新标签页打开)</span></a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-more">
+        <h2 id="foot-more">相关</h2>
+        <ul>
+          <li><a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer">MCP 生态<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/issues" target="_blank" rel="noopener noreferrer">问题反馈 / 建议<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public#-致谢" target="_blank" rel="noopener noreferrer">致谢<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="#main">回到顶部</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span data-year>2026</span> XINCODE · 主体代码 GPL-3.0-or-later · 像素素材 CC0 / MIT(见第三方声明)</span>
+      <span>与任何模型供应商均无隶属关系;API Key 由使用者自行提供。</span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

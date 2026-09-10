@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上手与构建 — XINCODE</title>
+<meta name="description" content="XINCODE 上手:安装 APK、首次配置模型供应商、从源码构建 Debug 包、打 Release 签名包、权限说明与常见问题。">
+<link rel="canonical" href="https://kusesad-1122.github.io/XINCODE-Public/guide.html">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FAF8F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#181715" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/img/app-icon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/app-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="XINCODE">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="XINCODE 上手与构建">
+<meta property="og:description" content="XINCODE 上手:安装 APK、首次配置模型供应商、从源码构建 Debug 包、打 Release 签名包、权限说明与常见问题。">
+<meta property="og:url" content="https://kusesad-1122.github.io/XINCODE-Public/guide.html">
+<meta property="og:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="XINCODE 上手与构建">
+<meta name="twitter:description" content="XINCODE 上手:安装 APK、首次配置模型供应商、从源码构建 Debug 包、打 Release 签名包、权限说明与常见问题。">
+<meta name="twitter:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<link rel="stylesheet" href="assets/site.css">
+<script>/* 首屏前定主题,避免闪白/闪黑 */
+(function(){try{var t=localStorage.getItem("xincode-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
+</script>
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html">
+      <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+      <span>XIN<span class="code">CODE</span></span>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+        <a href="features.html">功能</a>
+        <a href="plugins.html">插件与技能</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="guide.html" aria-current="page">上手</a>
+        <a href="security.html">安全</a>
+        <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="切换到深色主题"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.4M12 19v2.4M2.6 12H5M19 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7"/></svg></button>
+      <a class="btn btn-sm" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载 APK</a>
+      <button class="icon-btn nav-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-menu" aria-label="打开导航菜单"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+  <nav id="site-menu" class="wrap" aria-label="移动端导航" hidden>
+      <a href="features.html">功能</a>
+      <a href="plugins.html">插件与技能</a>
+      <a href="changelog.html">更新日志</a>
+      <a href="guide.html" aria-current="page">上手</a>
+      <a href="security.html">安全</a>
+      <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+      <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载最新 APK</a>
+  </nav>
+</header>
+<main id="main" tabindex="-1">
+<div class="wrap page-head">
+  <p class="crumbs"><a href="index.html">首页</a> / 上手</p>
+  <h1>上手与构建</h1>
+  <p class="lede">从安装到第一次对话,再到自己打一个签名包——这一页把需要的信息一次写全,包括权限用途与常见问题。</p>
+</div>
+
+<div class="wrap doc-layout">
+  <nav class="toc" aria-label="本页目录" data-toc>
+    <h2 id="toc-title">本页目录</h2>
+    <ol aria-labelledby="toc-title">
+      <li><a href="#require">环境要求</a></li>
+      <li><a href="#install">安装应用</a></li>
+      <li><a href="#configure">首次配置</a></li>
+      <li><a href="#source">从源码构建</a></li>
+      <li><a href="#release">打 Release 签名包</a></li>
+      <li><a href="#permissions">权限说明</a></li>
+      <li><a href="#faq">常见问题</a></li>
+      <li><a href="#contribute">参与与反馈</a></li>
+    </ol>
+  </nav>
+
+  <div class="prose">
+    <section id="require" aria-labelledby="h-require">
+      <p class="eyebrow-line">Requirements</p>
+      <h2 id="h-require">环境要求</h2>
+      <div class="table-scroll">
+      <table>
+        <caption>运行与构建需要什么</caption>
+        <thead><tr><th scope="col">项目</th><th scope="col">要求</th></tr></thead>
+        <tbody>
+          <tr><td>Android 版本</td><td>Android 9 及以上(<code>minSdk 28</code>),目标 <code>targetSdk 34</code></td></tr>
+          <tr><td>Root</td><td>可选。免 Root 即可用;Root 后终端与内置 Ubuntu 环境权限更彻底</td></tr>
+          <tr><td>模型服务</td><td>你自己的 LLM 供应商端点与 API Key(应用不内置任何托管密钥)</td></tr>
+          <tr><td>构建环境</td><td>JDK 17 与 Android SDK Platform 34(自行构建时需要)</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section id="install" aria-labelledby="h-install">
+      <p class="eyebrow-line">Install</p>
+      <h2 id="h-install">安装应用</h2>
+      <ol>
+        <li>打开 <a href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener noreferrer">Release 页<span class="visually-hidden">(在新标签页打开)</span></a>,在最新版本里下载 <code>app-release.apk</code>(正式签名包)。</li>
+        <li>在系统里允许这次安装来源(Android 会就"未知来源"给出提示,安装后可收回)。</li>
+        <li>安装后首次启动,按下面的步骤填模型配置。</li>
+      </ol>
+      <div class="callout warn">
+        <span class="t">关于 APK 来源</span>
+        <p>只从本仓库的 Release 页或你自行构建的产物安装。第三方站点二次打包的 APK 无法保证未被改动——签名一旦不同,系统就不会允许覆盖安装。</p>
+      </div>
+      <div class="btn-row">
+        <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载最新 APK</a>
+        <a class="btn btn-ghost" href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener noreferrer">查看全部版本 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </div>
+    </section>
+
+    <section id="configure" aria-labelledby="h-configure">
+      <p class="eyebrow-line">First Run</p>
+      <h2 id="h-configure">首次配置</h2>
+      <p>进入设置填写<b>你自己的</b> LLM 供应商信息:端点 + API Key + 模型。</p>
+      <ul>
+        <li><b>OpenAI Chat Completions</b>——最常见的兼容路径,第三方中转同样适用。</li>
+        <li><b>OpenAI Responses</b>——需要这一路径时选择「OpenAI Responses」,它会调用 <code>/v1/responses</code>,并把工具调用、结构化输出与流式事件转换成应用内部格式。</li>
+        <li><b>DeepSeek / Anthropic</b>——按各自原生协议走。</li>
+        <li><b>多供应商共存</b>——可以同时配置多家,在对话里切换;自定义端点与模型清单也支持。</li>
+      </ul>
+      <div class="callout">
+        <span class="t">Key 存在哪里</span>
+        <p>API Key 只保存在设备上,经 Android Keystore 加密的配置存储落库;正式包不包含任何 Key,应用也不会把 Key 发到模型服务以外的地址。</p>
+      </div>
+    </section>
+
+    <section id="source" aria-labelledby="h-source">
+      <p class="eyebrow-line">Build from source</p>
+      <h2 id="h-source">从源码构建</h2>
+      <p>Debug 包不需要签名密钥,克隆下来就能编:</p>
+      <pre><code>git clone https://github.com/kusesad-1122/XINCODE-Public.git
+cd XINCODE-Public
+./gradlew :app:assembleDebug
+# 产物:app/build/outputs/apk/debug/app-debug.apk</code></pre>
+      <p>需要 JDK 17 与 Android SDK(Platform 34)。若本机未安装 SDK,在项目根目录新建 <code>local.properties</code> 指向 SDK 路径:</p>
+      <pre><code>sdk.dir=/path/to/Android/Sdk</code></pre>
+      <div class="callout warn">
+        <span class="t">关于 codegraph 内核</span>
+        <p>仓库的 CI 会先把 <code>codegraph-kernel</code>(Rust + tree-sitter)交叉编译成 arm64 的 <code>.so</code> 再打包,需要 NDK 27.2 与 <code>aarch64-linux-android</code> 目标。若本地构建提示缺少该产物,按 <code>.github/workflows/build.yml</code> 里对应步骤准备工具链即可。</p>
+      </div>
+      <p>工程是多模块 Gradle(Kotlin DSL)结构,模块职责见<a href="features.html#engineering">功能页的工程结构</a>一节。</p>
+    </section>
+
+    <section id="release" aria-labelledby="h-release">
+      <p class="eyebrow-line">Signed release</p>
+      <h2 id="h-release">打 Release 签名包</h2>
+      <p>签名密钥是你的私有机密,<b>永远不要提交进仓库</b>——<code>keystore.properties</code>、<code>*.jks</code>、<code>*.keystore</code> 都已经在 <code>.gitignore</code> 里。</p>
+      <ol>
+        <li>复制模板:<code>cp keystore.properties.example keystore.properties</code></li>
+        <li>若还没有密钥,生成一个:
+          <pre><code>keytool -genkeypair -v -keystore xincode-release.jks \
+  -alias xincode -keyalg RSA -keysize 2048 -validity 10000</code></pre>
+        </li>
+        <li>把 <code>keystore.properties</code> 里的四项填成真实值(<code>storeFile</code> / <code>storePassword</code> / <code>keyAlias</code> / <code>keyPassword</code>)。</li>
+        <li>打包:<code>./gradlew :app:assembleRelease</code>,产物在 <code>app/build/outputs/apk/release/app-release.apk</code>。</li>
+      </ol>
+      <div class="callout danger">
+        <span class="t">请离线备份密钥与口令</span>
+        <p><code>.jks</code> 与这些口令一旦丢失,将无法再为同一个应用发布更新(Android 只认同一把签名密钥)。若 <code>keystore.properties</code> 不存在,构建脚本会自动跳过签名配置,Debug 仍可正常构建。</p>
+      </div>
+    </section>
+
+    <section id="permissions" aria-labelledby="h-permissions">
+      <p class="eyebrow-line">Permissions</p>
+      <h2 id="h-permissions">权限说明</h2>
+      <div class="table-scroll">
+      <table>
+        <caption>应用申请的系统权限与用途</caption>
+        <thead><tr><th scope="col">权限</th><th scope="col">用途</th></tr></thead>
+        <tbody>
+          <tr><td><code>INTERNET</code></td><td>调用 LLM API、联网搜索、抓取正文</td></tr>
+          <tr><td><code>RECORD_AUDIO</code></td><td>语音转写——仅在你主动使用语音输入时</td></tr>
+          <tr><td><code>POST_NOTIFICATIONS</code></td><td>后台任务完成通知(也是中断与审批的入口)</td></tr>
+          <tr><td><code>FOREGROUND_SERVICE</code><br><code>FOREGROUND_SERVICE_DATA_SYNC</code></td><td>后台推进长任务(Goal / Work、定时任务)</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>应用不含广告与第三方追踪;API Key 等敏感配置只保存在本机,<code>android:allowBackup="false"</code> 已关闭系统自动备份。更多细节见<a href="security.html">安全与隐私</a>。</p>
+    </section>
+
+    <section id="faq" aria-labelledby="h-faq">
+      <p class="eyebrow-line">FAQ</p>
+      <h2 id="h-faq">常见问题</h2>
+      <details>
+        <summary>必须 Root 才能用吗?</summary>
+        <p>不必须。基础功能(对话、工具调用、插件、记忆)免 Root 可用;Root 之后终端与内置 Ubuntu 环境权限更彻底,适合要编译、反编译这类重度场景。</p>
+      </details>
+      <details>
+        <summary>应用自带模型额度吗?</summary>
+        <p>不带。XINCODE 不内置任何托管密钥,也不代理你的请求——你需要自己准备端点与 API Key,费用直接结算给你的供应商。</p>
+      </details>
+      <details>
+        <summary>支持哪些模型服务?</summary>
+        <p>OpenAI Chat Completions 兼容端点、OpenAI Responses、DeepSeek、Anthropic,以及自定义端点与模型清单。具体以当前版本的设置页为准。</p>
+      </details>
+      <details>
+        <summary>手机上装得下开发环境吗?</summary>
+        <p>可以。内置 root 终端,需要完整环境时一键部署 Ubuntu(root + chroot 自动完成),之后用 <code>apt</code> 装 JDK 等依赖。存储占用取决于你装了什么。</p>
+      </details>
+      <details>
+        <summary>我的对话数据会被上传吗?</summary>
+        <p>对话内容会发送到<b>你自己配置的</b>模型服务(否则模型无法回答),另外联网搜索与插件调用会把必要的查询参数发到对应服务。除此之外应用不做额外上报,也没有广告与分析 SDK。</p>
+      </details>
+      <details>
+        <summary>插件为什么不用更新应用就能多出来?</summary>
+        <p>在线插件目录从云端实时拉取,插件本身是远程 OpenAPI 的轻量子集,执行时直连插件服务。因此上架新插件不需要你重新装 APK。</p>
+      </details>
+    </section>
+
+    <section id="contribute" aria-labelledby="h-contribute">
+      <p class="eyebrow-line">Contribute</p>
+      <h2 id="h-contribute">参与与反馈</h2>
+      <p>遇到问题或想提需求,直接在仓库开 Issue;安全相关问题请按<a href="security.html#report">安全页的报告渠道</a>提交。</p>
+      <div class="btn-row">
+        <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/issues" target="_blank" rel="noopener noreferrer">提交 Issue <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+        <a class="btn btn-ghost" href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">浏览源码 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </div>
+      <p class="meta" style="margin-top:18px">主体代码采用 GNU GPL-3.0-or-later;第三方字体与像素素材依各自许可使用,详见仓库的 THIRD-PARTY-NOTICES。</p>
+    </section>
+  </div>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="index.html" style="margin-bottom:10px">
+          <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+          <span>XIN<span class="code">CODE</span></span>
+        </a>
+        <p class="about">运行在 Android 上的自主 AI 智能体:多供应商模型、工具调用循环、子智能体并行协作、在线插件市场、长期记忆与内置终端。纯 Kotlin 原生,从零构建。</p>
+        <p class="meta">当前版本 <b data-version>v1.14.1</b> · GPL-3.0-or-later</p>
+      </div>
+      <nav aria-labelledby="foot-site">
+        <h2 id="foot-site">本站</h2>
+        <ul>
+          <li><a href="features.html">功能详解</a></li>
+          <li><a href="plugins.html">插件与技能</a></li>
+          <li><a href="changelog.html">更新日志</a></li>
+          <li><a href="guide.html">上手与构建</a></li>
+          <li><a href="security.html">安全与隐私</a></li>
+          <li><a href="accessibility.html">无障碍声明</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-res">
+        <h2 id="foot-res">资源</h2>
+        <ul>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener noreferrer">版本发布页<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">完整 CHANGELOG<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener noreferrer">第三方声明<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">许可证 GPL-3.0<span class="visually-hidden">(在新标签页打开)</span></a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-more">
+        <h2 id="foot-more">相关</h2>
+        <ul>
+          <li><a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer">MCP 生态<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/issues" target="_blank" rel="noopener noreferrer">问题反馈 / 建议<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public#-致谢" target="_blank" rel="noopener noreferrer">致谢<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="#main">回到顶部</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span data-year>2026</span> XINCODE · 主体代码 GPL-3.0-or-later · 像素素材 CC0 / MIT(见第三方声明)</span>
+      <span>与任何模型供应商均无隶属关系;API Key 由使用者自行提供。</span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

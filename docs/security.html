@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>安全与隐私 — XINCODE</title>
+<meta name="description" content="XINCODE 的安全设计:权限模式、敏感操作真审批、审计日志、Keystore 密钥存储、出站守卫(SSRF 防护)、清晰的隐私数据流向与漏洞报告渠道。">
+<link rel="canonical" href="https://kusesad-1122.github.io/XINCODE-Public/security.html">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FAF8F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#181715" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/img/app-icon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/app-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="XINCODE">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="XINCODE 安全与隐私">
+<meta property="og:description" content="XINCODE 的安全设计:权限模式、敏感操作真审批、审计日志、Keystore 密钥存储、出站守卫(SSRF 防护)、清晰的隐私数据流向与漏洞报告渠道。">
+<meta property="og:url" content="https://kusesad-1122.github.io/XINCODE-Public/security.html">
+<meta property="og:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="XINCODE 安全与隐私">
+<meta name="twitter:description" content="XINCODE 的安全设计:权限模式、敏感操作真审批、审计日志、Keystore 密钥存储、出站守卫(SSRF 防护)、清晰的隐私数据流向与漏洞报告渠道。">
+<meta name="twitter:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<link rel="stylesheet" href="assets/site.css">
+<script>/* 首屏前定主题,避免闪白/闪黑 */
+(function(){try{var t=localStorage.getItem("xincode-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
+</script>
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html">
+      <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+      <span>XIN<span class="code">CODE</span></span>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+        <a href="features.html">功能</a>
+        <a href="plugins.html">插件与技能</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="guide.html">上手</a>
+        <a href="security.html" aria-current="page">安全</a>
+        <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="切换到深色主题"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.4M12 19v2.4M2.6 12H5M19 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7"/></svg></button>
+      <a class="btn btn-sm" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载 APK</a>
+      <button class="icon-btn nav-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-menu" aria-label="打开导航菜单"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+  <nav id="site-menu" class="wrap" aria-label="移动端导航" hidden>
+      <a href="features.html">功能</a>
+      <a href="plugins.html">插件与技能</a>
+      <a href="changelog.html">更新日志</a>
+      <a href="guide.html">上手</a>
+      <a href="security.html" aria-current="page">安全</a>
+      <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+      <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载最新 APK</a>
+  </nav>
+</header>
+<main id="main" tabindex="-1">
+<div class="wrap page-head">
+  <p class="crumbs"><a href="index.html">首页</a> / 安全与隐私</p>
+  <h1>安全与隐私</h1>
+  <p class="lede">一个能读文件、跑命令、连外部服务的智能体,安全边界必须写在明面上。这一页说明 XINCODE 怎么管权限、怎么管密钥、以及哪些事情它做不到。</p>
+</div>
+
+<div class="wrap doc-layout">
+  <nav class="toc" aria-label="本页目录" data-toc>
+    <h2 id="toc-title">本页目录</h2>
+    <ol aria-labelledby="toc-title">
+      <li><a href="#modes">权限模式</a></li>
+      <li><a href="#approval">敏感操作审批</a></li>
+      <li><a href="#audit">审计日志</a></li>
+      <li><a href="#secrets">密钥与本地数据</a></li>
+      <li><a href="#network">出站与插件边界</a></li>
+      <li><a href="#privacy">隐私边界</a></li>
+      <li><a href="#limits">做不到的事</a></li>
+      <li><a href="#report">报告安全问题</a></li>
+    </ol>
+  </nav>
+
+  <div class="prose">
+    <section id="modes" aria-labelledby="h-modes">
+      <p class="eyebrow-line">Permission modes</p>
+      <h2 id="h-modes">权限模式:先问,再动手</h2>
+      <p>应用提供两种权限模式:<b>询问</b>与<b>完全访问</b>。默认是前者——涉及敏感面的操作(写文件、执行命令、访问外部服务等)会先停下来等你确认。</p>
+      <p>模式之外还有一层策略判定:执行策略与权限求交在动手前完成,不满足条件的调用会被拦下,而不是执行到一半再报错。</p>
+    </section>
+
+    <section id="approval" aria-labelledby="h-approval">
+      <p class="eyebrow-line">Approval</p>
+      <h2 id="h-approval">敏感操作审批:真的停下来</h2>
+      <ul>
+        <li><b>确认卡</b>——敏感操作在对话里出现确认卡,写清要做什么、影响哪些文件或命令。</li>
+        <li><b>通知栏批复</b>——任务在后台跑时,直接从通知栏同意或拒绝,不必回到应用。</li>
+        <li><b>无回执不执行</b>——审批是真的暂停执行链:飞行模式下点同意也无效,必须有回执才继续。</li>
+        <li><b>拒绝可重判</b>——模型会拿到你的拒绝理由,换一个方案重试,而不是卡死到超时。</li>
+      </ul>
+    </section>
+
+    <section id="audit" aria-labelledby="h-audit">
+      <p class="eyebrow-line">Audit</p>
+      <h2 id="h-audit">审计日志:事后能对账</h2>
+      <p>工具调用、审批结果与关键动作都会留下记录。做过的每一步都能回看,而不是只留一句"已完成"。长任务的运行流水会落盘,因此既支持续跑,也支持事后复盘。</p>
+    </section>
+
+    <section id="secrets" aria-labelledby="h-secrets">
+      <p class="eyebrow-line">Secrets</p>
+      <h2 id="h-secrets">密钥与本地数据</h2>
+      <ul>
+        <li><b>API Key 只在本机</b>——经 Android Keystore 加密的配置存储落库;正式包不包含任何 Key。</li>
+        <li><b>插件 Key 只进请求头</b>——需要 Key 的在线插件,Key 加密落库后直接注入请求头,绝不进入模型上下文。</li>
+        <li><b>MCP 授权头加密</b>——远程 MCP 的 Authorization 头(含 GitHub OAuth Token)统一加密存放。</li>
+        <li><b>生图不转发 Key</b>——下载图片时不把 API Key 附带发往第三方地址。</li>
+        <li><b>关闭系统备份</b>——<code>android:allowBackup="false"</code>,不参与系统自动备份。</li>
+      </ul>
+    </section>
+
+    <section id="network" aria-labelledby="h-network">
+      <p class="eyebrow-line">Network</p>
+      <h2 id="h-network">出站与插件边界</h2>
+      <ul>
+        <li><b>NetGuard 出站守卫</b>——只放行公网 http(s);localhost、环回地址、私网与保留地址一律拒绝,避免插件把你的设备当成跳板(SSRF 防护)。</li>
+        <li><b>守卫看最终 URL</b>——地址校验放在路径替换之后,防止用拼接绕过。</li>
+        <li><b>响应截断</b>——插件响应截断到 4000 字符,单次调用无法把上下文或界面撑爆。</li>
+        <li><b>上架前实测</b>——每个在线插件端点上线前都调通返回 200 才收录。</li>
+      </ul>
+    </section>
+
+    <section id="privacy" aria-labelledby="h-privacy">
+      <p class="eyebrow-line">Privacy</p>
+      <h2 id="h-privacy">隐私边界</h2>
+      <p>为了说清楚"数据去了哪里",这里是完整的情形:</p>
+      <div class="table-scroll">
+      <table>
+        <caption>数据流向</caption>
+        <thead><tr><th scope="col">数据</th><th scope="col">去向</th></tr></thead>
+        <tbody>
+          <tr><td>对话内容与工具结果</td><td>发送到<b>你自己配置的</b>模型服务(否则模型无法生成回答)</td></tr>
+          <tr><td>联网搜索关键词</td><td>发送到你启用的搜索引擎</td></tr>
+          <tr><td>插件调用参数</td><td>发送到该插件对应的服务</td></tr>
+          <tr><td>MCP 工具调用</td><td>发送到你启用的 MCP 服务器(本地 stdio 形态不出设备)</td></tr>
+          <tr><td>API Key / Token</td><td>只发往其对应的服务,用于鉴权;不进入模型上下文</td></tr>
+          <tr><td>使用统计</td><td>不存在:无广告 SDK、无第三方分析、无账号体系</td></tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+
+    <section id="limits" aria-labelledby="h-limits">
+      <p class="eyebrow-line">Limits</p>
+      <h2 id="h-limits">做不到的事</h2>
+      <p>写清楚边界比堆承诺更有用:</p>
+      <ul>
+        <li><b>不保证模型输出正确</b>——智能体会给出证据与过程,但最终判断仍在你;涉及不可逆操作时请保持审批模式开启。</li>
+        <li><b>不控制你的模型供应商</b>——数据到了对方服务之后,由对方的条款与地区法规约束,请自行评估并选择合适的供应商。</li>
+        <li><b>不代管密钥</b>——没有云端托管,也不提供共享 Key;换设备需要自己重新填。</li>
+        <li><b>Root 意味着更大权限</b>——Root 环境下终端可做的事更多,请在清楚风险的前提下使用。</li>
+        <li><b>开源不等于无漏洞</b>——代码可被审计,但仍可能有未发现的缺陷。</li>
+      </ul>
+      <div class="callout">
+        <span class="t">不放心就先看代码</span>
+        <p>项目主体代码以 GPL-3.0-or-later 开源,权限门控、出站守卫与密钥存储的实现都在仓库里,可以直接读。</p>
+      </div>
+    </section>
+
+    <section id="report" aria-labelledby="h-report">
+      <p class="eyebrow-line">Report</p>
+      <h2 id="h-report">报告安全问题</h2>
+      <p>如果发现安全缺陷,请优先使用仓库的私密渠道报告,而不要直接公开细节:</p>
+      <div class="btn-row">
+        <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/security/advisories/new" target="_blank" rel="noopener noreferrer">提交安全公告 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+        <a class="btn btn-ghost" href="https://github.com/kusesad-1122/XINCODE-Public/issues" target="_blank" rel="noopener noreferrer">普通 Issue <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </div>
+      <p class="meta" style="margin-top:16px">报告时附上版本号、复现步骤与影响范围,能显著加快定位。仓库里也有 Codex Security 的自动化审查工作流作为补充。</p>
+    </section>
+  </div>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="index.html" style="margin-bottom:10px">
+          <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+          <span>XIN<span class="code">CODE</span></span>
+        </a>
+        <p class="about">运行在 Android 上的自主 AI 智能体:多供应商模型、工具调用循环、子智能体并行协作、在线插件市场、长期记忆与内置终端。纯 Kotlin 原生,从零构建。</p>
+        <p class="meta">当前版本 <b data-version>v1.14.1</b> · GPL-3.0-or-later</p>
+      </div>
+      <nav aria-labelledby="foot-site">
+        <h2 id="foot-site">本站</h2>
+        <ul>
+          <li><a href="features.html">功能详解</a></li>
+          <li><a href="plugins.html">插件与技能</a></li>
+          <li><a href="changelog.html">更新日志</a></li>
+          <li><a href="guide.html">上手与构建</a></li>
+          <li><a href="security.html">安全与隐私</a></li>
+          <li><a href="accessibility.html">无障碍声明</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-res">
+        <h2 id="foot-res">资源</h2>
+        <ul>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener noreferrer">版本发布页<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">完整 CHANGELOG<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener noreferrer">第三方声明<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">许可证 GPL-3.0<span class="visually-hidden">(在新标签页打开)</span></a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-more">
+        <h2 id="foot-more">相关</h2>
+        <ul>
+          <li><a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer">MCP 生态<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/issues" target="_blank" rel="noopener noreferrer">问题反馈 / 建议<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public#-致谢" target="_blank" rel="noopener noreferrer">致谢<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="#main">回到顶部</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span data-year>2026</span> XINCODE · 主体代码 GPL-3.0-or-later · 像素素材 CC0 / MIT(见第三方声明)</span>
+      <span>与任何模型供应商均无隶属关系;API Key 由使用者自行提供。</span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

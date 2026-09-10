@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>更新日志 — XINCODE</title>
+<meta name="description" content="XINCODE 更新日志:最近版本的改动与动机,按用户可感知的结果记录;完整 27 个版本条目在仓库 CHANGELOG 中。">
+<link rel="canonical" href="https://kusesad-1122.github.io/XINCODE-Public/changelog.html">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FAF8F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#181715" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/img/app-icon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/app-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="XINCODE">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="XINCODE 更新日志">
+<meta property="og:description" content="XINCODE 更新日志:最近版本的改动与动机,按用户可感知的结果记录;完整 27 个版本条目在仓库 CHANGELOG 中。">
+<meta property="og:url" content="https://kusesad-1122.github.io/XINCODE-Public/changelog.html">
+<meta property="og:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="XINCODE 更新日志">
+<meta name="twitter:description" content="XINCODE 更新日志:最近版本的改动与动机,按用户可感知的结果记录;完整 27 个版本条目在仓库 CHANGELOG 中。">
+<meta name="twitter:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<link rel="stylesheet" href="assets/site.css">
+<script>/* 首屏前定主题,避免闪白/闪黑 */
+(function(){try{var t=localStorage.getItem("xincode-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
+</script>
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html">
+      <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+      <span>XIN<span class="code">CODE</span></span>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+        <a href="features.html">功能</a>
+        <a href="plugins.html">插件与技能</a>
+        <a href="changelog.html" aria-current="page">更新日志</a>
+        <a href="guide.html">上手</a>
+        <a href="security.html">安全</a>
+        <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="切换到深色主题"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.4M12 19v2.4M2.6 12H5M19 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7"/></svg></button>
+      <a class="btn btn-sm" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载 APK</a>
+      <button class="icon-btn nav-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-menu" aria-label="打开导航菜单"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+  <nav id="site-menu" class="wrap" aria-label="移动端导航" hidden>
+      <a href="features.html">功能</a>
+      <a href="plugins.html">插件与技能</a>
+      <a href="changelog.html" aria-current="page">更新日志</a>
+      <a href="guide.html">上手</a>
+      <a href="security.html">安全</a>
+      <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+      <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载最新 APK</a>
+  </nav>
+</header>
+<main id="main" tabindex="-1">
+<div class="wrap page-head">
+  <p class="crumbs"><a href="index.html">首页</a> / 更新日志</p>
+  <h1>更新日志</h1>
+  <p class="lede">每个版本都在仓库 CHANGELOG 里写清楚改了什么、为什么改。这里展示最近的版本;完整历史(共 27 个版本条目)在仓库里。</p>
+</div>
+
+<div class="wrap doc-layout">
+  <nav class="toc" aria-label="本页目录" data-toc>
+    <h2 id="toc-title">本页目录</h2>
+    <ol aria-labelledby="toc-title">
+      <li><a href="#releases">最近版本</a></li>
+      <li><a href="#how">我们怎么记录变更</a></li>
+      <li><a href="#full">完整历史</a></li>
+    </ol>
+  </nav>
+
+  <div class="prose">
+    <section id="releases" aria-labelledby="h-releases">
+      <h2 id="h-releases">最近版本</h2>
+      <p class="meta">下面这段在支持 JavaScript 时会自动替换为 GitHub Release 的实时内容;禁用脚本也能读到静态快照。</p>
+      <div class="timeline" data-release-list="8" data-cap-headings="6" data-cap-items="10" style="margin-top:18px">
+      <article class="release">
+        <div class="v"><b>v1.14.1</b><time datetime="2026-09-07">2026-09-07</time><span class="badge badge-green">最新</span></div>
+        <h3>在线插件市场：3 个 → 27 个，全部实测可用</h3><ul><li>注册表扩至 27 个、8 分类（气象预报/金融财经/知识百科/影音资讯/实用工具/饮食健康/游戏娱乐/开发运维），每个端点上线前都调通返回 200 才收录；世界时钟等 4 个已死服务剔除，Frankfurter 换新域名。</li><li>注册表升 version 2：新增分类与下载/星/收藏/发布时间保留字段——公共源没有这些数就不编造，有数的条目 UI 自动出现对应排序与徽标。</li><li>在线插件请求补默认 UA（部分公共 API 拒绝无 UA 请求）；校验挪到路径替换之后，守卫看的是最终 URL。</li></ul><h3>插件页：一项一页 + 筛选</h3><ul><li>拆四个页签：连接器 / MCP / 在线插件 / 技能包，各占一页，页签带计数。</li><li>在线页新增搜索框（名/简介/分类）、分类 chips、免登/需 Key 筛选、排序（名称/分类；星数/下载有数才出现）。</li><li>在线卡片徽标行：分类 · 授权 · 星/下载（有数才显示）。</li></ul><h3>技能：场景自动引用</h3><ul><li>每回合按用户输入自动匹配技能（点名最优先 + 简介交集 + 常用者优先），命中附用法摘要进本回合上下文，不污染冻结前缀；未命中零成本，原 /技能名 精确调用不变。</li></ul><h3>修：子智能体管理页恒空</h3><ul><li>列表从未加载导致页永远是空的——现按页打开即查，增删改即时刷新；内置四个角色不受影响。</li></ul><h3>用量分析页优雅化</h3><ul><li>六散盒改 Hero 总览卡（累计大字 + 调用/命中/日均/花费）；三段加 accent 标题；柱状图改圆头渐显；成本改 Top3 明细。</li></ul><h3>代码索引：按需自建</h3><ul><li>code_graph 查询时库空就地建一次（增量指纹与文件上限复用既有逻辑），模型不用先去索引屏；建失败如实返回空，不炸。</li></ul>
+      </article>
+      <article class="release">
+        <div class="v"><b>v1.14.0</b><time datetime="2026-09-06">2026-09-06</time></div>
+        <h3>在线插件：云端上架，应用无需发版</h3><ul><li>新形态 ONLINE：插件市场目录从仓库 docs/plugins/registry.json 实时拉取，失败自动回退本地缓存——云端上架新插件，用户侧直接可见可用，不用等发版。</li><li>远程工具注入：在线插件 = 远程 OpenAPI 轻量子集，工具列表动态转成 Tool 注入 Agent；执行时直连插件云端（GET query / POST JSON），响应截断 4000 字符防爆上下文。</li><li>出站守卫 NetGuard：仅放行 http(s) 公网，localhost/环回/私网/保留地址一律拒绝（SSRF 防护）。</li></ul><h3>运行链：双向层（以前单向接口接不住长任务）</h3><ul><li>通知栏&quot;中断&quot;按钮：任务跑起来后，切后台、杀 UI，通知栏一点即真停——停的是执行链本身，不是只关界面；超时与手势中断统一走同一入口。</li><li>此前：停的办法只有回 App 点停止，UI 死了就只能干等或强杀进程。</li><li>现在：新增 App Server 双向层——产品侧可启动/中断/追发输入/回审批，核心侧持续推送模型输出、工具进度、文件改动、审批请求。</li></ul><h3>运行链：任务身份（多轮不断片）</h3><ul><li>同一任务的多轮执行有了 Thread/Turn 身份：Thread 是任务档案，Turn 是其中一轮——修 Bug 时第一轮查根因、第二轮按证据改码，第二轮自动继承第一轮结论，不再全文重灌。</li><li>效果：跨轮引用不断档，且提示词 token 实打实下降。</li></ul><h3>运行链：调度与执行分离 + 真审批</h3><ul><li>工具调度器只答&quot;交给谁&quot;：纯函数、无副作用；新增工具零权限代码，意图与管控彻底分家。</li><li>执行管理器管边界：审批→选执行域→运行固定顺序，会话归属、前后钩子、计时收敛一处。</li><li>审批是执行链真暂停：敏感操作 Turn 停在等待位，通知栏同意/拒绝直达执行链——无回执不执行（飞行模式点同意也无效），拒绝后模型基于拒绝原因换方案重判。此前确认框更像&quot;心理按摩&quot;，后端并没真停住。</li></ul><h3>运行链：停止条件与失败语义</h3><ul><li>结果必回模型：只要发起了工具调用，模型必须看到执行结果才允许结束；最终回答守卫防止&quot;有结果没送达就结案&quot;。</li><li>失败不再静默：模型调用失败（网络/服务异常）导致工具结果没送达时，记明确错误、不清断点——此前会静默结束，看板甚至记成&quot;成功&quot;（已随本版修正）。</li></ul><h3>运行链：事件溯源、恢复与分支</h3><ul><li>运行流水（用户输入/模型输出/工具调用与结果/审批请求与裁决/Turn 起止）只追加落盘：模型上下文可以压缩，系统到底经历过什么永久保留。</li><li>强杀/重启后悬挂任务自动回收，可看记录从断点续跑；支持 Fork——从某轮复制前缀换方案分支重试，前文不丢、未来事件不串。</li><li>恢复 = 读取→解析→重建，不是读内存快照（此前切后台久了回来只能重跑）。</li></ul><h3>向 Codex 学习借鉴的三块行级逻辑（Apache-2.0 署名，独立文件）</h3><ul><li>执行策略判定：allow &lt; prompt &lt; forbidden 越严越胜；按命令首词索引的前缀规则（含多备选词）；网络 host 归一化（去 scheme/端口、IPv6 去括号、小写、禁通配符）；域名黑白名单编译（Allow 进白、Forbidden 进黑、Prompt 两边不进）；策略自带正反例自检——规则写漏/写宽在加载期就炸，不在线上爆。裁决直挂既有闸门类型（Allow/NeedConfirm/Denied）。说明：Starlark 策略文件解析器没搬（解释器太重，用 Builder API 等价组装）；host 可执行路径归属没搬（POSIX PATH 语义，Android 上搬来是错的）。</li><li>权限求交：只收紧不放松；非法路径/不支持形状直接 fail-closed；网络取 AND（两边都开才开）；路径先归一化再比（.. 越界拒，/a/b 不覆盖 /a/bc）；默认拒绝。附工作区读写两种常用剖面。</li><li>Rollout 对齐：事件带 thread/turn/call 三 id，Begin 配 Running、End 配终态，靠 callId 配对；执行状态词汇与上游逐字一致（running/completed/failed/cancelled/aborted）；导出键向 Rollout JSONL 对齐，两边工具可互读。</li></ul><h3>开发者向</h3><ul><li>新增可执行回归：HarnessDrillTest（Thread→Turn→事件→重建→未决审批→Fork→导出→回收全链演练）、ToolRouterTest（直命中/纠偏/未知三裁决）、既有 SchemaConsistencyTest 自动覆盖三张新表与五个索引的迁移↔实体一致性。跑法：./gradlew :data:testDebugUnitTest :core:testDebugUnitTest :security:testDebugUnitTest。</li><li>数据库 v47→v50 自动迁移；在线插件动态注册的工具自动被统一派发观测覆盖。</li></ul><h3>官网站点</h3><ul><li>移动端适配：Hero 贴边修复、汉堡菜单可点、去掉点按高亮、滚动渐显、锚点避让吸顶导航。</li><li>补回误删的 script 闭合标签（菜单与版本号显示恢复）。</li></ul><h3>升级提示</h3><ul><li>首次启动会做数据库迁移（v47→v50），稍慢属正常；数据保留，以上能力自动生效、无需改设置。</li><li>本版含数据库结构变更：如需降级回旧版，旧库会被改名备份后重建（数据不自动回来），请先确认重要内容已留档。</li></ul>
+      </article>
+      <article class="release">
+        <div class="v"><b>v1.13.8</b><time datetime="2026-09-06">2026-09-06</time></div>
+        <h3>玻璃拟态(高斯模糊)</h3><ul><li>输入岛玻璃化：对话输入框改为真正的背景高斯模糊——聊天消息从输入岛身后滚过时呈磨砂玻璃效果,边缘带白瓷渐变高光描边(引入 Haze 库,Android 12+ 真模糊,旧系统自动降级为半透明)。</li><li>玻璃开关：设置页与对话设置里的开关换成磨砂玻璃质感自绘开关——半透明渐变轨道 + 高光描边 + 白瓷拇指,选中变主题赤陶色。</li><li>布局随之微调:聊天列表改为从输入岛身后穿过(底部留白自动避开),滚到底部按钮上移至输入岛上方。</li></ul>
+      </article>
+      <article class="release">
+        <div class="v"><b>v1.13.7</b><time datetime="2026-09-06">2026-09-06</time></div>
+        <h3>十项 UI 与体验打磨</h3><ul><li>身份卡编辑页：名称/描述/角色设定等全部输入框从 4dp 直角原生样式升级为 14dp 圆角卡片,聚焦时主题色描边。</li><li>模型与供应商：「已保存配置」区的橙色实心大按钮改为柔和药丸;配置条目从分隔线列表升级为卡片,使用中配置带「使用中」徽章。</li><li>子智能体：整页卡片化——头像字 + 内置/自建徽章 + 真实能力清单(技能/工具按条展示);点卡片即可编辑(此前只能新建),内置智能体不可删除。</li></ul>
+      </article>
+      <article class="release">
+        <div class="v"><b>v1.13.6</b><time datetime="2026-09-06">2026-09-06</time></div>
+        <h3>真实 bug 修复批(全模块排查)</h3><ul><li>对话时序(彻底修)：1.13.4 的渲染层修法对「模型不说话直接调工具」这一最常见场景无效——结论文字流进了回合开始就创建的占位消息。现改为数据层修复：工具先到时作废空白占位段，结论懒创建为工具之后的新消息，流式进行中即正确，历史记录也不受影响。</li><li>流式中删消息会写错行/崩溃：回合进行中删除任何消息会让流式写入的下标漂移(答案写进别的气泡、工具结果挂错卡片、极端时越界崩溃)。现流式期间一律拒绝删除(与上下文压缩的既有保护一致)。</li><li>思考内容跨段重复：多段交错回合里,后段会重复显示前段已展示过的思考——现在每段只带自己的新增思考。</li></ul>
+      </article>
+      <article class="release">
+        <div class="v"><b>v1.13.5</b><time datetime="2026-09-06">2026-09-06</time></div>
+        <h3>修复与思考样式对齐 Claude</h3><ul><li>修复：v1.13.4 中设置页「插件」入口被误删的问题——现已放回「Agent 工具」分区第一行，打开设置即可见。</li><li>思考样式对齐 Claude：收起时不再带底框，改为一条浅色摘要行（时钟图标 + 思考内容首句摘要 + 细箭头），点开才展开完整思考内容；无思考内容时回退显示「思考了 X 秒」。</li></ul>
+      </article>
+      </div>
+    </section>
+
+    <section id="how" aria-labelledby="h-how">
+      <p class="eyebrow-line">Convention</p>
+      <h2 id="h-how">我们怎么记录变更</h2>
+      <ul>
+        <li><b>按用户能感知的结果写</b>——先说"现在能做什么 / 修好了什么",再说实现细节。</li>
+        <li><b>失败与取舍也写</b>——例如某个公共 API 已经失效、某个方案被回退,都会留一条,而不是悄悄删掉。</li>
+        <li><b>发布即附 APK</b>——打 tag 时从 CHANGELOG 自动截取对应段落作为 Release 说明,人工只写一次。</li>
+      </ul>
+    </section>
+
+    <section id="full" aria-labelledby="h-full">
+      <p class="eyebrow-line">Full History</p>
+      <h2 id="h-full">完整历史</h2>
+      <p>全部 27 个版本条目(含每一版的动机与细节)在仓库中:</p>
+      <div class="btn-row">
+        <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">阅读完整 CHANGELOG <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+        <a class="btn btn-ghost" href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener noreferrer">Release 与 APK <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+      </div>
+    </section>
+  </div>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="index.html" style="margin-bottom:10px">
+          <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+          <span>XIN<span class="code">CODE</span></span>
+        </a>
+        <p class="about">运行在 Android 上的自主 AI 智能体:多供应商模型、工具调用循环、子智能体并行协作、在线插件市场、长期记忆与内置终端。纯 Kotlin 原生,从零构建。</p>
+        <p class="meta">当前版本 <b data-version>v1.14.1</b> · GPL-3.0-or-later</p>
+      </div>
+      <nav aria-labelledby="foot-site">
+        <h2 id="foot-site">本站</h2>
+        <ul>
+          <li><a href="features.html">功能详解</a></li>
+          <li><a href="plugins.html">插件与技能</a></li>
+          <li><a href="changelog.html">更新日志</a></li>
+          <li><a href="guide.html">上手与构建</a></li>
+          <li><a href="security.html">安全与隐私</a></li>
+          <li><a href="accessibility.html">无障碍声明</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-res">
+        <h2 id="foot-res">资源</h2>
+        <ul>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener noreferrer">版本发布页<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">完整 CHANGELOG<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener noreferrer">第三方声明<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">许可证 GPL-3.0<span class="visually-hidden">(在新标签页打开)</span></a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-more">
+        <h2 id="foot-more">相关</h2>
+        <ul>
+          <li><a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer">MCP 生态<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/issues" target="_blank" rel="noopener noreferrer">问题反馈 / 建议<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public#-致谢" target="_blank" rel="noopener noreferrer">致谢<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="#main">回到顶部</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span data-year>2026</span> XINCODE · 主体代码 GPL-3.0-or-later · 像素素材 CC0 / MIT(见第三方声明)</span>
+      <span>与任何模型供应商均无隶属关系;API Key 由使用者自行提供。</span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

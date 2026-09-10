@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>无障碍声明 — XINCODE</title>
+<meta name="description" content="本站无障碍说明:语义结构、键盘可达、焦点可见、对比度、减弱动效、深色主题、无脚本可用性,以及已知限制与反馈渠道(目标 WCAG 2.2 AA)。">
+<link rel="canonical" href="https://kusesad-1122.github.io/XINCODE-Public/accessibility.html">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FAF8F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#181715" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/img/app-icon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/app-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="XINCODE">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="XINCODE 无障碍声明">
+<meta property="og:description" content="本站无障碍说明:语义结构、键盘可达、焦点可见、对比度、减弱动效、深色主题、无脚本可用性,以及已知限制与反馈渠道(目标 WCAG 2.2 AA)。">
+<meta property="og:url" content="https://kusesad-1122.github.io/XINCODE-Public/accessibility.html">
+<meta property="og:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="XINCODE 无障碍声明">
+<meta name="twitter:description" content="本站无障碍说明:语义结构、键盘可达、焦点可见、对比度、减弱动效、深色主题、无脚本可用性,以及已知限制与反馈渠道(目标 WCAG 2.2 AA)。">
+<meta name="twitter:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<link rel="stylesheet" href="assets/site.css">
+<script>/* 首屏前定主题,避免闪白/闪黑 */
+(function(){try{var t=localStorage.getItem("xincode-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
+</script>
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html">
+      <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+      <span>XIN<span class="code">CODE</span></span>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+        <a href="features.html">功能</a>
+        <a href="plugins.html">插件与技能</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="guide.html">上手</a>
+        <a href="security.html">安全</a>
+        <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="切换到深色主题"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.4M12 19v2.4M2.6 12H5M19 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7"/></svg></button>
+      <a class="btn btn-sm" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载 APK</a>
+      <button class="icon-btn nav-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-menu" aria-label="打开导航菜单"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+  <nav id="site-menu" class="wrap" aria-label="移动端导航" hidden>
+      <a href="features.html">功能</a>
+      <a href="plugins.html">插件与技能</a>
+      <a href="changelog.html">更新日志</a>
+      <a href="guide.html">上手</a>
+      <a href="security.html">安全</a>
+      <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+      <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载最新 APK</a>
+  </nav>
+</header>
+<main id="main" tabindex="-1">
+<div class="wrap page-head">
+  <p class="crumbs"><a href="index.html">首页</a> / 无障碍声明</p>
+  <h1>无障碍声明</h1>
+  <p class="lede">本站按 WCAG 2.2 AA 的目标设计与自测。这一页说明已经做了什么、还有哪些已知限制,以及发现问题时怎么反馈。</p>
+</div>
+
+<div class="wrap doc-layout">
+  <nav class="toc" aria-label="本页目录" data-toc>
+    <h2 id="toc-title">本页目录</h2>
+    <ol aria-labelledby="toc-title">
+      <li><a href="#done">已经做到</a></li>
+      <li><a href="#limits">已知限制</a></li>
+      <li><a href="#how">怎么自测的</a></li>
+      <li><a href="#feedback">反馈</a></li>
+    </ol>
+  </nav>
+
+  <div class="prose">
+    <section id="done" aria-labelledby="h-done">
+      <p class="eyebrow-line">What we did</p>
+      <h2 id="h-done">已经做到</h2>
+      <ul>
+        <li><b>语义结构</b>——每页有唯一 <code>h1</code>,标题层级不跳级;使用 <code>header</code> / <code>nav</code> / <code>main</code> / <code>footer</code> 地标,页脚导航各有可读名称。</li>
+        <li><b>跳到主要内容</b>——键盘用户第一个 Tab 就能跳过顶栏直达正文。</li>
+        <li><b>键盘可达</b>——导航、主题切换、插件筛选与搜索框全部可用键盘操作;移动端菜单用 <code>aria-expanded</code> 标注状态,并可用 <code>Esc</code> 关闭、焦点回到触发按钮。</li>
+        <li><b>焦点可见</b>——所有可聚焦元素都有不依赖颜色的 3px 焦点外框。</li>
+        <li><b>颜色对比</b>——正文与次要文字对背景的对比度按 ≥4.5:1 选择,大字与图形按 ≥3:1;状态同时用文字或图形表达,不只用颜色区分。</li>
+        <li><b>动效可关</b>——所有过渡、像素场景动画(屏幕闪烁、人物小动作、浮动任务卡)在系统开启"减弱动效"时停止。</li>
+        <li><b>深浅两套主题</b>——跟随系统,也可手动切换并记住选择;两套都重新校过对比度。</li>
+        <li><b>替代文本</b>——装饰性像素素材标注为空替代文本并隐藏在辅助技术之外;整体场景提供一句话文字描述。</li>
+        <li><b>不依赖脚本</b>——正文、导航、下载链接与更新日志的静态快照在没有 JavaScript 时依然完整可读;筛选与实时数据只是增强。</li>
+        <li><b>表单与状态提示</b>——搜索框有可见标签与占位说明,筛选结果用 <code>aria-live</code> 播报,筛选按钮用 <code>aria-pressed</code> 表达开关状态。</li>
+        <li><b>目标尺寸</b>——按钮、导航项与筛选按钮的点击区域不小于 44×44px(紧凑链接不低于 26px 高)。</li>
+        <li><b>页面语言</b>——<code>lang="zh-CN"</code>,便于屏幕阅读器选择正确的语音。</li>
+      </ul>
+    </section>
+
+    <section id="limits" aria-labelledby="h-limits">
+      <p class="eyebrow-line">Known limits</p>
+      <h2 id="h-limits">已知限制</h2>
+      <ul>
+        <li><b>像素场景是示意</b>——指挥室为装饰性插画,不承载信息;四个角色名在页面上有等价文字说明。</li>
+        <li><b>等宽字体不含中文字形</b>——JetBrains Mono 只用于拉丁字母与符号,中文自动回退系统字体,因此终端示意里的中文宽度可能与纯等宽环境略有差异。</li>
+        <li><b>实时数据依赖网络</b>——版本号与更新日志会尝试从 GitHub API 获取最新内容;网络不可用或被限流时,页面显示的是构建时的静态快照。</li>
+        <li><b>插件筛选的即时反馈</b>——结果数量通过状态文本播报;若你使用极旧的浏览器,筛选可能不可用,此时所有插件卡片默认全部显示。</li>
+      </ul>
+    </section>
+
+    <section id="how" aria-labelledby="h-how">
+      <p class="eyebrow-line">How we checked</p>
+      <h2 id="h-how">怎么自测的</h2>
+      <ul>
+        <li>逐页做键盘走查:Tab 顺序、可见焦点、<code>Esc</code> 关闭菜单、筛选按钮的开关状态。</li>
+        <li>逐页检查标题层级、地标数量、图片替代文本、链接与按钮的可读名称。</li>
+        <li>对文字与背景色做对比度计算,确认深浅两套主题都达到 AA。</li>
+        <li>在窄屏(≤420px)与桌面宽度下检查横向溢出,确认没有需要横向滚动的正文。</li>
+        <li>在系统开启"减弱动效"时确认页面静止且内容完整(0 个运行中的动画)。</li>
+        <li>关闭 JavaScript 后逐页确认正文、导航、下载链接、插件清单与更新日志快照依然完整。</li>
+        <li>分别在浅色、手动深色、系统深色(不依赖脚本)三种情况下抽取正文、按钮、卡片与页脚等 16 处取样点核对对比度。</li>
+        <li>键盘走查确认 Tab 顺序为:跳到主要内容 → 站点标识 → 主导航 → 主题切换 → 下载按钮。</li>
+      </ul>
+      <p class="meta">本站为静态站点:没有账号、没有表单提交、没有广告与第三方追踪脚本。</p>
+    </section>
+
+    <section id="feedback" aria-labelledby="h-feedback">
+      <p class="eyebrow-line">Feedback</p>
+      <h2 id="h-feedback">反馈</h2>
+      <p>如果这里有无障碍问题挡住了你,请告诉我们:用哪个页面、用什么辅助技术、发生了什么。描述越具体,修复越快。</p>
+      <div class="btn-row">
+        <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/issues/new?labels=accessibility" target="_blank" rel="noopener noreferrer">提交无障碍问题 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
+        <a class="btn btn-ghost" href="index.html">返回首页</a>
+      </div>
+    </section>
+  </div>
+</div>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="index.html" style="margin-bottom:10px">
+          <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+          <span>XIN<span class="code">CODE</span></span>
+        </a>
+        <p class="about">运行在 Android 上的自主 AI 智能体:多供应商模型、工具调用循环、子智能体并行协作、在线插件市场、长期记忆与内置终端。纯 Kotlin 原生,从零构建。</p>
+        <p class="meta">当前版本 <b data-version>v1.14.1</b> · GPL-3.0-or-later</p>
+      </div>
+      <nav aria-labelledby="foot-site">
+        <h2 id="foot-site">本站</h2>
+        <ul>
+          <li><a href="features.html">功能详解</a></li>
+          <li><a href="plugins.html">插件与技能</a></li>
+          <li><a href="changelog.html">更新日志</a></li>
+          <li><a href="guide.html">上手与构建</a></li>
+          <li><a href="security.html">安全与隐私</a></li>
+          <li><a href="accessibility.html">无障碍声明</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-res">
+        <h2 id="foot-res">资源</h2>
+        <ul>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener noreferrer">版本发布页<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">完整 CHANGELOG<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener noreferrer">第三方声明<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">许可证 GPL-3.0<span class="visually-hidden">(在新标签页打开)</span></a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-more">
+        <h2 id="foot-more">相关</h2>
+        <ul>
+          <li><a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer">MCP 生态<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/issues" target="_blank" rel="noopener noreferrer">问题反馈 / 建议<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public#-致谢" target="_blank" rel="noopener noreferrer">致谢<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="#main">回到顶部</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span data-year>2026</span> XINCODE · 主体代码 GPL-3.0-or-later · 像素素材 CC0 / MIT(见第三方声明)</span>
+      <span>与任何模型供应商均无隶属关系;API Key 由使用者自行提供。</span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

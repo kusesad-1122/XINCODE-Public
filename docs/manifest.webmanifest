@@ -1,0 +1,20 @@
+{
+  "name": "XINCODE — 装进口袋的 AI 智能体",
+  "short_name": "XINCODE",
+  "description": "纯 Kotlin 原生的 Android AI 智能体:多供应商模型、工具调用循环、子智能体并行协作、在线插件市场、长期记忆与内置终端。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#FAF8F5",
+  "theme_color": "#FAF8F5",
+  "icons": [
+    {
+      "src": "assets/img/app-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

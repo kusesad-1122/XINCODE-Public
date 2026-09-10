@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>插件、MCP 与技能包 — XINCODE</title>
+<meta name="description" content="XINCODE 插件生态:GitHub 连接器、四个免鉴权远程 MCP、27 个实测可用的在线插件(8 大分类)与六个内置技能包,支持搜索与分类筛选。">
+<link rel="canonical" href="https://kusesad-1122.github.io/XINCODE-Public/plugins.html">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FAF8F5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#181715" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="assets/img/app-icon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/app-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="XINCODE">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="XINCODE 插件与技能">
+<meta property="og:description" content="XINCODE 插件生态:GitHub 连接器、四个免鉴权远程 MCP、27 个实测可用的在线插件(8 大分类)与六个内置技能包,支持搜索与分类筛选。">
+<meta property="og:url" content="https://kusesad-1122.github.io/XINCODE-Public/plugins.html">
+<meta property="og:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="XINCODE 插件与技能">
+<meta name="twitter:description" content="XINCODE 插件生态:GitHub 连接器、四个免鉴权远程 MCP、27 个实测可用的在线插件(8 大分类)与六个内置技能包,支持搜索与分类筛选。">
+<meta name="twitter:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
+<link rel="stylesheet" href="assets/site.css">
+<script>/* 首屏前定主题,避免闪白/闪黑 */
+(function(){try{var t=localStorage.getItem("xincode-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
+</script>
+<script src="assets/site.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <div class="wrap nav">
+    <a class="brand" href="index.html">
+      <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+      <span>XIN<span class="code">CODE</span></span>
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+        <a href="features.html">功能</a>
+        <a href="plugins.html" aria-current="page">插件与技能</a>
+        <a href="changelog.html">更新日志</a>
+        <a href="guide.html">上手</a>
+        <a href="security.html">安全</a>
+        <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+    </nav>
+    <div class="nav-actions">
+      <button class="icon-btn" type="button" data-theme-toggle aria-pressed="false" aria-label="切换到深色主题"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.6v2.4M12 19v2.4M2.6 12H5M19 12h2.4M5.4 5.4l1.7 1.7M16.9 16.9l1.7 1.7M18.6 5.4l-1.7 1.7M7.1 16.9l-1.7 1.7"/></svg></button>
+      <a class="btn btn-sm" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载 APK</a>
+      <button class="icon-btn nav-toggle" type="button" data-menu-toggle aria-expanded="false" aria-controls="site-menu" aria-label="打开导航菜单"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    </div>
+  </div>
+  <nav id="site-menu" class="wrap" aria-label="移动端导航" hidden>
+      <a href="features.html">功能</a>
+      <a href="plugins.html" aria-current="page">插件与技能</a>
+      <a href="changelog.html">更新日志</a>
+      <a href="guide.html">上手</a>
+      <a href="security.html">安全</a>
+      <a href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">GitHub<span class="visually-hidden">(在新标签页打开)</span></a>
+      <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载最新 APK</a>
+  </nav>
+</header>
+<main id="main" tabindex="-1">
+<div class="wrap page-head">
+  <p class="crumbs"><a href="index.html">首页</a> / 插件与技能</p>
+  <h1>插件、MCP 与技能包</h1>
+  <p class="lede">插件页在应用里拆成四个页签:连接器、MCP、在线插件、技能包。这一页把当前清单列全,包含 27 个在线插件与它们的真实分类。</p>
+</div>
+
+<section class="section" aria-labelledby="h-connector">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow-line">Connectors</p>
+      <h2 id="h-connector">连接器</h2>
+      <p>需要账号授权的服务走 OAuth 设备流,Token 加密存在本机,同一个授权在多处复用。</p>
+    </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3>GitHub 连接器</h3>
+        <p>OAuth 设备流登录 GitHub(免手动建 Token):弹窗里展示用户码并跳转浏览器完成授权,结果自动回传。Token 经 Keystore 加密存储,远程 MCP 与 git 操作复用同一份授权。</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">连接器</span><span class="badge">OAuth 设备流</span><span class="badge">Token 加密存储</span></p>
+      </article>
+      <article class="card">
+        <h3>自定义 MCP 服务器</h3>
+        <p>除内置清单外,还可以自行添加 MCP 服务器:本地 stdio 形态直接跑在本机,远程 HTTP 形态填地址即可。连接成功即把工具注册给 Agent,卸载即注销。</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">MCP</span><span class="badge">stdio</span><span class="badge">HTTP</span></p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="h-mcp">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow-line">MCP Servers</p>
+      <h2 id="h-mcp">免鉴权 MCP,装完即用</h2>
+      <p>下面这些服务器不需要你自己申 Key,装完握手成功就能被 Agent 调用。</p>
+    </div>
+    <div class="grid grid-2">
+      <article class="card">
+        <h3>GitHub 远程 MCP</h3>
+        <p>官方远程 MCP,免 root / 免 node:AI 直接用 GitHub API 管仓库、PR、Issue 与文件。未登录时安装会先弹授权。</p>
+        <p class="tools mono" style="margin-top:10px;color:var(--faint)">api.githubcopilot.com/mcp/</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">MCP</span><span class="badge">需登录授权</span></p>
+      </article>
+      <article class="card">
+        <h3>Microsoft Learn</h3>
+        <p>微软官方文档 MCP(免鉴权):.NET / Azure / Microsoft 365 的一手文档与代码示例即查即用。</p>
+        <p class="tools mono" style="margin-top:10px;color:var(--faint)">learn.microsoft.com/api/mcp</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">MCP</span><span class="badge">免鉴权</span></p>
+      </article>
+      <article class="card">
+        <h3>Context7</h3>
+        <p>主流框架与库的实时官方文档直接注入上下文,写代码不再靠模型记忆。</p>
+        <p class="tools mono" style="margin-top:10px;color:var(--faint)">mcp.context7.com/mcp</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">MCP</span><span class="badge">免鉴权</span></p>
+      </article>
+      <article class="card">
+        <h3>DeepWiki</h3>
+        <p>公共 MCP:查询开源仓库的结构化 Wiki,架构 / API / 用法一问即答。</p>
+        <p class="tools mono" style="margin-top:10px;color:var(--faint)">mcp.deepwiki.com/mcp</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">MCP</span><span class="badge">免鉴权</span></p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="h-online">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow-line">Online Plugins</p>
+      <h2 id="h-online">27 个在线插件,全部实测可用</h2>
+      <p>在线插件是远程 OpenAPI 的轻量子集:目录从云端实时拉取,上架新插件不必等应用发版。每个端点都先调通返回 200 才收录;请求走 NetGuard 出站守卫,只允许公网 http(s),私网与环回地址一律拒绝。</p>
+    </div>
+
+    <div data-plugin-root>
+      <div class="filters">
+        <div class="search-field">
+          <label for="plugin-search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg></label>
+          <input id="plugin-search" type="search" placeholder="搜索插件名、分类或功能…" data-plugin-search autocomplete="off">
+        </div>
+        <button class="chip" type="button" data-filter="all" aria-pressed="true">全部<span class="n">27</span></button>
+        <button class="chip" type="button" data-filter="气象预报" aria-pressed="false">气象预报<span class="n">3</span></button>
+        <button class="chip" type="button" data-filter="金融财经" aria-pressed="false">金融财经<span class="n">3</span></button>
+        <button class="chip" type="button" data-filter="知识百科" aria-pressed="false">知识百科<span class="n">5</span></button>
+        <button class="chip" type="button" data-filter="影音资讯" aria-pressed="false">影音资讯<span class="n">3</span></button>
+        <button class="chip" type="button" data-filter="实用工具" aria-pressed="false">实用工具<span class="n">5</span></button>
+        <button class="chip" type="button" data-filter="饮食健康" aria-pressed="false">饮食健康<span class="n">2</span></button>
+        <button class="chip" type="button" data-filter="游戏娱乐" aria-pressed="false">游戏娱乐<span class="n">3</span></button>
+        <button class="chip" type="button" data-filter="开发运维" aria-pressed="false">开发运维<span class="n">3</span></button>
+      </div>
+      <p class="filter-status" data-plugin-status role="status" aria-live="polite">共 27 个在线插件,全部显示。</p>
+      <div class="plugin-grid" data-plugin-grid>
+      <article class="plugin" data-plugin-card data-plugin-id="open_meteo_weather" data-category="气象预报" data-keywords="Open-Meteo 实时天气 气象预报 全球任意经纬度的实时天气、风速与空气质量查询。免密钥,装完即用。 get_forecast · get_air_quality 免密钥">
+        <h3>Open-Meteo 实时天气</h3>
+        <p>全球任意经纬度的实时天气、风速与空气质量查询。免密钥,装完即用。</p>
+        <p class="tools">2 个动作 · get_forecast · get_air_quality</p>
+        <p class="badge-row"><span class="badge badge-brand">气象预报</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="sunrise_sunset" data-category="气象预报" data-keywords="日出日落时刻 气象预报 全球任意经纬度的日出、日落、昼长与暮光时刻。免密钥。 get_times 免密钥">
+        <h3>日出日落时刻</h3>
+        <p>全球任意经纬度的日出、日落、昼长与暮光时刻。免密钥。</p>
+        <p class="tools">1 个动作 · get_times</p>
+        <p class="badge-row"><span class="badge badge-brand">气象预报</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="usgs_earthquakes" data-category="气象预报" data-keywords="全球地震速报 气象预报 美国地质调查局实时地震目录,按震级与数量查询近期地震。免密钥。 query 免密钥">
+        <h3>全球地震速报</h3>
+        <p>美国地质调查局实时地震目录,按震级与数量查询近期地震。免密钥。</p>
+        <p class="tools">1 个动作 · query</p>
+        <p class="badge-row"><span class="badge badge-brand">气象预报</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="frankfurter_exchange" data-category="金融财经" data-keywords="Frankfurter 汇率 金融财经 欧洲央行参考汇率,160+ 货币实时与历史换算。免密钥。 latest · history 免密钥">
+        <h3>Frankfurter 汇率</h3>
+        <p>欧洲央行参考汇率,160+ 货币实时与历史换算。免密钥。</p>
+        <p class="tools">2 个动作 · latest · history</p>
+        <p class="badge-row"><span class="badge badge-brand">金融财经</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="coingecko_crypto" data-category="金融财经" data-keywords="CoinGecko 币价 金融财经 上万种加密货币实时价格与市值。免密钥(低频调用)。 simple_price 免密钥">
+        <h3>CoinGecko 币价</h3>
+        <p>上万种加密货币实时价格与市值。免密钥(低频调用)。</p>
+        <p class="tools">1 个动作 · simple_price</p>
+        <p class="badge-row"><span class="badge badge-brand">金融财经</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="nbp_exchange" data-category="金融财经" data-keywords="波兰央行汇率 金融财经 波兰国家银行官方外汇牌价表。免密钥。 table_a · single_rate 免密钥">
+        <h3>波兰央行汇率</h3>
+        <p>波兰国家银行官方外汇牌价表。免密钥。</p>
+        <p class="tools">2 个动作 · table_a · single_rate</p>
+        <p class="badge-row"><span class="badge badge-brand">金融财经</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="wikimedia_onthisday" data-category="知识百科" data-keywords="维基历史上的今天 知识百科 维基百科历史上的今天精选事件/人物/节日。免密钥。 onthisday 免密钥">
+        <h3>维基历史上的今天</h3>
+        <p>维基百科历史上的今天精选事件/人物/节日。免密钥。</p>
+        <p class="tools">1 个动作 · onthisday</p>
+        <p class="badge-row"><span class="badge badge-brand">知识百科</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="openlibrary_books" data-category="知识百科" data-keywords="OpenLibrary 图书 知识百科 千万级开放图书目录:搜书、查版本、ISBN 直取。免密钥。 search · by_isbn 免密钥">
+        <h3>OpenLibrary 图书</h3>
+        <p>千万级开放图书目录:搜书、查版本、ISBN 直取。免密钥。</p>
+        <p class="tools">2 个动作 · search · by_isbn</p>
+        <p class="badge-row"><span class="badge badge-brand">知识百科</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="met_museum" data-category="知识百科" data-keywords="大都会艺术馆藏 知识百科 纽约大都会博物馆 48 万+藏品检索。免密钥。 search · object 免密钥">
+        <h3>大都会艺术馆藏</h3>
+        <p>纽约大都会博物馆 48 万+藏品检索。免密钥。</p>
+        <p class="tools">2 个动作 · search · object</p>
+        <p class="badge-row"><span class="badge badge-brand">知识百科</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="restcountries" data-category="知识百科" data-keywords="国家信息 知识百科 全球国家首都/人口/语言/货币/区号速查。免密钥。 by_name 免密钥">
+        <h3>国家信息</h3>
+        <p>全球国家首都/人口/语言/货币/区号速查。免密钥。</p>
+        <p class="tools">1 个动作 · by_name</p>
+        <p class="badge-row"><span class="badge badge-brand">知识百科</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="opentdb_quiz" data-category="知识百科" data-keywords="OpenTDB 题库 知识百科 开源问答题库,可出选择题考考自己。免密钥。 get_questions 免密钥">
+        <h3>OpenTDB 题库</h3>
+        <p>开源问答题库,可出选择题考考自己。免密钥。</p>
+        <p class="tools">1 个动作 · get_questions</p>
+        <p class="badge-row"><span class="badge badge-brand">知识百科</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="jikan_anime" data-category="影音资讯" data-keywords="Jikan 动漫 影音资讯 MyAnimeList 非官方 API:动漫搜索排行。免密钥(低频)。 search_anime 免密钥">
+        <h3>Jikan 动漫</h3>
+        <p>MyAnimeList 非官方 API:动漫搜索排行。免密钥(低频)。</p>
+        <p class="tools">1 个动作 · search_anime</p>
+        <p class="badge-row"><span class="badge badge-brand">影音资讯</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="tvmaze_shows" data-category="影音资讯" data-keywords="TVMaze 剧集 影音资讯 全球电视剧搜索与播出信息。免密钥。 search_shows 免密钥">
+        <h3>TVMaze 剧集</h3>
+        <p>全球电视剧搜索与播出信息。免密钥。</p>
+        <p class="tools">1 个动作 · search_shows</p>
+        <p class="badge-row"><span class="badge badge-brand">影音资讯</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="dogceo_dogs" data-category="影音资讯" data-keywords="Dog CEO 狗狗图 影音资讯 随机狗狗图片,可按品种筛选。免密钥。 random_image · breed_image 免密钥">
+        <h3>Dog CEO 狗狗图</h3>
+        <p>随机狗狗图片,可按品种筛选。免密钥。</p>
+        <p class="tools">2 个动作 · random_image · breed_image</p>
+        <p class="badge-row"><span class="badge badge-brand">影音资讯</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="chuck_norris" data-category="实用工具" data-keywords="Chuck Norris 笑话 实用工具 随机大 Chuck 笑话,提神用。免密钥。 random · categories 免密钥">
+        <h3>Chuck Norris 笑话</h3>
+        <p>随机大 Chuck 笑话,提神用。免密钥。</p>
+        <p class="tools">2 个动作 · random · categories</p>
+        <p class="badge-row"><span class="badge badge-brand">实用工具</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="advice_slip" data-category="实用工具" data-keywords="人生建议 实用工具 随机一条人生建议,丧时服用。免密钥。 random · by_id 免密钥">
+        <h3>人生建议</h3>
+        <p>随机一条人生建议,丧时服用。免密钥。</p>
+        <p class="tools">2 个动作 · random · by_id</p>
+        <p class="badge-row"><span class="badge badge-brand">实用工具</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="agify_age" data-category="实用工具" data-keywords="姓名测龄 实用工具 按名字预测年龄(统计学)。免密钥。 predict 免密钥">
+        <h3>姓名测龄</h3>
+        <p>按名字预测年龄(统计学)。免密钥。</p>
+        <p class="tools">1 个动作 · predict</p>
+        <p class="badge-row"><span class="badge badge-brand">实用工具</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="zippopotam_zip" data-category="实用工具" data-keywords="全球邮编查询 实用工具 各国邮编反查城市州省。免密钥。 lookup 免密钥">
+        <h3>全球邮编查询</h3>
+        <p>各国邮编反查城市州省。免密钥。</p>
+        <p class="tools">1 个动作 · lookup</p>
+        <p class="badge-row"><span class="badge badge-brand">实用工具</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="ipwho_ip" data-category="实用工具" data-keywords="IP 归属查询 实用工具 IP 查国家城市运营商与时区。免密钥(低频)。 lookup 免密钥">
+        <h3>IP 归属查询</h3>
+        <p>IP 查国家城市运营商与时区。免密钥(低频)。</p>
+        <p class="tools">1 个动作 · lookup</p>
+        <p class="badge-row"><span class="badge badge-brand">实用工具</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="themealdb_recipes" data-category="饮食健康" data-keywords="MealDB 菜谱 饮食健康 全球菜谱搜索,附做法与配料。免密钥。 search · lookup 免密钥">
+        <h3>MealDB 菜谱</h3>
+        <p>全球菜谱搜索,附做法与配料。免密钥。</p>
+        <p class="tools">2 个动作 · search · lookup</p>
+        <p class="badge-row"><span class="badge badge-brand">饮食健康</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="openbrewerydb" data-category="饮食健康" data-keywords="Open Brewery 精酿 饮食健康 全球精酿酒厂名录,可按城市搜。免密钥。 by_city 免密钥">
+        <h3>Open Brewery 精酿</h3>
+        <p>全球精酿酒厂名录,可按城市搜。免密钥。</p>
+        <p class="tools">1 个动作 · by_city</p>
+        <p class="badge-row"><span class="badge badge-brand">饮食健康</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="pokeapi_pokemon" data-category="游戏娱乐" data-keywords="宝可梦图鉴 游戏娱乐 全世代宝可梦数值特性图鉴。免密钥。 pokemon 免密钥">
+        <h3>宝可梦图鉴</h3>
+        <p>全世代宝可梦数值特性图鉴。免密钥。</p>
+        <p class="tools">1 个动作 · pokemon</p>
+        <p class="badge-row"><span class="badge badge-brand">游戏娱乐</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="scryfall_cards" data-category="游戏娱乐" data-keywords="Scryfall 万智牌 游戏娱乐 万智牌全卡牌检索(模糊名可查)。免密钥。 named 免密钥">
+        <h3>Scryfall 万智牌</h3>
+        <p>万智牌全卡牌检索(模糊名可查)。免密钥。</p>
+        <p class="tools">1 个动作 · named</p>
+        <p class="badge-row"><span class="badge badge-brand">游戏娱乐</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="cheapshark_deals" data-category="游戏娱乐" data-keywords="CheapShark 游戏折扣 游戏娱乐 Steam 等多商店游戏折扣聚合。免密钥。 deals 免密钥">
+        <h3>CheapShark 游戏折扣</h3>
+        <p>Steam 等多商店游戏折扣聚合。免密钥。</p>
+        <p class="tools">1 个动作 · deals</p>
+        <p class="badge-row"><span class="badge badge-brand">游戏娱乐</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="github_repos" data-category="开发运维" data-keywords="GitHub 仓库 开发运维 查任意公开仓库星数/fork/简介,附带真实 star 数。免密钥(低频)。 repo · search_repos 免密钥">
+        <h3>GitHub 仓库</h3>
+        <p>查任意公开仓库星数/fork/简介,附带真实 star 数。免密钥(低频)。</p>
+        <p class="tools">2 个动作 · repo · search_repos</p>
+        <p class="badge-row"><span class="badge badge-brand">开发运维</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="npm_stats" data-category="开发运维" data-keywords="npm 包数据 开发运维 查 npm 包上月真实下载量与版本。免密钥。 downloads 免密钥">
+        <h3>npm 包数据</h3>
+        <p>查 npm 包上月真实下载量与版本。免密钥。</p>
+        <p class="tools">1 个动作 · downloads</p>
+        <p class="badge-row"><span class="badge badge-brand">开发运维</span><span class="badge">免密钥</span></p>
+      </article>
+      <article class="plugin" data-plugin-card data-plugin-id="exa_search" data-category="开发运维" data-keywords="Exa 神经检索 开发运维 基于语义的专业网页深度检索与内容提取。安装时需填写 Exa API Key。 exa_search 需 Key">
+        <h3>Exa 神经检索</h3>
+        <p>基于语义的专业网页深度检索与内容提取。安装时需填写 Exa API Key。</p>
+        <p class="tools">1 个动作 · exa_search</p>
+        <p class="badge-row"><span class="badge badge-brand">开发运维</span><span class="badge">需 Key</span></p>
+      </article>
+      </div>
+      <p class="empty-note" data-plugin-empty hidden>没有匹配的插件。换个关键词,或点「全部」看完整清单。</p>
+    </div>
+
+    <div class="callout" style="margin-top:28px">
+      <span class="t">关于密钥与出站</span>
+      <p>需要 Key 的插件(例如 Exa 神经检索),Key 经 Keystore 加密落库后只注入请求头,绝不进入模型上下文;响应统一截断 4000 字符,避免一次把上下文撑爆。</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="h-skills">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow-line">Skill Packs</p>
+      <h2 id="h-skills">六个内置技能包</h2>
+      <p>技能可以装卸。每回合按你的输入自动匹配技能(点名最优先),命中就附一段用法摘要进上下文;没命中零成本。也可以用 <code>/技能名</code> 主动调用。</p>
+    </div>
+    <div class="grid grid-3">
+      <article class="card">
+        <h3>安全代码审计</h3>
+        <p>检查注入、越权、XSS / CSRF / SSRF、命令执行、敏感信息泄露与 Android WebView 安全等风险。</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">技能包</span><span class="badge">可装卸</span></p>
+      </article>
+      <article class="card">
+        <h3>逆向分析</h3>
+        <p>二进制 / APK / SO / ELF / DEX 静态分析:jadx + apktool + Ghidra headless 分层逆向。</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">技能包</span><span class="badge">可装卸</span></p>
+      </article>
+      <article class="card">
+        <h3>APK 构建</h3>
+        <p>在终端里为 Android / Gradle 项目编译 Debug、Release APK 与 AAB,自动识别 SDK 与产物路径。</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">技能包</span><span class="badge">可装卸</span></p>
+      </article>
+      <article class="card">
+        <h3>APK 更新管理</h3>
+        <p>检查 APK 与 LSPosed 模块的新版本,从 GitHub Release 下载、安装更新并清理残留。</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">技能包</span><span class="badge">可装卸</span></p>
+      </article>
+      <article class="card">
+        <h3>APK 反编译</h3>
+        <p>apktool 解包资源与 smali,改完回编译重打包,可改 Manifest、图标与签名配置。</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">技能包</span><span class="badge">可装卸</span></p>
+      </article>
+      <article class="card">
+        <h3>LSPosed 模块开发</h3>
+        <p>从脚手架到打包的模块开发流程,含常见钩子与调试路径。</p>
+        <p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">技能包</span><span class="badge">可装卸</span></p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section" aria-labelledby="h-more">
+  <div class="wrap">
+    <div class="panel">
+      <h2 id="h-more">目录会继续长</h2>
+      <p style="color:var(--sub)">在线插件目录存放在仓库的 <code>docs/plugins/registry.json</code>,列表随应用实时拉取。这一页在打开时会读取同一份文件,把新增的插件补进上面的清单——所以你看到的就是当前线上目录。</p>
+      <div class="btn-row" style="margin-top:18px">
+        <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载 APK 试用</a>
+        <a class="btn btn-ghost" href="guide.html">插件怎么用</a>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <a class="brand" href="index.html" style="margin-bottom:10px">
+          <img src="assets/img/app-icon.png" alt="" width="30" height="30">
+          <span>XIN<span class="code">CODE</span></span>
+        </a>
+        <p class="about">运行在 Android 上的自主 AI 智能体:多供应商模型、工具调用循环、子智能体并行协作、在线插件市场、长期记忆与内置终端。纯 Kotlin 原生,从零构建。</p>
+        <p class="meta">当前版本 <b data-version>v1.14.1</b> · GPL-3.0-or-later</p>
+      </div>
+      <nav aria-labelledby="foot-site">
+        <h2 id="foot-site">本站</h2>
+        <ul>
+          <li><a href="features.html">功能详解</a></li>
+          <li><a href="plugins.html">插件与技能</a></li>
+          <li><a href="changelog.html">更新日志</a></li>
+          <li><a href="guide.html">上手与构建</a></li>
+          <li><a href="security.html">安全与隐私</a></li>
+          <li><a href="accessibility.html">无障碍声明</a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-res">
+        <h2 id="foot-res">资源</h2>
+        <ul>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/releases" target="_blank" rel="noopener noreferrer">版本发布页<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">完整 CHANGELOG<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/THIRD-PARTY-NOTICES.md" target="_blank" rel="noopener noreferrer">第三方声明<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">许可证 GPL-3.0<span class="visually-hidden">(在新标签页打开)</span></a></li>
+        </ul>
+      </nav>
+      <nav aria-labelledby="foot-more">
+        <h2 id="foot-more">相关</h2>
+        <ul>
+          <li><a href="https://modelcontextprotocol.io" target="_blank" rel="noopener noreferrer">MCP 生态<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public/issues" target="_blank" rel="noopener noreferrer">问题反馈 / 建议<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="https://github.com/kusesad-1122/XINCODE-Public#-致谢" target="_blank" rel="noopener noreferrer">致谢<span class="visually-hidden">(在新标签页打开)</span></a></li>
+          <li><a href="#main">回到顶部</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="foot-bottom">
+      <span>© <span data-year>2026</span> XINCODE · 主体代码 GPL-3.0-or-later · 像素素材 CC0 / MIT(见第三方声明)</span>
+      <span>与任何模型供应商均无隶属关系;API Key 由使用者自行提供。</span>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
