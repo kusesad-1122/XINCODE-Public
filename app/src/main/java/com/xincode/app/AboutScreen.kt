@@ -26,8 +26,11 @@ import kotlinx.coroutines.launch
 
 private const val REPO_URL = "https://github.com/kusesad-1122/XINCODE-Public"
 
+/** 项目官网(GitHub Pages):功能说明、插件清单、更新日志与版权页的网页版。 */
+private const val SITE_URL = "https://kusesad-1122.github.io/XINCODE-Public/"
+
 /**
- * 「关于」独立页:应用图标 + 名称 + 版本,以及检查更新、项目地址、Star、更新日志、开源许可、开发者。
+ * 「关于」独立页:应用图标 + 名称 + 版本,以及检查更新、项目官网、项目地址、Star、更新日志、开源许可、版权与使用、开发者。
  * 版本行可点击 → 主动检查更新(与启动时的静默检查复用同一套 [UpdateChecker])。
  */
 @Composable
@@ -109,6 +112,8 @@ fun AboutScreen(app: XincodeApplication, onBack: () -> Unit) {
 
         // 卡片二:项目相关
         AboutCard(xc) {
+            AboutRow("项目官网", "功能、插件与更新日志(网页版)", xc) { open(SITE_URL) }
+            AboutDivider(xc)
             AboutRow("项目地址", REPO_URL, xc) { open(REPO_URL) }
             AboutDivider(xc)
             AboutRow("在 GitHub 点个 Star", "支持一下开发", xc) { open(REPO_URL) }
@@ -116,6 +121,8 @@ fun AboutScreen(app: XincodeApplication, onBack: () -> Unit) {
             AboutRow("更新日志", "查看历史版本更新内容", xc) { open("$REPO_URL/releases") }
             AboutDivider(xc)
             AboutRow("开源许可声明", "GPL-3.0 与第三方素材许可", xc) { open("$REPO_URL/blob/main/THIRD-PARTY-NOTICES.md") }
+            AboutDivider(xc)
+            AboutRow("版权与使用", "引用规则与素材授权边界", xc) { open(SITE_URL + "terms.html") }
         }
 
         // 卡片三:反馈与开发者
