@@ -289,36 +289,87 @@
     update();
   })();
 
-  /* ---------- 6. 进入视口浮现(变体 + 错峰;禁用脚本时内容照常可见) ---------- */
+  /* ---------- 6. 滚动浮现:可重复播放,方向随进入方向镜像 ----------
+     向下翻:元素从下沿升起;往回退:元素从上沿落下(位移取镜像)。
+     离开视口即复位,所以同一元素每次进入都会重新播一遍。 */
   (function () {
-    var els = $$("[data-reveal], .card, .plugin, .release, .section-head, .download-card, .panel, .room");
+    var els = $$("[data-reveal], .card, .plugin, .release, .section-head, .download-card, .panel, .room, .page-head, .prose > section, .notfound");
     if (!els.length || !("IntersectionObserver" in window) || reduceMotion) return;
+
+    // 嵌套目标会让几何互相干扰(父元素位移改变子元素 rect,子元素就会反复进出观察带),
+    // 只保留最外层的那一个。
+    els = els.filter(function (el) {
+      return !els.some(function (other) { return other !== el && other.contains(el); });
+    });
+
+    function setFrom(el, fromTop) {
+      if (fromTop) el.classList.add("rv-from-top");
+      else el.classList.remove("rv-from-top");
+    }
+
+    // 瞬时显示(不播动画),用于首屏已可见的元素,避免"先显示再隐藏"的闪动
+    function showInstant(el, fromTop) {
+      setFrom(el, fromTop);
+      el.classList.add("reveal-prep");
+      el.classList.add("reveal", "is-in");
+      void el.offsetHeight;
+      el.classList.remove("reveal-prep");
+    }
+
+    function show(el, fromTop) {
+      if (el.classList.contains("is-in")) return;
+      setFrom(el, fromTop);
+      el.classList.add("reveal", "is-in");
+    }
+
+    // 首屏:可见的直接显示;其余瞬时藏好,等滚到再播
     var vh = window.innerHeight || 800;
-    var pending = [];
+    var toPrepare = [];
     els.forEach(function (el) {
-      // 首屏内已经可见的元素:同一帧补上 is-in,避免"先显示再隐藏"的闪动
-      if (el.getBoundingClientRect().top < vh * 0.92) {
-        el.classList.add("reveal", "is-in");
+      var rect = el.getBoundingClientRect();
+      if (rect.top < vh * 0.92 && rect.bottom > 0) {
+        showInstant(el, false);
       } else {
-        // 先以"无过渡"姿态落到位(否则会从可见淡出),再恢复过渡交给 observer 播放浮现
         el.classList.add("reveal", "reveal-prep");
-        pending.push(el);
+        setFrom(el, rect.bottom <= 0);
+        toPrepare.push(el);
       }
     });
-    if (pending.length) {
+    if (toPrepare.length) {
       void document.body.offsetHeight;
-      pending.forEach(function (el) { el.classList.remove("reveal-prep"); });
+      toPrepare.forEach(function (el) { el.classList.remove("reveal-prep"); });
     }
+
     var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) {
-        if (e.isIntersecting) { e.target.classList.add("is-in"); io.unobserve(e.target); }
+      var toReset = [];
+      entries.forEach(function (entry) {
+        var el = entry.target;
+        if (entry.isIntersecting) {
+          // 元素顶边已在视口上方 → 说明是从上沿(往回退)进入的,方向取镜像
+          show(el, entry.boundingClientRect.top < 0);
+        } else if (el.classList.contains("is-in")) {
+          // 只有"完全离开视口"才复位:观察带底部留了 8%,若在此直接复位,
+          // 元素会在屏幕底部还剩一截时就瞬间消失(往回退时能看见闪一下)。
+          var rect = el.getBoundingClientRect();
+          var fullyOut = rect.bottom <= 0 || rect.top >= (window.innerHeight || 800);
+          if (fullyOut) toReset.push(el);
+        }
       });
-    }, { threshold: 0.1, rootMargin: "0px 0px -8% 0px" });
-    pending.forEach(function (el) { io.observe(el); });
-    // 兜底:无论是否滚动到,2.5 秒后全部显示,避免打印/截图/异常环境下内容不可见
-    window.setTimeout(function () {
-      els.forEach(function (el) { el.classList.add("is-in"); });
-    }, 2500);
+      if (toReset.length) {
+        // 复位:瞬时回到隐藏态(元素此时在视口外,用户看不到这一步)
+        toReset.forEach(function (el) {
+          el.classList.add("reveal-prep");
+          el.classList.remove("is-in");
+          setFrom(el, false);
+        });
+        void document.body.offsetHeight;
+        toReset.forEach(function (el) { el.classList.remove("reveal-prep"); });
+      }
+    // rootMargin 上方多留 32px(> 位移量 24px):隐藏态带 transform,元素贴在上沿时
+    // 若观察带刚好卡在 0,会出现"显示 → 复位 → 显示"的抖动;扩一点即可稳定。
+    }, { threshold: 0, rootMargin: "32px 0px -8% 0px" });
+
+    els.forEach(function (el) { io.observe(el); });
   })();
 
   /* ---------- 7. 阅读进度条 ---------- */
@@ -353,17 +404,19 @@
     if (reduceMotion || !("IntersectionObserver" in window)) return;
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
-        if (!entry.isIntersecting) return;
         var el = entry.target;
-        io.unobserve(el);
+        if (!entry.isIntersecting) return;
+        if (el.dataset.counting === "1") return;   // 正在滚动计数就不打断
         var target = targetOf(el);
         if (target === null) return;
+        el.dataset.counting = "1";
         var started = null;
         function step(now) {
           if (started === null) started = now;
           var p = Math.min(1, (now - started) / 900);
           render(el, target * (1 - Math.pow(1 - p, 3)));
           if (p < 1) window.requestAnimationFrame(step);
+          else el.dataset.counting = "0";
         }
         render(el, 0);
         window.requestAnimationFrame(step);
