@@ -311,4 +311,13 @@
 
   /* ---------- 8. 页脚年份 ---------- */
   $$("[data-year]").forEach(function (el) { el.textContent = String(new Date().getFullYear()); });
+
+  /* ---------- 9. 防框架嵌套(clickjacking) ----------
+     GitHub Pages 无法下发 X-Frame-Options / frame-ancestors 响应头,
+     所以用脚本兜一层:被别的站点用 iframe 套壳时,把顶层窗口拽回真实地址。 */
+  (function () {
+    try {
+      if (window.top !== window.self) window.top.location = window.self.location.href;
+    } catch (e) { /* 跨域受限时无法改写,交由浏览器与 CSP 兜底 */ }
+  })();
 })();

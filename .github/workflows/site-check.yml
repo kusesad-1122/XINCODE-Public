@@ -1,0 +1,33 @@
+name: Site Check
+
+# 保护文档站:改动 docs/ 时校验结构、链接、CSP 与脚本,防止把线上站点改坏。
+on:
+  push:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/site-check.yml'
+      - '.github/scripts/site-check.mjs'
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/site-check.yml'
+      - '.github/scripts/site-check.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Validate docs site
+        run: node .github/scripts/site-check.mjs docs

@@ -2,6 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.github.com; manifest-src 'self'; frame-src 'none'; form-action 'none'; upgrade-insecure-requests">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>上手与构建 — XINCODE</title>
 <meta name="description" content="XINCODE 上手:安装 APK、首次配置模型供应商、从源码构建 Debug 包、打 Release 签名包、权限说明与常见问题。">
@@ -26,9 +30,7 @@
 <meta name="twitter:description" content="XINCODE 上手:安装 APK、首次配置模型供应商、从源码构建 Debug 包、打 Release 签名包、权限说明与常见问题。">
 <meta name="twitter:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
 <link rel="stylesheet" href="assets/site.css">
-<script>/* 首屏前定主题,避免闪白/闪黑 */
-(function(){try{var t=localStorage.getItem("xincode-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
-</script>
+<script src="assets/theme-init.js"></script>
 <script src="assets/site.js" defer></script>
 </head>
 <body>
@@ -253,6 +255,7 @@ cd XINCODE-Public
           <li><a href="guide.html">上手与构建</a></li>
           <li><a href="security.html">安全与隐私</a></li>
           <li><a href="accessibility.html">无障碍声明</a></li>
+          <li><a href="terms.html">版权与使用</a></li>
         </ul>
       </nav>
       <nav aria-labelledby="foot-res">

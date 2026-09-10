@@ -1,5 +1,6 @@
 # XINCODE 站点
 User-agent: *
 Allow: /
+Disallow: /XINCODE-Public/claude-ui-preview.html
 
 Sitemap: https://kusesad-1122.github.io/XINCODE-Public/sitemap.xml

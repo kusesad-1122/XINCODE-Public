@@ -2,6 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.github.com; manifest-src 'self'; frame-src 'none'; form-action 'none'; upgrade-insecure-requests">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta name="robots" content="index,follow,max-image-preview:large">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>安全与隐私 — XINCODE</title>
 <meta name="description" content="XINCODE 的安全设计:权限模式、敏感操作真审批、审计日志、Keystore 密钥存储、出站守卫(SSRF 防护)、清晰的隐私数据流向与漏洞报告渠道。">
@@ -26,9 +30,7 @@
 <meta name="twitter:description" content="XINCODE 的安全设计:权限模式、敏感操作真审批、审计日志、Keystore 密钥存储、出站守卫(SSRF 防护)、清晰的隐私数据流向与漏洞报告渠道。">
 <meta name="twitter:image" content="https://kusesad-1122.github.io/XINCODE-Public/assets/img/og.png">
 <link rel="stylesheet" href="assets/site.css">
-<script>/* 首屏前定主题,避免闪白/闪黑 */
-(function(){try{var t=localStorage.getItem("xincode-theme");if(t==="dark"||t==="light"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();
-</script>
+<script src="assets/theme-init.js"></script>
 <script src="assets/site.js" defer></script>
 </head>
 <body>
@@ -81,6 +83,7 @@
       <li><a href="#network">出站与插件边界</a></li>
       <li><a href="#privacy">隐私边界</a></li>
       <li><a href="#limits">做不到的事</a></li>
+      <li><a href="#site">本站自身的防护</a></li>
       <li><a href="#report">报告安全问题</a></li>
     </ol>
   </nav>
@@ -170,6 +173,21 @@
       </div>
     </section>
 
+    <section id="site" aria-labelledby="h-site">
+      <p class="eyebrow-line">This site</p>
+      <h2 id="h-site">本站自身的防护</h2>
+      <p>文档站同样是攻击面,所以本站按下面的方式收敛:</p>
+      <ul>
+        <li><b>内容安全策略(CSP)</b>——每个页面都下发严格的 <code>script-src 'self'</code>:不加载任何第三方脚本,也不允许内联脚本执行。首屏主题脚本已外置成独立文件,因此不需要 <code>unsafe-inline</code>。</li>
+        <li><b>零第三方依赖</b>——CSS、JS、字体、图标与图片全部同源自托管,没有 CDN、没有统计脚本;因此也不存在第三方被劫持后连带本站的风险。</li>
+        <li><b>防框架嵌套</b>——对 <code>iframe</code> 套壳(点击劫持)做了脚本层防护;需要说明的是,GitHub Pages 无法下发 <code>X-Frame-Options</code> / <code>frame-ancestors</code> 响应头,这一层做不到浏览器级强制。</li>
+        <li><b>外链一律隔离</b>——所有站外链接都带 <code>rel="noopener noreferrer"</code>,避免新窗口通过 <code>window.opener</code> 反向操作本站。</li>
+        <li><b>不接收用户输入</b>——全站没有表单、没有登录、没有可写接口,不存在注入或数据落库面。</li>
+        <li><b>构建期校验</b>——仓库的 CI 会检查内部链接与锚点、图片替代文本、CSP 是否在位,防止后续改动把站点改坏。</li>
+      </ul>
+      <p>内容层面的授权边界(哪些可以引用、哪些属于冒名)写在<a href="terms.html">版权与使用</a>。</p>
+    </section>
+
     <section id="report" aria-labelledby="h-report">
       <p class="eyebrow-line">Report</p>
       <h2 id="h-report">报告安全问题</h2>
@@ -203,6 +221,7 @@
           <li><a href="guide.html">上手与构建</a></li>
           <li><a href="security.html">安全与隐私</a></li>
           <li><a href="accessibility.html">无障碍声明</a></li>
+          <li><a href="terms.html">版权与使用</a></li>
         </ul>
       </nav>
       <nav aria-labelledby="foot-res">
