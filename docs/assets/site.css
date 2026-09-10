@@ -541,7 +541,7 @@ caption { text-align: left; font-size: 13.5px; color: var(--faint); margin-botto
 th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
 th { font-size: 13.5px; color: var(--ink); background: var(--bg-2); font-weight: 650; }
 td { color: var(--sub); }
-.table-scroll { overflow-x: auto; }
+.table-scroll { overflow-x: auto; position: relative; /* 让内部绝对定位元素(如无障碍隐藏文本)被裁剪,不撑宽页面 */ }
 details { border: 1px solid var(--border); border-radius: var(--r-md); padding: 14px 18px; background: var(--surface); margin-bottom: 10px; }
 details[open] { border-color: var(--border-2); }
 summary { cursor: pointer; font-weight: 600; color: var(--ink); font-size: 15px; }
@@ -601,3 +601,118 @@ details p:last-child { margin-bottom: 0; }
 .release li, .release p, .release h3, .release .v b,
 .card p, .plugin p, .plugin h3, .prose li, .prose p, .prose td,
 .hero-meta span, .room-foot span, .badge, .dl-note { overflow-wrap: anywhere; }
+
+/* ==========================================================================
+   首页模板流:模板标签 / 阅读进度 / 章节轨道 / 浮现动画 / 页面卡片
+   - 浮现动画必须在 JS 加上 .reveal 后才生效,所以禁用脚本时内容照常可见
+   - prefers-reduced-motion 下全部退化为静态
+   ========================================================================== */
+
+/* ---------- 阅读进度条 ---------- */
+.read-progress {
+  position: fixed; inset: 0 auto auto 0; height: 3px; width: 0;
+  background: linear-gradient(90deg, var(--brand), var(--amber));
+  z-index: 80; pointer-events: none; opacity: .9;
+}
+
+/* ---------- 模板区块标签 ---------- */
+.tpl-label {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 12.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--brand-strong); margin: 0 0 14px;
+}
+.tpl-num {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: .04em;
+  background: var(--brand-soft); border: 1px solid var(--brand-line); color: var(--brand-strong);
+  border-radius: 999px; padding: 2px 9px;
+}
+.tpl-intro { color: var(--sub); font-size: 15.5px; max-width: 68ch; margin: 0; }
+
+/* 交替底色:让每块模板在纵向滚动时有明确分节感 */
+.section--tinted { background: var(--bg-2); }
+.section--tinted + .section { border-top-color: var(--border); }
+
+/* ---------- 章节轨道(宽屏显示) ---------- */
+.rail {
+  position: fixed; right: 14px; top: 50%; transform: translateY(-50%);
+  z-index: 45; display: grid; gap: 2px; padding: 8px 6px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  backdrop-filter: blur(6px); border: 1px solid var(--border); border-radius: 999px;
+}
+.rail a {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 5px 8px; border-radius: 999px; text-decoration: none;
+  font-size: 11.5px; color: var(--faint); white-space: nowrap;
+}
+.rail a:hover { color: var(--ink); background: var(--surface); text-decoration: none; }
+.rail .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border-2); flex: none; }
+.rail a[aria-current="true"] { color: var(--brand-strong); }
+.rail a[aria-current="true"] .dot { background: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+@media (max-width: 1279px) { .rail { display: none; } }
+
+/* ---------- 滚动浮现(JS 加 .reveal 后生效) ---------- */
+[data-reveal].reveal {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0);
+  transition: opacity .62s cubic-bezier(.22, .61, .36, 1), transform .62s cubic-bezier(.22, .61, .36, 1);
+  transition-delay: calc(var(--i, 0) * 80ms);
+}
+[data-reveal="left"].reveal { transform: translate3d(-26px, 0, 0); }
+[data-reveal="right"].reveal { transform: translate3d(26px, 0, 0); }
+[data-reveal="zoom"].reveal { transform: scale(.955); }
+[data-reveal].reveal.is-in { opacity: 1; transform: none; }
+
+/* 初始隐藏必须"瞬时"生效,否则元素会先从可见淡出再淡入(加载时闪一下) */
+.reveal-prep { transition: none !important; }
+
+/* 网格内元素错峰进场 */
+[data-reveal-group] > *:nth-child(3n + 2) { --i: 1; }
+[data-reveal-group] > *:nth-child(3n + 3) { --i: 2; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-reveal].reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+  .read-progress { display: none; }
+}
+
+/* ---------- 对照表:右侧一列强调 ---------- */
+table .is-good { color: var(--ink); background: color-mix(in srgb, var(--brand-soft) 55%, transparent); font-weight: 550; }
+th[scope="row"] { color: var(--ink); font-weight: 600; white-space: nowrap; }
+
+/* ---------- 折叠问答 ---------- */
+.faq { display: grid; gap: 10px; max-width: 860px; }
+
+/* ---------- 页面模板总览卡片 ---------- */
+.page-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.page-card {
+  position: relative; display: flex; flex-direction: column; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md);
+  padding: 20px; text-decoration: none; color: inherit; height: 100%;
+  transition: border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+.page-card:hover { border-color: var(--brand); transform: translateY(-3px); box-shadow: var(--shadow); text-decoration: none; }
+.page-card__tpl {
+  align-self: flex-start; font-family: var(--mono); font-size: 11px; letter-spacing: .02em;
+  color: var(--brand-strong); background: var(--brand-soft); border: 1px solid var(--brand-line);
+  border-radius: 999px; padding: 2px 9px;
+}
+.page-card h3 { font-family: var(--sans); font-size: 16.5px; font-weight: 650; letter-spacing: 0; margin: 2px 0 0; }
+.page-card p { font-size: 14px; color: var(--sub); margin: 0; flex: 1 1 auto; }
+.page-card__go { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--brand-strong); margin-top: 4px; }
+
+/* ---------- 指标条数字 ---------- */
+.strip-in .cell b { font-variant-numeric: tabular-nums; }
+.strip-in .cell > b span { font-family: var(--mono); font-size: 16px; }
+
+/* ---------- 窄屏修正:横向浮现位移会顶宽页面,窄屏只保留纵向 ---------- */
+@media (max-width: 760px) {
+  [data-reveal="left"].reveal,
+  [data-reveal="right"].reveal { transform: translate3d(0, 22px, 0); }
+  /* 多列表格改为横滑,避免三列被挤成竖条 */
+  .table-scroll > table { min-width: 560px; }
+}
+
+/* ---------- 打印:浮现动画不该影响输出 ---------- */
+@media print {
+  .read-progress, .rail { display: none !important; }
+  [data-reveal].reveal { opacity: 1 !important; transform: none !important; }
+}

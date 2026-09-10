@@ -249,46 +249,130 @@
       .catch(function () { /* 保留静态兜底 */ });
   })();
 
-  /* ---------- 5. 目录高亮(滚动位置 → aria-current) ---------- */
+  /* ---------- 5. 目录 / 章节轨道高亮(随滚动实时计算) ---------- */
   (function () {
-    var toc = $("[data-toc]");
-    if (!toc || !("IntersectionObserver" in window)) return;
-    var links = $$("a[href^='#']", toc);
-    var map = {};
-    var targets = [];
-    links.forEach(function (a) {
-      var el = document.getElementById(a.getAttribute("href").slice(1));
-      if (el) { map[el.id] = a; targets.push(el); }
-    });
-    if (!targets.length) return;
-    var visible = {};
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) { visible[entry.target.id] = entry.isIntersecting; });
-      var activeId = null;
-      targets.forEach(function (t) { if (visible[t.id] && !activeId) activeId = t.id; });
-      links.forEach(function (a) { a.removeAttribute("aria-current"); });
-      if (activeId && map[activeId]) map[activeId].setAttribute("aria-current", "true");
-    }, { rootMargin: "-96px 0px -60% 0px", threshold: 0 });
-    targets.forEach(function (t) { io.observe(t); });
+    var groups = $$("[data-toc], [data-rail]").map(function (toc) {
+      var items = $$("a[href^='#']", toc).map(function (a) {
+        return { link: a, target: document.getElementById(a.getAttribute("href").slice(1)) };
+      }).filter(function (it) { return !!it.target; });
+      return { links: items.map(function (it) { return it.link; }), items: items };
+    }).filter(function (g) { return g.items.length; });
+    if (!groups.length) return;
+
+    function update() {
+      var line = 148; // 阅读线:顶部导航之下
+      groups.forEach(function (g) {
+        var active = null, best = -Infinity, fallback = null;
+        g.items.forEach(function (it) {
+          var top = it.target.getBoundingClientRect().top;
+          if (top <= line && top > best) { best = top; active = it.link; }
+          if (top <= line + 40) fallback = it.link;
+        });
+        if (!active) {
+          // 还没滚到第一节时,高亮第一节
+          active = fallback || g.items[0].link;
+        }
+        g.links.forEach(function (l) { l.removeAttribute("aria-current"); });
+        if (active) active.setAttribute("aria-current", "true");
+      });
+    }
+
+    var ticking = false;
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      window.requestAnimationFrame(function () { ticking = false; update(); });
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    window.addEventListener("hashchange", onScroll);
+    update();
   })();
 
-  /* ---------- 6. 进入视口渐显(尊重减弱动效) ---------- */
+  /* ---------- 6. 进入视口浮现(变体 + 错峰;禁用脚本时内容照常可见) ---------- */
   (function () {
-    var els = $$(".card, .plugin, .release, .section-head, .download-card, .panel, .room");
-    if (!("IntersectionObserver" in window) || reduceMotion) return;
+    var els = $$("[data-reveal], .card, .plugin, .release, .section-head, .download-card, .panel, .room");
+    if (!els.length || !("IntersectionObserver" in window) || reduceMotion) return;
+    var vh = window.innerHeight || 800;
+    var pending = [];
+    els.forEach(function (el) {
+      // 首屏内已经可见的元素:同一帧补上 is-in,避免"先显示再隐藏"的闪动
+      if (el.getBoundingClientRect().top < vh * 0.92) {
+        el.classList.add("reveal", "is-in");
+      } else {
+        // 先以"无过渡"姿态落到位(否则会从可见淡出),再恢复过渡交给 observer 播放浮现
+        el.classList.add("reveal", "reveal-prep");
+        pending.push(el);
+      }
+    });
+    if (pending.length) {
+      void document.body.offsetHeight;
+      pending.forEach(function (el) { el.classList.remove("reveal-prep"); });
+    }
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) {
         if (e.isIntersecting) { e.target.classList.add("is-in"); io.unobserve(e.target); }
       });
-    }, { threshold: 0.1 });
-    els.forEach(function (el) { el.classList.add("reveal"); io.observe(el); });
+    }, { threshold: 0.1, rootMargin: "0px 0px -8% 0px" });
+    pending.forEach(function (el) { io.observe(el); });
     // 兜底:无论是否滚动到,2.5 秒后全部显示,避免打印/截图/异常环境下内容不可见
     window.setTimeout(function () {
       els.forEach(function (el) { el.classList.add("is-in"); });
     }, 2500);
   })();
 
-  /* ---------- 7. 代码块复制 ---------- */
+  /* ---------- 7. 阅读进度条 ---------- */
+  (function () {
+    var bar = $("[data-progress]");
+    if (!bar) return;
+    var ticking = false;
+    function update() {
+      ticking = false;
+      var doc = document.documentElement;
+      var max = doc.scrollHeight - window.innerHeight;
+      var top = window.pageYOffset || doc.scrollTop || 0;
+      var pct = max > 0 ? Math.min(100, Math.max(0, (top / max) * 100)) : 0;
+      bar.style.width = pct.toFixed(2) + "%";
+    }
+    function onScroll() { if (!ticking) { ticking = true; window.requestAnimationFrame(update); } }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll, { passive: true });
+    update();
+  })();
+
+  /* ---------- 8. 指标数字滚动(减弱动效/无脚本时保留最终值) ---------- */
+  (function () {
+    var nums = $$("[data-count-to]");
+    if (!nums.length) return;
+    function targetOf(el) { var v = parseFloat(el.getAttribute("data-count-to")); return isNaN(v) ? null : v; }
+    function render(el, value) {
+      var t = targetOf(el);
+      el.textContent = t !== null && t % 1 === 0 ? String(Math.round(value)) : value.toFixed(1);
+    }
+    nums.forEach(function (el) { var t = targetOf(el); if (t !== null) render(el, t); });
+    if (reduceMotion || !("IntersectionObserver" in window)) return;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var el = entry.target;
+        io.unobserve(el);
+        var target = targetOf(el);
+        if (target === null) return;
+        var started = null;
+        function step(now) {
+          if (started === null) started = now;
+          var p = Math.min(1, (now - started) / 900);
+          render(el, target * (1 - Math.pow(1 - p, 3)));
+          if (p < 1) window.requestAnimationFrame(step);
+        }
+        render(el, 0);
+        window.requestAnimationFrame(step);
+      });
+    }, { threshold: 0.4 });
+    nums.forEach(function (el) { io.observe(el); });
+  })();
+
+  /* ---------- 9. 代码块复制 ---------- */
   (function () {
     var pres = $$(".prose pre");
     if (!pres.length || !navigator.clipboard) return;
@@ -309,10 +393,10 @@
     });
   })();
 
-  /* ---------- 8. 页脚年份 ---------- */
+  /* ---------- 10. 页脚年份 ---------- */
   $$("[data-year]").forEach(function (el) { el.textContent = String(new Date().getFullYear()); });
 
-  /* ---------- 9. 防框架嵌套(clickjacking) ----------
+  /* ---------- 11. 防框架嵌套(clickjacking) ----------
      GitHub Pages 无法下发 X-Frame-Options / frame-ancestors 响应头,
      所以用脚本兜一层:被别的站点用 iframe 套壳时,把顶层窗口拽回真实地址。 */
   (function () {

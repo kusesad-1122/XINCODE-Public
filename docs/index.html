@@ -65,7 +65,21 @@
       <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载最新 APK</a>
   </nav>
 </header>
+<nav class="rail" aria-label="本页章节" data-rail>
+  <a href="#features"><span class="rail-t">能力</span><span class="dot"></span></a>
+  <a href="#runtime"><span class="rail-t">运行链</span><span class="dot"></span></a>
+  <a href="#terminal"><span class="rail-t">终端</span><span class="dot"></span></a>
+  <a href="#compare"><span class="rail-t">对照</span><span class="dot"></span></a>
+  <a href="#plugins"><span class="rail-t">插件</span><span class="dot"></span></a>
+  <a href="#changelog"><span class="rail-t">更新</span><span class="dot"></span></a>
+  <a href="#faq"><span class="rail-t">问答</span><span class="dot"></span></a>
+  <a href="#templates"><span class="rail-t">页面模板</span><span class="dot"></span></a>
+  <a href="#download"><span class="rail-t">下载</span><span class="dot"></span></a>
+</nav>
 <main id="main" tabindex="-1">
+<div class="read-progress" data-progress aria-hidden="true"></div>
+
+<!-- 首屏 -->
 <div class="wrap hero">
   <div>
     <p class="eyebrow-line">开源 · GPL-3.0 · 纯 Kotlin 原生</p>
@@ -141,117 +155,131 @@
   </div>
 </div>
 
-<div class="strip">
+<!-- 指标条 -->
+<div class="strip" data-reveal="up">
   <div class="wrap strip-in">
-    <div class="cell"><b>纯 Kotlin 原生</b>Jetpack Compose,无跨端框架</div>
-    <div class="cell"><b>本地优先</b>API Key 经 Keystore 加密存本机</div>
-    <div class="cell"><b>27 个在线插件</b>8 大分类,免发版上架</div>
-    <div class="cell"><b>开源可审计</b>GPL-3.0-or-later,可自行构建</div>
+    <div class="cell" data-reveal="up" style="--i:0"><b><span data-count-to="27">27</span> 个在线插件</b>8 大分类,免发版上架</div>
+    <div class="cell" data-reveal="up" style="--i:1"><b><span data-count-to="4">4</span> 个专职子智能体</b>探索 / 审查 / 编码 / 研究</div>
+    <div class="cell" data-reveal="up" style="--i:2"><b><span data-count-to="8">8</span> 个 Gradle 模块</b>纯 Kotlin,无跨端框架</div>
+    <div class="cell" data-reveal="up" style="--i:3"><b><span data-count-to="27">27</span> 条版本记录</b>每版写清改了什么</div>
   </div>
 </div>
 
-<section class="section" id="features" aria-labelledby="h-features">
+<!-- 模板 01 · 功能网格 -->
+<section class="section section--tinted" id="features" aria-labelledby="h-features">
   <div class="wrap">
-    <div class="section-head">
-      <p class="eyebrow-line">Capabilities</p>
-      <h2 id="h-features">不只是一个聊天框,<br>是一整套智能体工作台。</h2>
-      <p>从工具调用循环到多智能体协作,从长期记忆到内置 Linux 环境——该有的底盘,一次配齐。</p>
-    </div>
-    <div class="grid grid-3">
-      <article class="card">
+      <div class="section-head" data-reveal="up">
+        <p class="tpl-label"><span class="tpl-num">01</span>功能网格 · Feature Grid</p>
+        <h2 id="h-features">不只是一个聊天框,<br>是一整套智能体工作台。</h2>
+        <p class="tpl-intro">这个模板负责「一览」:九项核心能力排成三列卡片,每张卡只讲清一件事——想看细节,点进功能页对应章节。</p>
+      </div>
+      <div class="grid grid-3" data-reveal-group>
+      <article data-reveal="up" style="--i:0" class="card">
         <div class="ic-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3 3.5 7.5v9L12 21l8.5-4.5v-9L12 3Z"/><path d="M12 12 3.7 7.6M12 12l8.3-4.4M12 12v9"/></svg></div>
         <h3>多供应商模型</h3>
         <p>OpenAI Chat Completions / Responses、DeepSeek、Anthropic 等路径,自定义端点与模型清单随你配。</p>
         <p style="margin-top:10px"><a class="link-more" href="features.html#provider", ">详见功能页 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
       </article>
-      <article class="card">
+      <article data-reveal="up" style="--i:1" class="card">
         <div class="ic-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M14.7 6.3a3.8 3.8 0 0 0 5 5L21 21l-3 .5-2.3-4.2"/><path d="M4 4l7.5 7.5"/><circle cx="6.5" cy="6.5" r="3.2"/></svg></div>
         <h3>工具调用循环</h3>
         <p>结构化输出、多步工具编排;工具结果必回模型,失败明示不静默,不伪造成功。</p>
         <p style="margin-top:10px"><a class="link-more" href="features.html#tools">详见功能页 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
       </article>
-      <article class="card">
+      <article data-reveal="up" style="--i:2" class="card">
         <div class="ic-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.5-6.2M21 12a9 9 0 0 1-15.5 6.2"/><path d="M18.5 3v3h-3M5.5 21v-3h3"/></svg></div>
         <h3>运行链不断线</h3>
         <p>通知栏一键中断与审批、多轮任务自动继承前文,杀进程可续跑、可分支重试。</p>
         <p style="margin-top:10px"><a class="link-more" href="features.html#runtime">详见功能页 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
       </article>
-      <article class="card">
+      <article data-reveal="up" style="--i:0" class="card">
         <div class="ic-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="5.5" r="2.6"/><circle cx="5" cy="17" r="2.6"/><circle cx="19" cy="17" r="2.6"/><path d="M10.3 7.7 6.6 14.6M13.7 7.7l3.7 6.9M7.6 17h8.8"/></svg></div>
         <h3>计划与协作模式</h3>
         <p>计划模式可视化任务卡;协作模式下主脑并行派活给专职子智能体,汇总回主脑。</p>
         <p style="margin-top:10px"><a class="link-more" href="features.html#collab">详见功能页 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
       </article>
-      <article class="card">
+      <article data-reveal="up" style="--i:1" class="card">
         <div class="ic-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4M7.5 11.5l1.8-1.8 1.7 1.7 2.4-2.6 1.6 1.6"/></svg></div>
         <h3>指挥室</h3>
         <p>像素风实时动画:每个子智能体一个工位,派活即联动,进度一眼可见。</p>
         <p style="margin-top:10px"><a class="link-more" href="features.html#room">详见功能页 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
       </article>
-      <article class="card">
+      <article data-reveal="up" style="--i:2" class="card">
         <div class="ic-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10l2.5 2L7 14M12.5 15h4.5"/></svg></div>
         <h3>终端与 Ubuntu</h3>
         <p>内置 root 终端与 Ubuntu 环境(root + chroot 自动部署),常用开发环境一键装。</p>
         <p style="margin-top:10px"><a class="link-more" href="features.html#terminal">详见功能页 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
       </article>
-      <article class="card">
+      <article data-reveal="up" style="--i:0" class="card">
         <div class="ic-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3.5a4 4 0 0 1 4 4v1a4 4 0 0 1-1 8.5h-1V20h-4v-3H9a4 4 0 0 1-1-8.5v-1a4 4 0 0 1 4-4Z"/><path d="M12 3.5v6M9.5 9.5h5"/></svg></div>
         <h3>长期记忆</h3>
         <p>FTS 全文 + 向量语义双检索;普通对话互通,项目对话按项目隔离。</p>
         <p style="margin-top:10px"><a class="link-more" href="features.html#memory">详见功能页 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
       </article>
-      <article class="card">
+      <article data-reveal="up" style="--i:1" class="card">
         <div class="ic-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 1 0 8.5 8.5"/><path d="M12 7.5A4.5 4.5 0 1 0 16.5 12"/><path d="M20.5 3.5v4h-4"/></svg></div>
         <h3>上下文与成本</h3>
         <p>输入框旁上下文圆环、实时 token 与缓存命中、可配压缩阈值、人民币成本显示。</p>
         <p style="margin-top:10px"><a class="link-more" href="features.html#context">详见功能页 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
       </article>
-      <article class="card">
+      <article data-reveal="up" style="--i:2" class="card">
         <div class="ic-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><path d="M17 13.5v7M13.5 17h7"/></svg></div>
         <h3>插件与技能</h3>
         <p>27 个在线插件、MCP 双传输、技能按场景自动引用,云端上架免发版。</p>
         <p style="margin-top:10px"><a class="link-more" href="features.html#plugins">详见功能页 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
       </article>
-    </div>
-  </div>
-</section>
-
-<section class="section" aria-labelledby="h-runtime">
-  <div class="wrap feature-split">
-    <div>
-      <p class="eyebrow-line">Runtime</p>
-      <h2 id="h-runtime">长任务跑得完,也停得住。</h2>
-      <p class="lede">手机上的长任务最怕两件事:你管不了它,它做得不明不白。XINCODE 把这两件事都写进了运行链。</p>
-      <ul class="checklist" style="margin-top:20px">
-        <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>通知栏一键中断</b>——切后台、杀 UI 也能真停,停的是执行链本身,不是只关界面。</span></li>
-        <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>敏感操作真审批</b>——执行链真的暂停等你回执,无回执不执行;拒绝后模型基于拒绝理由换方案重判。</span></li>
-        <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>多轮不断片</b>——同一任务有 Thread / Turn 身份,第二轮自动继承第一轮结论,不再全文重灌。</span></li>
-        <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>杀进程可续跑</b>——运行流水落盘,可续跑、可分支重试;工具结果必回模型,失败明示。</span></li>
-      </ul>
-      <p style="margin-top:22px"><a class="link-more" href="features.html#runtime">运行链细节 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
-    </div>
-    <div class="panel">
-      <h3 style="margin-bottom:14px">一次真实的任务流水</h3>
-      <div class="badge-row" style="margin-bottom:16px">
-        <span class="badge badge-green">已完成 3 步</span>
-        <span class="badge badge-amber">等待审批 1 次</span>
-        <span class="badge">Thread 1.14.1-fix</span>
       </div>
-      <ol style="list-style:none;padding:0;margin:0;display:grid;gap:12px">
-        <li style="display:grid;grid-template-columns:22px 1fr;gap:10px"><span style="color:var(--green)">✓</span><span><b>梳理仓库结构</b><br><span class="meta mono">code_graph · 0.8s</span></span></li>
-        <li style="display:grid;grid-template-columns:22px 1fr;gap:10px"><span style="color:var(--green)">✓</span><span><b>定位失败用例</b><br><span class="meta mono">grep + 读文件 · 3 次调用</span></span></li>
-        <li style="display:grid;grid-template-columns:22px 1fr;gap:10px"><span style="color:var(--amber)">●</span><span><b>改写构建脚本</b><br><span class="meta mono">写文件属于敏感操作 → 通知栏等待回执</span></span></li>
-        <li style="display:grid;grid-template-columns:22px 1fr;gap:10px"><span style="color:var(--faint)">…</span><span><b>回归验证</b><br><span class="meta mono">等待上一步</span></span></li>
-      </ol>
-      <p class="meta" style="margin-top:18px">上图为界面结构示意,用于说明审批与续跑的关系。</p>
+    </div>
+  </section>
+
+<!-- 模板 02 · 左右分栏 -->
+<section class="section" id="runtime" aria-labelledby="h-runtime">
+  <div class="wrap">
+      <div class="section-head" data-reveal="up">
+        <p class="tpl-label"><span class="tpl-num">02</span>左右分栏 · Split</p>
+        <h2 id="h-runtime">长任务跑得完,也停得住。</h2>
+        <p class="tpl-intro">这个模板负责「解释 + 举证」:左边讲运行链的三条规则,右边用一次真实任务的流水面板,展示审批、续跑与多轮继承长什么样。</p>
+      </div>
+    <div class="feature-split">
+      <div data-reveal="left">
+        <ul class="checklist">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>通知栏一键中断</b>——切后台、杀 UI 也能真停,停的是执行链本身,不是只关界面。</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>敏感操作真审批</b>——执行链真的暂停等你回执,无回执不执行;拒绝后模型基于拒绝理由换方案重判。</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>多轮不断片</b>——同一任务有 Thread / Turn 身份,第二轮自动继承第一轮结论,不再全文重灌。</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>杀进程可续跑</b>——运行流水落盘,可续跑、可分支重试;工具结果必回模型,失败明示不静默。</span></li>
+        </ul>
+        <p style="margin-top:22px"><a class="link-more" href="features.html#runtime">运行链细节 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
+      </div>
+      <div class="panel" data-reveal="right">
+        <h3 style="margin-bottom:14px">一次真实的任务流水</h3>
+        <div class="badge-row" style="margin-bottom:16px">
+          <span class="badge badge-green">已完成 3 步</span>
+          <span class="badge badge-amber">等待审批 1 次</span>
+          <span class="badge">Thread 1.14.2-fix</span>
+        </div>
+        <ol style="list-style:none;padding:0;margin:0;display:grid;gap:12px">
+          <li style="display:grid;grid-template-columns:22px 1fr;gap:10px"><span style="color:var(--green)">✓</span><span><b>梳理仓库结构</b><br><span class="meta mono">code_graph · 0.8s</span></span></li>
+          <li style="display:grid;grid-template-columns:22px 1fr;gap:10px"><span style="color:var(--green)">✓</span><span><b>定位失败用例</b><br><span class="meta mono">grep + 读文件 · 3 次调用</span></span></li>
+          <li style="display:grid;grid-template-columns:22px 1fr;gap:10px"><span style="color:var(--amber)">●</span><span><b>改写构建脚本</b><br><span class="meta mono">写文件属于敏感操作 → 通知栏等待回执</span></span></li>
+          <li style="display:grid;grid-template-columns:22px 1fr;gap:10px"><span style="color:var(--faint)">…</span><span><b>回归验证</b><br><span class="meta mono">等待上一步</span></span></li>
+        </ol>
+        <p class="meta" style="margin-top:18px">上图为界面结构示意,用于说明审批与续跑的关系。</p>
+      </div>
     </div>
   </div>
 </section>
 
-<section class="section" aria-labelledby="h-terminal">
-  <div class="wrap feature-split">
-    <div class="panel" style="padding:22px">
-      <div class="term" role="img" aria-label="终端示意:以 root 身份在手机内置 Ubuntu 环境里装 JDK、执行 Gradle 构建并得到 APK 产物。">
+<!-- 模板 03 · 终端面板 -->
+<section class="section section--tinted" id="terminal" aria-labelledby="h-terminal">
+  <div class="wrap">
+      <div class="section-head" data-reveal="up">
+        <p class="tpl-label"><span class="tpl-num">03</span>终端面板 · Code Panel</p>
+        <h2 id="h-terminal">手机上真的能写代码。</h2>
+        <p class="tpl-intro">这个模板负责「演示」:用等宽字体的终端面板摆出真实命令与产物路径,右边补上环境与技能说明——比截图更省体积,也不用图片替代文本。</p>
+      </div>
+    <div class="feature-split">
+      <div class="panel" style="padding:22px" data-reveal="left">
+        <div class="term" role="img" aria-label="终端示意:以 root 身份在手机内置 Ubuntu 环境里装 JDK、执行 Gradle 构建并得到 APK 产物。">
 <span class="p">root@xincode</span>:<span class="c">/sdcard/projects/xincode</span>$ whoami
 root
 <span class="p">root@xincode</span>:<span class="c">/sdcard/projects/xincode</span>$ apt install -y openjdk-17-jdk
@@ -261,50 +289,75 @@ root
 <span class="p">root@xincode</span>:<span class="c">/sdcard/projects/xincode</span>$ ls app/build/outputs/apk/debug/
 app-debug.apk
 </div>
-<p class="meta" style="margin-top:10px">终端示意,非实机截图;命令与产物路径与项目一致。</p>
-    </div>
-    <div>
-      <p class="eyebrow-line">Terminal &amp; Ubuntu</p>
-      <h2 id="h-terminal">手机上真的能写代码。</h2>
-      <p class="lede">内置 root 终端与 Ubuntu 环境(自动 chroot 部署),常用开发环境一键装好。APK 构建、反编译、逆向分析、安全审计等技能随装随用。</p>
-      <ul class="checklist" style="margin-top:20px">
-        <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>免 Root 也能用</b>基础功能开箱即用;有 Root 时终端与 Ubuntu 环境解锁更彻底。</span></li>
-        <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>技能包</b>安全代码审计、逆向分析、APK 构建 / 反编译 / 更新、LSPosed 模块开发。</span></li>
-        <li><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>文件不出设备</b>命令在本机执行,产出的 APK / 日志留在你的存储里。</span></li>
-      </ul>
-      <p style="margin-top:22px"><a class="link-more" href="features.html#terminal">终端与环境 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
+        <p class="meta" style="margin-top:10px">终端示意,非实机截图;命令与产物路径与项目一致。</p>
+      </div>
+      <div data-reveal="right">
+        <ul class="checklist">
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>免 Root 也能用</b>基础功能开箱即用;有 Root 时终端与 Ubuntu 环境解锁更彻底。</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>技能包</b>安全代码审计、逆向分析、APK 构建 / 反编译 / 更新、LSPosed 模块开发。</span></li>
+          <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg><span><b>文件不出设备</b>命令在本机执行,产出的 APK 与日志留在你的存储里。</span></li>
+        </ul>
+        <p style="margin-top:22px"><a class="link-more" href="features.html#terminal">终端与环境 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
+      </div>
     </div>
   </div>
 </section>
 
-<section class="section" id="plugins" aria-labelledby="h-plugins">
+<!-- 模板 04 · 对照表 -->
+<section class="section" id="compare" aria-labelledby="h-compare">
   <div class="wrap">
-    <div class="section-head">
-      <p class="eyebrow-line">Plugins &amp; Skills</p>
-      <h2 id="h-plugins">开箱即连的插件生态。</h2>
-      <p>应用内置插件商店:四页签分连接器 / MCP / 在线插件 / 技能包。免鉴权的官方远程 MCP 装完即用;在线插件从云端目录实时拉取,上架新插件不必等发版。</p>
+      <div class="section-head" data-reveal="up">
+        <p class="tpl-label"><span class="tpl-num">04</span>对照表 · Compare Table</p>
+        <h2 id="h-compare">和普通聊天工具,差在哪。</h2>
+        <p class="tpl-intro">这个模板负责「对比」:挑六个最常被问到的场景,左边是普通聊天工具的做法,右边是 XINCODE 的做法,不吹不抽象。</p>
+      </div>
+    <div class="table-scroll" data-reveal="up">
+      <table>
+        <caption>同样是「问 AI 一件事」,差别在能不能把事情做完</caption>
+        <thead><tr><th scope="col">场景</th><th scope="col">普通聊天工具</th><th scope="col">XINCODE</th></tr></thead>
+        <tbody>
+          <tr data-reveal="up" style="--i:0"><th scope="row">长任务</th><td>关掉界面就断,只能干等或强杀</td><td class="is-good">通知栏可中断 / 可审批,后台继续跑;杀进程还能从断点续跑</td></tr>
+          <tr data-reveal="up" style="--i:1"><th scope="row">工具调用</th><td>最多帮你查个网页、生成一段文字</td><td class="is-good">真实工具循环:文件、终端、MCP、在线插件都算数,结果必回模型</td></tr>
+          <tr data-reveal="up" style="--i:2"><th scope="row">并行</th><td>一问一答,单线程推进</td><td class="is-good">主脑拆解任务,多个子智能体并行开工,结论汇总回主脑</td></tr>
+          <tr data-reveal="up" style="--i:0"><th scope="row">记忆</th><td>关掉就忘,下次从头讲</td><td class="is-good">FTS 全文 + 向量语义双检索;普通对话互通,项目内按项目隔离</td></tr>
+          <tr data-reveal="up" style="--i:1"><th scope="row">扩展</th><td>等厂商排期发版</td><td class="is-good">插件目录从云端实时拉取,新插件上架不必等应用更新</td></tr>
+          <tr data-reveal="up" style="--i:2"><th scope="row">成本</th><td>只看到用了多少 token</td><td class="is-good">上下文圆环 + 缓存命中 + 人民币成本,压缩阈值可自己调</td></tr>
+        </tbody>
+      </table>
     </div>
-    <div class="grid grid-3">
-      <article class="card"><h3>Open-Meteo 实时天气</h3><p>全球任意经纬度的实时天气、风速与空气质量。免密钥,装完即用。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">气象预报</span><span class="badge">免密钥</span></p></article>
-      <article class="card"><h3>Frankfurter 汇率</h3><p>欧洲央行参考汇率,160+ 货币的实时与历史换算。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">金融财经</span><span class="badge">免密钥</span></p></article>
-      <article class="card"><h3>OpenLibrary 图书</h3><p>千万级开放图书目录:搜书、查版本、ISBN 直取。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">知识百科</span><span class="badge">免密钥</span></p></article>
-      <article class="card"><h3>GitHub 仓库</h3><p>查任意公开仓库的星数、fork 与简介,给的就是真实数据。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">开发运维</span><span class="badge">免密钥</span></p></article>
-      <article class="card"><h3>GitHub 远程 MCP</h3><p>官方远程 MCP,免 root / 免 node;AI 直接用 GitHub API 管仓库、PR、Issue。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">MCP</span><span class="badge">需登录授权</span></p></article>
-      <article class="card"><h3>Exa 神经检索</h3><p>基于语义的专业网页深度检索与正文提取,填一次 Key 即可用。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">开发运维</span><span class="badge">需 Key</span></p></article>
-    </div>
-    <p style="margin-top:26px"><a class="link-more" href="plugins.html">查看全部 27 个在线插件、MCP 与技能包 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
   </div>
 </section>
 
+<!-- 模板 05 · 卡片橱窗 -->
+<section class="section section--tinted" id="plugins" aria-labelledby="h-plugins">
+  <div class="wrap">
+      <div class="section-head" data-reveal="up">
+        <p class="tpl-label"><span class="tpl-num">05</span>卡片橱窗 · Showcase</p>
+        <h2 id="h-plugins">开箱即连的插件生态。</h2>
+        <p class="tpl-intro">这个模板负责「陈列」:用卡片墙摆出插件、MCP 与技能,每张卡带分类与鉴权徽标;完整清单在插件页可搜索、按分类筛选。</p>
+      </div>
+      <div class="grid grid-3" data-reveal-group>
+      <article data-reveal="up" style="--i:0" class="card"><h3>Open-Meteo 实时天气</h3><p>全球任意经纬度的实时天气、风速与空气质量。免密钥,装完即用。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">气象预报</span><span class="badge">免密钥</span></p></article>
+      <article data-reveal="up" style="--i:1" class="card"><h3>Frankfurter 汇率</h3><p>欧洲央行参考汇率,160+ 货币的实时与历史换算。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">金融财经</span><span class="badge">免密钥</span></p></article>
+      <article data-reveal="up" style="--i:2" class="card"><h3>OpenLibrary 图书</h3><p>千万级开放图书目录:搜书、查版本、ISBN 直取。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">知识百科</span><span class="badge">免密钥</span></p></article>
+      <article data-reveal="up" style="--i:0" class="card"><h3>GitHub 仓库</h3><p>查任意公开仓库的星数、fork 与简介,给的就是真实数据。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">开发运维</span><span class="badge">免密钥</span></p></article>
+      <article data-reveal="up" style="--i:1" class="card"><h3>GitHub 远程 MCP</h3><p>官方远程 MCP,免 root / 免 node;AI 直接用 GitHub API 管仓库、PR、Issue。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">MCP</span><span class="badge">需登录授权</span></p></article>
+      <article data-reveal="up" style="--i:2" class="card"><h3>Exa 神经检索</h3><p>基于语义的专业网页深度检索与正文提取,填一次 Key 即可用。</p><p class="badge-row" style="margin-top:12px"><span class="badge badge-brand">开发运维</span><span class="badge">需 Key</span></p></article>
+      </div>
+      <p style="margin-top:26px" data-reveal="up"><a class="link-more" href="plugins.html">查看全部 27 个在线插件、MCP 与技能包 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
+    </div>
+  </section>
+
+<!-- 模板 06 · 时间线 -->
 <section class="section" id="changelog" aria-labelledby="h-changelog">
   <div class="wrap">
-    <div class="section-head">
-      <p class="eyebrow-line">Changelog</p>
-      <h2 id="h-changelog">迭代很快,条条有据。</h2>
-      <p>每个版本都在仓库的 CHANGELOG 里写清楚改了什么、为什么改。下面是最近几个版本。</p>
-    </div>
-    <div class="timeline" data-release-list="3" data-cap-headings="2" data-cap-items="3">
-      <article class="release">
+      <div class="section-head" data-reveal="up">
+        <p class="tpl-label"><span class="tpl-num">06</span>时间线 · Timeline</p>
+        <h2 id="h-changelog">迭代很快,条条有据。</h2>
+        <p class="tpl-intro">这个模板负责「留痕」:版本卡片按时间倒序排列,内容实时取自 GitHub Release;网络不可用或禁用脚本时,回退到构建时的静态快照。</p>
+      </div>
+    <div class="timeline" data-release-list="3" data-cap-headings="2" data-cap-items="3" data-reveal-group>
+<article data-reveal="up" style="--i:0" class="release">
         <div class="v"><b>v1.14.2</b><time datetime="2026-09-10">2026-09-10</time><span class="badge badge-green">最新</span></div>
         <h3>修复项目知识库删除闪退</h3>
         <ul>
@@ -313,7 +366,7 @@ app-debug.apk
           <li>顺带修好「清空所有数据」与召回计数的同类崩溃;「关于」页新增官网入口。</li>
         </ul>
       </article>
-      <article class="release">
+      <article data-reveal="up" style="--i:1" class="release">
         <div class="v"><b>v1.14.1</b><time datetime="2026-09-07">2026-09-07</time></div>
         <h3>在线插件 3 → 27、技能场景自动引用</h3>
         <ul>
@@ -322,7 +375,7 @@ app-debug.apk
           <li>每回合按输入自动匹配技能,命中附用法摘要进上下文,未命中零成本。</li>
         </ul>
       </article>
-      <article class="release">
+      <article data-reveal="up" style="--i:2" class="release">
         <div class="v"><b>v1.14.0</b><time datetime="2026-09-06">2026-09-06</time></div>
         <h3>在线插件上线 + 运行链重构</h3>
         <ul>
@@ -331,7 +384,7 @@ app-debug.apk
           <li>任务有了 Thread / Turn 身份,多轮执行自动继承前轮结论。</li>
         </ul>
       </article>
-      <article class="release">
+      <article data-reveal="up" style="--i:0" class="release">
         <div class="v"><b>v1.13.4</b><time datetime="2026-09-06">2026-09-06</time></div>
         <h3>对话体验与插件市场重构</h3>
         <ul>
@@ -341,12 +394,112 @@ app-debug.apk
         </ul>
       </article>
     </div>
-    <p style="margin-top:24px"><a class="link-more" href="changelog.html">完整更新日志 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
+    <p style="margin-top:24px" data-reveal="up"><a class="link-more" href="changelog.html">完整更新日志 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
   </div>
 </section>
 
-<section class="section" id="download" aria-labelledby="h-download">
+<!-- 模板 07 · 折叠问答 -->
+<section class="section section--tinted" id="faq" aria-labelledby="h-faq">
   <div class="wrap">
+      <div class="section-head" data-reveal="up">
+        <p class="tpl-label"><span class="tpl-num">07</span>折叠问答 · Accordion</p>
+        <h2 id="h-faq">常见问题。</h2>
+        <p class="tpl-intro">这个模板负责「答疑」:安装、密钥、数据与更新这类高频问题折叠收起,展开即读,不占版面;答案与「上手」页保持一致。</p>
+      </div>
+    <div class="faq" data-reveal-group>
+        <details data-reveal="up" style="--i:0">
+          <summary>必须 Root 才能用吗?</summary>
+          <p>不必须。基础功能(对话、工具调用、插件、记忆)免 Root 可用;Root 之后终端与内置 Ubuntu 环境权限更彻底,适合编译、反编译这类重度场景。</p>
+        </details>
+        <details data-reveal="up" style="--i:1">
+          <summary>应用自带模型额度吗?</summary>
+          <p>不带。XINCODE 不内置任何托管密钥,也不代理你的请求——端点与 API Key 由你自己填,费用直接结算给你的供应商。</p>
+        </details>
+        <details data-reveal="up" style="--i:0">
+          <summary>支持哪些模型服务?</summary>
+          <p>OpenAI Chat Completions 兼容端点、OpenAI Responses、DeepSeek、Anthropic,以及自定义端点与模型清单。</p>
+        </details>
+        <details data-reveal="up" style="--i:1">
+          <summary>手机上真能跑终端和构建吗?</summary>
+          <p>可以。内置 root 终端;需要完整环境时一键部署 Ubuntu(root + chroot 自动完成),之后用 apt 装 JDK 等依赖,构建产物直接落在你的存储里。</p>
+        </details>
+        <details data-reveal="up" style="--i:0">
+          <summary>我的数据会被上传吗?</summary>
+          <p>对话内容只会发往你自己配置的模型服务;联网搜索与插件调用会把必要参数发到对应服务。没有广告 SDK、没有第三方分析、没有账号体系。</p>
+        </details>
+        <details data-reveal="up" style="--i:1">
+          <summary>怎么更新到新版本?</summary>
+          <p>应用内:设置 → 关于 → 检查更新;或从 Release 页下载签名 APK 覆盖安装。数据库升级会自动完成,记忆条目不会丢。</p>
+        </details>
+    </div>
+    <p style="margin-top:22px" data-reveal="up"><a class="link-more" href="guide.html#faq">更多问题与构建步骤 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
+  </div>
+</section>
+
+<!-- 模板 08 · 页面模板总览 -->
+<section class="section" id="templates" aria-labelledby="h-templates">
+  <div class="wrap">
+      <div class="section-head" data-reveal="up">
+        <p class="tpl-label"><span class="tpl-num">08</span>页面模板总览 · Sitemap</p>
+        <h2 id="h-templates">官网页面模板一览。</h2>
+        <p class="tpl-intro">这个模板负责「导航」:把官网每个页面当成一套模板,写清它用什么布局、负责什么内容——需要什么直接点进去。</p>
+      </div>
+    <div class="page-grid" data-reveal-group>
+        <a class="page-card" href="index.html" data-reveal="up" style="--i:0">
+          <span class="page-card__tpl">模板流 · 纵向排布</span>
+          <h3>首页</h3>
+          <p>本页:模板区块一路往下,总览能力、生态与更新,末尾给下载入口。</p>
+          <span class="page-card__go">打开页面 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></span>
+        </a>
+        <a class="page-card" href="features.html" data-reveal="up" style="--i:1">
+          <span class="page-card__tpl">侧栏目录 · 长文</span>
+          <h3>功能详解</h3>
+          <p>把十二块能力逐条写清楚,左侧目录跟随滚动高亮,适合通读或按需跳转。</p>
+          <span class="page-card__go">打开页面 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></span>
+        </a>
+        <a class="page-card" href="plugins.html" data-reveal="up" style="--i:2">
+          <span class="page-card__tpl">筛选列表 · 卡片墙</span>
+          <h3>插件与技能</h3>
+          <p>27 个在线插件可搜索、按分类筛选,另有 MCP 服务器与六个技能包清单。</p>
+          <span class="page-card__go">打开页面 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></span>
+        </a>
+        <a class="page-card" href="changelog.html" data-reveal="up" style="--i:3">
+          <span class="page-card__tpl">时间线</span>
+          <h3>更新日志</h3>
+          <p>按版本倒序排列,内容实时取自 GitHub Release,禁用脚本时回退静态快照。</p>
+          <span class="page-card__go">打开页面 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></span>
+        </a>
+        <a class="page-card" href="guide.html" data-reveal="up" style="--i:0">
+          <span class="page-card__tpl">步骤指南 · FAQ</span>
+          <h3>上手与构建</h3>
+          <p>安装、首次配置、源码构建、签名打包、权限说明与常见问题,一页走完。</p>
+          <span class="page-card__go">打开页面 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></span>
+        </a>
+        <a class="page-card" href="security.html" data-reveal="up" style="--i:1">
+          <span class="page-card__tpl">表格 · 说明文</span>
+          <h3>安全与隐私</h3>
+          <p>权限模式、敏感操作审批、密钥存储、出站守卫与数据流向,连"做不到的事"也写明。</p>
+          <span class="page-card__go">打开页面 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></span>
+        </a>
+        <a class="page-card" href="accessibility.html" data-reveal="up" style="--i:2">
+          <span class="page-card__tpl">清单</span>
+          <h3>无障碍声明</h3>
+          <p>键盘可达、对比度、减弱动效、无脚本可用性的自测清单与已知限制。</p>
+          <span class="page-card__go">打开页面 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></span>
+        </a>
+        <a class="page-card" href="terms.html" data-reveal="up" style="--i:3">
+          <span class="page-card__tpl">权利对照表</span>
+          <h3>版权与使用</h3>
+          <p>哪些内容可以引用、哪些属于冒名发布,以及素材许可与安装包来源说明。</p>
+          <span class="page-card__go">打开页面 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></span>
+        </a>
+    </div>
+  </div>
+</section>
+
+<!-- 模板 09 · 行动号召 -->
+<section class="section" id="download" aria-labelledby="h-download">
+  <div class="wrap" data-reveal="zoom">
     <div class="download-card">
       <div>
         <p class="eyebrow-line" style="color:#E8A88E">Download</p>
@@ -364,6 +517,7 @@ app-debug.apk
         <span class="dl-note">Android 9 及以上 · 不需要 Google Play · 不含广告与追踪</span>
       </div>
     </div>
+  </div>
   </div>
 </section>
 </main>
