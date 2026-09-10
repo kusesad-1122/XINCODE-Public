@@ -76,7 +76,7 @@
       <a class="btn btn-ghost" href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">查看源码仓库 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
     </div>
     <p class="hero-meta">
-      <span>最新版本 <b data-version>v1.14.1</b></span>
+      <span>最新版本 <b data-version>v1.14.2</b></span>
       <span class="sep">·</span>
       <span>Android 9+ (minSdk 28)</span>
       <span class="sep">·</span>
@@ -305,7 +305,16 @@ app-debug.apk
     </div>
     <div class="timeline" data-release-list="3" data-cap-headings="2" data-cap-items="3">
       <article class="release">
-        <div class="v"><b>v1.14.1</b><time datetime="2026-09-07">2026-09-07</time><span class="badge badge-green">最新</span></div>
+        <div class="v"><b>v1.14.2</b><time datetime="2026-09-10">2026-09-10</time><span class="badge badge-green">最新</span></div>
+        <h3>修复项目知识库删除闪退</h3>
+        <ul>
+          <li>记忆索引触发器改写为 BEFORE + 直接删索引行,删除不再触发 SQL logic error。</li>
+          <li>新增 50→51 迁移重建触发器并 rebuild 索引,老库升级即修复,无需重装。</li>
+          <li>顺带修好「清空所有数据」与召回计数的同类崩溃;「关于」页新增官网入口。</li>
+        </ul>
+      </article>
+      <article class="release">
+        <div class="v"><b>v1.14.1</b><time datetime="2026-09-07">2026-09-07</time></div>
         <h3>在线插件 3 → 27、技能场景自动引用</h3>
         <ul>
           <li>在线插件注册表扩至 27 个 / 8 分类,每个端点上线前都调通返回 200 才收录。</li>
@@ -344,8 +353,8 @@ app-debug.apk
         <h2 id="h-download">现在就把它装进手机。</h2>
         <p>Release 页提供正式签名 APK;也可以自行从源码构建,构建方式与签名说明都写在「上手」页。</p>
         <p class="badge-row">
-          <span class="badge">版本 <b data-version>v1.14.1</b></span>
-          <span class="badge">更新 <b data-apk-date>2026-09-07</b></span>
+          <span class="badge">版本 <b data-version>v1.14.2</b></span>
+          <span class="badge">更新 <b data-apk-date>2026-09-10</b></span>
           <span class="badge">体积 <b data-apk-size>APK</b></span>
         </p>
       </div>
@@ -367,7 +376,7 @@ app-debug.apk
           <span>XIN<span class="code">CODE</span></span>
         </a>
         <p class="about">运行在 Android 上的自主 AI 智能体:多供应商模型、工具调用循环、子智能体并行协作、在线插件市场、长期记忆与内置终端。纯 Kotlin 原生,从零构建。</p>
-        <p class="meta">当前版本 <b data-version>v1.14.1</b> · GPL-3.0-or-later</p>
+        <p class="meta">当前版本 <b data-version>v1.14.2</b> · GPL-3.0-or-later</p>
       </div>
       <nav aria-labelledby="foot-site">
         <h2 id="foot-site">本站</h2>
