@@ -10,7 +10,7 @@ import androidx.room.migration.Migration
 import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [SettingEntity::class, MessageEntity::class, ProviderConfigEntity::class, SessionEntity::class, StateCursorEntity::class, AuditLogEntity::class, MemoryEntity::class, TrajectoryEntity::class, SkillEntity::class, McpServerEntity::class, GlobalSettingsEntity::class, ProjectEntity::class, IdentityEntity::class, PermissionRuleEntity::class, HookEntity::class, CronJobEntity::class, SubAgentEntity::class, UsageRecordEntity::class, KanbanTaskEntity::class, GroupRoomEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupRoomSummaryEntity::class, KanbanRunEntity::class, CodeSymbolEntity::class, CodeEdgeEntity::class, CodeFileEntity::class, HarnessThreadEntity::class, HarnessTurnEntity::class, HarnessEventEntity::class], version = 50, exportSchema = true)
+@Database(entities = [SettingEntity::class, MessageEntity::class, ProviderConfigEntity::class, SessionEntity::class, StateCursorEntity::class, AuditLogEntity::class, MemoryEntity::class, TrajectoryEntity::class, SkillEntity::class, McpServerEntity::class, GlobalSettingsEntity::class, ProjectEntity::class, IdentityEntity::class, PermissionRuleEntity::class, HookEntity::class, CronJobEntity::class, SubAgentEntity::class, UsageRecordEntity::class, KanbanTaskEntity::class, GroupRoomEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupRoomSummaryEntity::class, KanbanRunEntity::class, CodeSymbolEntity::class, CodeEdgeEntity::class, CodeFileEntity::class, HarnessThreadEntity::class, HarnessTurnEntity::class, HarnessEventEntity::class], version = 51, exportSchema = true)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
@@ -83,7 +83,9 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
-                // 3. Triggers to keep FTS5 in sync with memories table
+                // 3. Triggers to keep the FTS index in sync.
+                //    外部内容表(content='memories')必须在【BEFORE】阶段先删索引:此时内容行还在,
+                //    FTS 才能按 rowid 读到原文并清掉词条;用 AFTER + 特殊 'delete' 命令会抛 SQL logic error。
                 db.execSQL("""
                     CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories
                     BEGIN
@@ -93,18 +95,16 @@ abstract class AppDatabase : RoomDatabase() {
                 """.trimIndent())
 
                 db.execSQL("""
-                    CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories
+                    CREATE TRIGGER IF NOT EXISTS memories_ad BEFORE DELETE ON memories
                     BEGIN
-                        INSERT INTO memories_fts(memories_fts, rowid, title, content, tags)
-                        VALUES ('delete', old.id, old.title, old.content, old.tags);
+                        DELETE FROM memories_fts WHERE rowid = old.id;
                     END
                 """.trimIndent())
 
                 db.execSQL("""
-                    CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories
+                    CREATE TRIGGER IF NOT EXISTS memories_au BEFORE UPDATE ON memories
                     BEGIN
-                        INSERT INTO memories_fts(memories_fts, rowid, title, content, tags)
-                        VALUES ('delete', old.id, old.title, old.content, old.tags);
+                        DELETE FROM memories_fts WHERE rowid = old.id;
                         INSERT INTO memories_fts(rowid, title, content, tags)
                         VALUES (new.id, new.title, new.content, new.tags);
                     END
@@ -834,6 +834,34 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * 50→51:修复「删除任意记忆必闪退」。
+         *
+         * 旧版 memories_ad / memories_au 用 FTS4 特殊 `'delete'` 命令清索引:
+         * `INSERT INTO memories_fts(memories_fts, ...) VALUES('delete', old.*)`。
+         * 该命令在外部内容表上会抛 "SQL logic error",而触发器异常会让整条
+         * `DELETE FROM memories` / `UPDATE memories` 失败 —— 于是项目知识库删单条、
+         * 「清空所有数据」、以及按需召回后的 bumpRecall 全都崩。
+         *
+         * 这里把三个触发器重建为:INSERT 仍用 AFTER,删除/更新改为 BEFORE + 直接删除索引行;
+         * 最后 rebuild 一次,把历史上可能残留的脏词条与内容表对齐。
+         */
+        private val MIGRATION_50_51 = object : Migration(50, 51) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                try {
+                    db.execSQL("DROP TRIGGER IF EXISTS memories_ai")
+                    db.execSQL("DROP TRIGGER IF EXISTS memories_ad")
+                    db.execSQL("DROP TRIGGER IF EXISTS memories_au")
+                    createFts5Tables(db)
+                    db.execSQL("INSERT INTO memories_fts(memories_fts) VALUES('rebuild')")
+                } catch (t: Throwable) {
+                    // 没有 FTS 模块的 ROM 上连虚表都建不出来,此时触发器也不存在,删除本身是安全的;
+                    // 不能让一次修复动作把数据库升级整死。
+                    android.util.Log.w("XincodeDb", "修复 memories FTS 触发器失败: ${t.message}")
+                }
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: openOrRecover(context.applicationContext).also { INSTANCE = it }
@@ -845,7 +873,7 @@ abstract class AppDatabase : RoomDatabase() {
             AppDatabase::class.java,
             DB_NAME
         )
-            .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50)
+            .addMigrations(MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, MIGRATION_28_29, MIGRATION_29_30, MIGRATION_30_31, MIGRATION_31_32, MIGRATION_32_33, MIGRATION_33_34, MIGRATION_34_35, MIGRATION_35_36, MIGRATION_36_37, MIGRATION_37_38, MIGRATION_38_39, MIGRATION_39_40, MIGRATION_40_41, MIGRATION_41_42, MIGRATION_42_43, MIGRATION_43_44, MIGRATION_44_45, MIGRATION_45_46, MIGRATION_46_47, MIGRATION_47_48, MIGRATION_48_49, MIGRATION_49_50, MIGRATION_50_51)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
@@ -987,7 +1015,13 @@ abstract class AppDatabase : RoomDatabase() {
             return if (ok) backupName else null
         }
 
-        /** Create FTS4 virtual table + sync triggers. Idempotent (IF NOT EXISTS). */
+        /**
+         * Create FTS4 virtual table + sync triggers. Idempotent (IF NOT EXISTS).
+         *
+         * 触发器时序必须是 BEFORE DELETE / BEFORE UPDATE:外部内容表在删除索引词条时需要按
+         * rowid 读内容行,AFTER 阶段内容行已经没了 —— 要么清不掉(脏索引),要么在部分
+         * SQLite 版本上直接抛 "SQL logic error"(旧版就是这么崩的)。
+         */
         private fun createFts5Tables(db: SupportSQLiteDatabase) {
             db.execSQL("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts4(
@@ -1003,17 +1037,15 @@ abstract class AppDatabase : RoomDatabase() {
                 END
             """.trimIndent())
             db.execSQL("""
-                CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories
+                CREATE TRIGGER IF NOT EXISTS memories_ad BEFORE DELETE ON memories
                 BEGIN
-                    INSERT INTO memories_fts(memories_fts, rowid, title, content, tags)
-                    VALUES ('delete', old.id, old.title, old.content, old.tags);
+                    DELETE FROM memories_fts WHERE rowid = old.id;
                 END
             """.trimIndent())
             db.execSQL("""
-                CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE ON memories
+                CREATE TRIGGER IF NOT EXISTS memories_au BEFORE UPDATE ON memories
                 BEGIN
-                    INSERT INTO memories_fts(memories_fts, rowid, title, content, tags)
-                    VALUES ('delete', old.id, old.title, old.content, old.tags);
+                    DELETE FROM memories_fts WHERE rowid = old.id;
                     INSERT INTO memories_fts(rowid, title, content, tags)
                     VALUES (new.id, new.title, new.content, new.tags);
                 END

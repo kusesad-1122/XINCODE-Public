@@ -536,8 +536,18 @@ fun ProjectsScreen(
                                     IconButton(
                                         onClick = {
                                             detailScope.launch {
-                                                withContext(Dispatchers.IO) { database.memoryDao().delete(mem) }
-                                                knowledgeReload++
+                                                // 兜底:DB 层异常(触发器/索引损坏等)以前会直接崩掉 App,
+                                                // 现在只记录日志并保留该条目,由 data 层的修复迁移根治。
+                                                val deleted = withContext(Dispatchers.IO) {
+                                                    try {
+                                                        database.memoryDao().delete(mem)
+                                                        true
+                                                    } catch (e: Exception) {
+                                                        android.util.Log.e("ProjectsScreen", "删除项目知识条目失败: ${e.message}", e)
+                                                        false
+                                                    }
+                                                }
+                                                if (deleted) knowledgeReload++
                                             }
                                         },
                                         modifier = Modifier.size(32.dp)
