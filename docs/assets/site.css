@@ -259,10 +259,20 @@ h1, h2, h3, h4 { overflow-wrap: break-word; }
 .reveal.is-in { opacity: 1; transform: none; }
 .no-js .reveal { opacity: 1; transform: none; }
 
+/* 动效 OFF(由首屏脚本写入 data-motion,默认取系统偏好,用户可覆盖):
+   冻结所有循环动画与过渡,内容一律可见 */
+:root[data-motion="off"] *, :root[data-motion="off"] *::before, :root[data-motion="off"] *::after {
+  animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important;
+}
+:root[data-motion="off"] { scroll-behavior: auto; }
+:root[data-motion="off"] .reveal, :root[data-motion="off"] [data-reveal].reveal { opacity: 1 !important; transform: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
-  .reveal { opacity: 1; transform: none; }
+  /* 无脚本兜底:没有 data-motion(脚本未执行)时仍按系统偏好处理 */
+  :root:not([data-motion]) html { scroll-behavior: auto; }
+  :root:not([data-motion]) *, :root:not([data-motion]) *::before, :root:not([data-motion]) *::after {
+    animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important;
+  }
+  :root:not([data-motion]) .reveal, :root:not([data-motion]) [data-reveal].reveal { opacity: 1 !important; transform: none !important; }
 }
 
 /* ---------- 6. Sections & cards ---------- */
@@ -603,6 +613,8 @@ details p:last-child { margin-bottom: 0; }
 }
 @media (max-width: 760px) {
   .nav-links, .nav-actions .btn { display: none; }
+  .nav { gap: 8px; }
+  .nav-actions { gap: 6px; }
   .nav-toggle { display: inline-flex; }
   .nav-actions { margin-left: auto; }
   .grid-2, .grid-3, .grid-4, .plugin-grid { grid-template-columns: 1fr; }
@@ -711,10 +723,8 @@ details p:last-child { margin-bottom: 0; }
 [data-reveal-group] > *:nth-child(3n + 2) { --i: 1; }
 [data-reveal-group] > *:nth-child(3n + 3) { --i: 2; }
 
-@media (prefers-reduced-motion: reduce) {
-  [data-reveal].reveal, [data-reveal].reveal.rv-from-top { opacity: 1 !important; transform: none !important; transition: none !important; }
-  .read-progress { display: none; }
-}
+:root[data-motion="off"] [data-reveal].reveal,
+:root[data-motion="off"] [data-reveal].reveal.rv-from-top { opacity: 1 !important; transform: none !important; transition: none !important; }
 
 /* ---------- 对照表:右侧一列强调 ---------- */
 table .is-good { color: var(--ink); background: color-mix(in srgb, var(--brand-soft) 55%, transparent); font-weight: 550; }
@@ -783,3 +793,6 @@ th[scope="row"] { color: var(--ink); font-weight: 600; white-space: nowrap; }
 .band-dark .band-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
 .band-dark .btn-ghost { background: transparent; color: var(--inverse-ink); border-color: var(--inverse-line); }
 .band-dark .btn-ghost:hover { background: rgb(250 249 245 / 10%); color: var(--inverse-ink); }
+
+/* ---------- 19. 动效开关 ---------- */
+.motion-btn[aria-pressed="true"] { color: var(--brand-strong); border-color: var(--brand-line); background: var(--brand-soft); }

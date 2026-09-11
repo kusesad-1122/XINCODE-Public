@@ -6,6 +6,10 @@
   var $ = function (sel, scope) { return (scope || document).querySelector(sel); };
   var $$ = function (sel, scope) { return Array.prototype.slice.call((scope || document).querySelectorAll(sel)); };
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  window.__xin = window.__xin || {};
+  // 动效是否开启:由首屏脚本写入的 data-motion 决定(默认取系统偏好,用户可覆盖)
+  function motionEnabled() { return document.documentElement.getAttribute("data-motion") !== "off"; }
+  window.__xin.motionEnabled = motionEnabled;
 
   /* ---------- 1. 主题切换(亮/暗) ---------- */
   (function () {
@@ -293,8 +297,15 @@
      向下翻:元素从下沿升起;往回退:元素从上沿落下(位移取镜像)。
      离开视口即复位,所以同一元素每次进入都会重新播一遍。 */
   (function () {
+    function initReveal() {
     var els = $$("[data-reveal], .card, .plugin, .release, .section-head, .download-card, .panel, .room, .page-head, .prose > section, .notfound");
-    if (!els.length || !("IntersectionObserver" in window) || reduceMotion) return;
+    if (window.__xin.revealIO) { window.__xin.revealIO.disconnect(); window.__xin.revealIO = null; }
+    if (!els.length || !("IntersectionObserver" in window)) return;
+    if (!motionEnabled()) {
+      // 动效关闭:元素保持可见(不加 .reveal),不注册观察器
+      els.forEach(function (el) { el.classList.remove("reveal", "reveal-prep", "is-in", "rv-from-top"); });
+      return;
+    }
 
     // 嵌套目标会让几何互相干扰(父元素位移改变子元素 rect,子元素就会反复进出观察带),
     // 只保留最外层的那一个。
@@ -370,6 +381,10 @@
     }, { threshold: 0, rootMargin: "32px 0px -8% 0px" });
 
     els.forEach(function (el) { io.observe(el); });
+    window.__xin.revealIO = io;
+    }
+    window.__xin.initReveal = initReveal;
+    initReveal();
   })();
 
   /* ---------- 7. 阅读进度条 ---------- */
@@ -401,7 +416,7 @@
       el.textContent = t !== null && t % 1 === 0 ? String(Math.round(value)) : value.toFixed(1);
     }
     nums.forEach(function (el) { var t = targetOf(el); if (t !== null) render(el, t); });
-    if (reduceMotion || !("IntersectionObserver" in window)) return;
+    if (!("IntersectionObserver" in window) || !motionEnabled()) return;
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
         var el = entry.target;
@@ -444,6 +459,40 @@
       });
       pre.appendChild(btn);
     });
+  })();
+
+
+  /* ---------- 10.5 动效开关(系统偏好只是默认值,用户可覆盖) ---------- */
+  (function () {
+    var root = document.documentElement;
+    var btns = $$("[data-motion-toggle]");
+    if (!btns.length) return;
+
+    function sync() {
+      var on = motionEnabled();
+      btns.forEach(function (btn) {
+        btn.setAttribute("aria-pressed", String(on));
+        btn.setAttribute("aria-label", on ? "关闭动效" : "开启动效");
+      });
+    }
+
+    function reinit() {
+      // 清掉既有浮现状态,再按新设置重新初始化一次
+      $$("[data-reveal], .card, .plugin, .release, .section-head, .download-card, .panel, .room, .page-head, .prose > section, .notfound")
+        .forEach(function (el) { el.classList.remove("reveal", "reveal-prep", "is-in", "rv-from-top"); });
+      if (window.__xin && window.__xin.initReveal) window.__xin.initReveal();
+    }
+
+    btns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var next = motionEnabled() ? "off" : "on";
+        try { localStorage.setItem("xincode-motion", next); } catch (e) {}
+        root.setAttribute("data-motion", next);
+        sync();
+        reinit();
+      });
+    });
+    sync();
   })();
 
   /* ---------- 10. 页脚年份 ---------- */
