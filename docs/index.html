@@ -80,11 +80,13 @@
 <div class="read-progress" data-progress aria-hidden="true"></div>
 
 <!-- 首屏 -->
-<div class="wrap hero">
-  <div>
+<div class="wrap hero" id="top">
+  <div class="hero-statement">
     <p class="eyebrow-line">开源 · GPL-3.0 · 纯 Kotlin 原生</p>
-    <h1>把一个<em>真正的 AI 智能体</em>,<br>装进口袋。</h1>
-    <p class="lede">XINCODE 是运行在 Android 手机上的自主智能体:接入多家模型供应商,自主规划并调用工具,子智能体并行协作,插件市场与 MCP 生态即装即用——还带着一个真正的 Linux 终端。</p>
+    <h1>把一个<em>真正的 AI 智能体</em>,装进口袋。</h1>
+  </div>
+  <div class="hero-aside">
+    <p class="hero-intro">XINCODE 是运行在 Android 手机上的自主智能体:接入多家模型供应商,自主规划并调用工具,子智能体并行协作,插件市场与 MCP 生态即装即用——还带着一个真正的 Linux 终端。</p>
     <div class="btn-row">
       <a class="btn" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4.5 19.5h15"/></svg>下载最新 APK</a>
       <a class="btn btn-ghost" href="https://github.com/kusesad-1122/XINCODE-Public" target="_blank" rel="noopener noreferrer">查看源码仓库 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></a>
@@ -99,7 +101,13 @@
       <span data-version-note>签名版 APK 随 Release 发布</span>
     </p>
   </div>
-  <div class="room">
+</div>
+
+<!-- 全宽视觉带:指挥室 -->
+<section class="band band-room" aria-label="智能体指挥室示意">
+  <div class="wrap">
+    <p class="band-note">四个工位,一个主脑;派活即联动。</p>
+    <div class="room">
     <div class="room-head">
       <span class="t">指挥室 · command room</span>
       <span class="badge badge-green"><span class="dot"></span>4 个子智能体并行</span>
@@ -153,8 +161,8 @@
       <a class="link-more" href="features.html#collab">协作模式详解 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a>
     </div>
   </div>
-</div>
-
+  </div>
+</section>
 <!-- 指标条 -->
 <div class="strip">
   <div class="wrap strip-in">
@@ -299,6 +307,18 @@ app-debug.apk
         </ul>
         <p style="margin-top:22px"><a class="link-more" href="features.html#terminal">终端与环境 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M5 12h13M13 6.5 18.5 12 13 17.5"/></svg></a></p>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- 深色声明带 -->
+<section class="band band-dark" aria-labelledby="h-statement">
+  <div class="wrap">
+    <p class="band-statement" id="h-statement">它不是<em>更聪明的聊天框</em>,而是一台随身的智能体工作台。</p>
+    <p class="band-sub">工具调用 · 并行子智能体 · 插件生态 · 长期记忆 · 内置终端</p>
+    <div class="band-row">
+      <a class="btn btn-light" href="https://github.com/kusesad-1122/XINCODE-Public/releases/latest/download/app-release.apk">下载最新 APK</a>
+      <a class="btn btn-ghost" href="features.html">看完整功能</a>
     </div>
   </div>
 </section>
