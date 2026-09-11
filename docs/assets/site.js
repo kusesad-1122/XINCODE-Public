@@ -495,6 +495,114 @@
     sync();
   })();
 
+
+  /* ---------- 9.5 丝滑滚动:滚轮缓动 + 锚点平滑 + 回到顶部向上滚动 ----------
+     只接管"鼠标滚轮",不改 transform 假装滚动(滚动位置仍是原生 scrollTop,
+     所以固定定位、查找、读屏、键盘翻页都不受影响);触摸板/触屏保持原生惯性。 */
+  (function () {
+    var root = document.documentElement;
+    var lerp = 0.16;               // 缓动系数:越小越"飘"
+    var target = window.pageYOffset || 0;
+    var current = target;
+    var raf = null;
+    var driving = false;           // 是否由本脚本驱动滚动(避免自我同步)
+    var finePointer = window.matchMedia && window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+    function maxScroll() { return Math.max(0, root.scrollHeight - window.innerHeight); }
+
+    /* 本脚本用 rAF 逐帧写 scrollTop,期间要临时屏蔽 CSS 的 scroll-behavior:smooth:
+       否则浏览器会对每一帧的 scrollTo 再缓动一次,二次缓动叠在一起会发飘、拖尾。
+       只在缓动循环运行期间挂上,停下立刻撤掉,不影响锚点与触摸端的平滑滚动。 */
+    var override = false;
+    function setOverride(on) {
+      if (on === override) return;
+      override = on;
+      root.style.scrollBehavior = on ? "auto" : "";
+    }
+
+    function write(y) { driving = true; window.scrollTo(0, y); driving = false; }
+
+    function step() {
+      current += (target - current) * lerp;
+      if (Math.abs(target - current) < 0.5) {
+        current = Math.max(0, Math.min(maxScroll(), target));
+        raf = null;
+        write(current);
+        setOverride(false);
+        return;
+      }
+      write(current);
+      raf = window.requestAnimationFrame(step);
+    }
+
+    function glideTo(y) {
+      target = Math.max(0, Math.min(maxScroll(), y));
+      current = window.pageYOffset || 0;
+      setOverride(true);
+      if (raf === null) raf = window.requestAnimationFrame(step);
+    }
+
+    function motionOn() { return root.getAttribute("data-motion") !== "off"; }
+
+    // 滚轮缓动:仅鼠标滚轮 + 动效开启 + 无修饰键
+    if (finePointer) {
+      window.addEventListener("wheel", function (e) {
+        if (!motionOn()) return;
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+        if (e.deltaMode === 2) return;                      // 整页翻页模式交给浏览器
+        var d = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // 行模式换算成像素
+        if (!d) return;
+        e.preventDefault();
+        glideTo((raf === null ? current : target) + d);
+      }, { passive: false });
+    }
+
+    // 其它输入(键盘/拖动滚动条/浏览器恢复)导致的位置变化 → 重新对齐,避免"回弹"
+    window.addEventListener("scroll", function () {
+      if (driving || raf !== null) return;
+      target = current = window.pageYOffset || 0;
+    }, { passive: true });
+    window.addEventListener("resize", function () { target = current = window.pageYOffset || 0; }, { passive: true });
+
+    // 锚点平滑滚动(带粘性顶栏偏移);动效关闭时用即时跳转
+    function smoothTo(y) {
+      if (!motionOn()) { window.scrollTo(0, y); return; }
+      if (finePointer) { glideTo(y); }
+      else { window.scrollTo({ top: y, behavior: "smooth" }); }
+    }
+
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest ? e.target.closest('a[href^="#"]') : null;
+      if (!a) return;
+      var id = a.getAttribute("href");
+      if (!id || id === "#") return;
+      var el = document.getElementById(id.slice(1));
+      if (!el) return;
+      e.preventDefault();
+      var header = document.querySelector(".site-header");
+      var offset = header ? header.getBoundingClientRect().height + 12 : 0;
+      smoothTo(Math.max(0, el.getBoundingClientRect().top + (window.pageYOffset || 0) - offset));
+      if (history.replaceState) history.replaceState(null, "", id);
+      // 关掉移动端菜单后把焦点交还页面,键盘用户不迷路
+      if (el.getAttribute("tabindex") === null) { el.setAttribute("tabindex", "-1"); }
+      el.focus({ preventScroll: true });
+    }, true);
+
+    // 回到顶部:向上滚动(不是瞬跳)
+    var toTop = $$("[data-to-top]");
+    if (toTop.length) {
+      var sync = function () {
+        var shown = (window.pageYOffset || 0) > 480;
+        toTop.forEach(function (b) { b.classList.toggle("is-shown", shown); });
+      };
+      toTop.forEach(function (b) {
+        b.addEventListener("click", function () { smoothTo(0); });
+      });
+      window.addEventListener("scroll", sync, { passive: true });
+      sync();
+    }
+  })();
+
   /* ---------- 10. 页脚年份 ---------- */
   $$("[data-year]").forEach(function (el) { el.textContent = String(new Date().getFullYear()); });
 

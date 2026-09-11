@@ -105,7 +105,7 @@
 
 /* ---------- 2. Base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; scroll-padding-top: 96px; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; scroll-padding-top: 96px; scrollbar-gutter: stable; }
 body {
   margin: 0; background: var(--bg); color: var(--ink); overflow-wrap: break-word;
   font-family: var(--sans); font-size: 17px; line-height: 1.55;
@@ -268,7 +268,7 @@ h1, h2, h3, h4 { overflow-wrap: break-word; }
 :root[data-motion="off"] .reveal, :root[data-motion="off"] [data-reveal].reveal { opacity: 1 !important; transform: none !important; }
 @media (prefers-reduced-motion: reduce) {
   /* 无脚本兜底:没有 data-motion(脚本未执行)时仍按系统偏好处理 */
-  :root:not([data-motion]) html { scroll-behavior: auto; }
+  :root:not([data-motion]) { scroll-behavior: auto; }
   :root:not([data-motion]) *, :root:not([data-motion]) *::before, :root:not([data-motion]) *::after {
     animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important;
   }
@@ -796,3 +796,21 @@ th[scope="row"] { color: var(--ink); font-weight: 600; white-space: nowrap; }
 
 /* ---------- 19. 动效开关 ---------- */
 .motion-btn[aria-pressed="true"] { color: var(--brand-strong); border-color: var(--brand-line); background: var(--brand-soft); }
+
+/* ---------- 20. 回到顶部(向上滚动) ---------- */
+.to-top {
+  position: fixed; right: 24px; bottom: 24px; z-index: 55;
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 0 16px;
+  font: inherit; font-size: 14px; font-weight: 550;
+  color: var(--ink); background: var(--bg);
+  border: 1px solid var(--border-2); border-radius: var(--r-pill);
+  cursor: pointer; text-decoration: none;
+  opacity: 0; transform: translateY(10px); pointer-events: none;
+  transition: opacity .28s ease, transform .28s ease, border-color .16s ease;
+}
+.to-top.is-shown { opacity: 1; transform: none; pointer-events: auto; }
+.to-top:hover { border-color: var(--ink); }
+:root[data-motion="off"] .to-top { transition: none; transform: none; }
+@media (max-width: 760px) { .to-top { right: 14px; bottom: 14px; padding: 0 13px; } .to-top .to-top__t { display: none; } }
+@media print { .to-top { display: none !important; } }
