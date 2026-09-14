@@ -2,10 +2,12 @@ package com.xincode.core
 
 import android.util.Log
 import com.xincode.data.StateCursorDao
+import java.io.File
 import com.xincode.data.StateCursorEntity
 import com.xincode.provider.AgentStreamResult
 import com.xincode.provider.ApiError
 import com.xincode.provider.OpenAiClient
+import com.xincode.provider.ToolCall
 import com.xincode.security.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -73,26 +75,34 @@ class AgentCore(
     companion object {
         private const val TAG = "AgentCore"
 
-        /** 一个回合内允许自动续跑的最大次数(超过说明网络持续有问题,再试也是烧 token)。 */
-        private const val MAX_CONSECUTIVE_TRUNCATIONS = 3
+        // §3 / 旧值一致性:与 AGENT-CORE-CONTRACT.md 对齐(已是 3/3,无需改动数值)。
+        private const val MAX_CONSECUTIVE_TRUNCATIONS = AgentCoreContract.MAX_CONSECUTIVE_TRUNCATIONS
+        private const val MAX_REPEATED_TOOL_ERRORS = AgentCoreContract.MAX_REPEATED_TOOL_ERRORS
 
-        /** 同一个工具报同样的错连续多少次就中止整轮,避免模型原地空转。 */
-        private const val MAX_REPEATED_TOOL_ERRORS = 3
-
-        // ---- P1: Tool result compaction constants ----
-        private const val TURN_END_RESULT_CAP_TOKENS = 3000
-        private const val CHARS_PER_TOKEN = 4
-        private const val COMPACT_PREFIX_TOKENS = 1500
-        private const val COMPACT_SUFFIX_TOKENS = 1000
+        // ---- P1: Tool result compaction constants(与 §2 三层预算共存,见 AGENT-CORE-CONTRACT.md) ----
+        private const val TURN_END_RESULT_CAP_TOKENS = AgentCoreContract.TURN_END_RESULT_CAP_TOKENS
+        private const val CHARS_PER_TOKEN = AgentCoreContract.RESULT_COMPACT_CHARS_PER_TOKEN
+        private const val COMPACT_PREFIX_TOKENS = AgentCoreContract.RESULT_COMPACT_PREFIX_TOKENS
+        private const val COMPACT_SUFFIX_TOKENS = AgentCoreContract.RESULT_COMPACT_SUFFIX_TOKENS
     }
 
     // ---- dynamic limits (updated by power mode changes) ----
-    /** Max agent loop iterations (default: effectively unlimited). */
-    var maxIterations: Int = 99999
+    /**
+     * §3 单轮预算:maxIterations 默认值。约定 0 = 不限(由 PowerMode.UNLIMITED_ITERS 使用),
+     * 保留用户显式配置为「不限」的能力,配置项不删除。
+     */
+    var maxIterations: Int = AgentCoreContract.MAX_TURNS_DEFAULT
         private set
     /** Total timeout for one agent run (default: 1 hour). */
     var totalTimeoutMs: Long = 60 * 60 * 1000L
         private set
+
+    /**
+     * §2 L3 落盘目录(AgentCore 无 Android Context,由 app 在装配时注入
+     * `File(context.cacheDir, AgentCoreContract.OFFLOAD_DIR_NAME)` 之类)。
+     * 为 null 时 L3 自动退化为 L1 截断(不落盘,数据不写盘)。
+     */
+    var toolResultOffloadDir: File? = null
 
     /** Last usage metrics from the most recent API call (for Room persistence). */
     var lastUsage: org.json.JSONObject? = null
@@ -114,6 +124,9 @@ class AgentCore(
      * 故在拿到 call 后统一置 true;下一次 callModel 成功返回(结果已进请求)即清零。
      */
     private var needsFollowUp = false
+
+    /** §3 软 token 预算提醒是否已注入(每轮只注入一次)。 */
+    private var budgetReminderInjected = false
 
     /** L3:本次 run(整轮/整任务)累计 token —— 供子智能体统计避免只算最后一次调用而少计。 */
     var cumulativePromptTokens: Long = 0L
@@ -606,7 +619,12 @@ class AgentCore(
         consecutiveTruncations = 0
         lastToolErrorSignature = null; repeatedToolErrors = 0
         needsFollowUp = false
-        while (iteration < maxIterations) {
+        budgetReminderInjected = false
+        // §2 L3:每轮开始顺带清理过期落盘文件(7 天),不为此引入新依赖/新启动钩子。
+        ToolResultBudget.cleanupStaleOffloads(toolResultOffloadDir, AgentCoreContract.OFFLOAD_RETENTION_DAYS)
+        // §3 单轮预算:maxIterations <= 0 视为「不限」(约定),保留用户显式配置为不限的能力。
+        val unlimited = maxIterations <= 0
+        while (unlimited || iteration < maxIterations) {
             iteration++
             // 循环内不再重新计算 turnId
             // Hermes-① 技能复盘按工具迭代计数:复杂任务(多次迭代)才够阈值。
@@ -629,6 +647,23 @@ class AgentCore(
 
             // gap-10:自动压缩——上一轮 prompt_tokens 超过 context_window*阈值% 时,触发一次上下文压缩。
             maybeAutoCompact()
+
+            // §3 软 token 预算:上一轮 prompt_tokens ≥ contextWindow × 比例 时,注入一条系统提醒让模型收敛
+            // (不硬停)。每轮至多注入一次,避免每个 iteration 都刷提醒。
+            if (!budgetReminderInjected && lastUsage != null && contextWindow > 0) {
+                val pt = lastUsage!!.optInt("prompt_tokens", 0)
+                val threshold = (contextWindow * AgentCoreContract.TURN_TOKEN_BUDGET_RATIO).toLong()
+                if (pt > 0 && pt.toLong() >= threshold) {
+                    budgetReminderInjected = true
+                    messages.add(org.json.JSONObject().apply {
+                        put("role", "user")
+                        put("content", "(系统提醒:当前上下文已使用约 $pt / $contextWindow token,接近预算上限。" +
+                            "请尽快基于已有信息给出最终结论,避免继续展开或发起新的工具调用。)")
+                    })
+                    checkpointCursor()
+                    Log.i(TAG, "soft token budget reminder injected (prompt=$pt, ctx=$contextWindow)")
+                }
+            }
 
             // Build request snapshot
             val messagesSnapshot = ArrayList(messages)
@@ -724,48 +759,54 @@ class AgentCore(
                 maybeFireBackgroundReview()
                 return
             }
-// Execute tool calls with security gate
+// ===== §1 并发分层 + §2 三层截断 + §3 单轮预算 的工具执行 =====
+            val calls = result.toolCalls
+            // §3:单轮 tool_calls 数量上限。超出部分【不执行】,回一条失败结果让模型收尾。
+            val overLimit = calls.size > AgentCoreContract.MAX_TOOL_CALLS_PER_TURN
+            // ordered[i] 保存第 i 个原始调用的结果(outcome),最后按原始顺序回灌(与完成先后无关)。
+            val ordered = ArrayList<ToolExecOutcome?>(calls.size).apply { repeat(calls.size) { add(null) } }
+            // toExec:真正要执行的调用(原始 index, call),后续按并发安全性分批。
+            val toExec = ArrayList<Pair<Int, ToolCall>>()
             var callIndex = 0
-            for (rawCall in result.toolCalls) {
-                // 工具名纠偏必须发生在【权限闸门之前】:闸门是按名字分类的,
-                // 如果只在派发处纠正,判权限用的是 `search_web`、真正执行的是 `web_search`,
-                // 两边对不上比不纠正更危险。这里换完之后,下游全程只见真名。
-                // 步骤D:纠偏收敛到 ToolRouter.resolve(与原两行内联逻辑等价,见 ToolRouter 注释)。
+            needsFollowUp = true
+            for (i in calls.indices) {
+                callIndex++
+                val rawCall = calls[i]
+                // 工具名纠偏必须发生在【权限闸门之前】:闸门是按名字分类的(保持原语义)。
                 val call = when (val routed = ToolRouter.resolve(toolRegistry, rawCall.name)) {
                     is ToolRouter.Route.Found -> rawCall.copy(name = routed.canonicalName)
                     is ToolRouter.Route.Unknown -> rawCall
                 }
-                // 步骤F:本遍循环必定追加一条 tool 消息(拒批×3/执行×1,取消则走 Interrupted 不经此处),
-                // 先标记“有模型没看过的结果”,下一次 callModel 成功返回即清零。
-                needsFollowUp = true
-                callIndex++
                 _state.value = AgentState.CallingTool(iteration, call.name, call.arguments)
-
-                // Emit PushCall so UI shows a pending ToolCallBlock
                 onToolBlock?.invoke(ToolBlockAction.PushCall(callIndex, call.name, call.arguments, call.thoughtSignature))
 
-                // --- Security Gate ---
+                // §3 超限:不执行,直接回失败提示(仍生成一条 tool 结果,保证 tool_call_id 闭环)。
+                if (overLimit && i >= AgentCoreContract.MAX_TOOL_CALLS_PER_TURN) {
+                    val msg = "本回合工具调用数(${calls.size})超过单轮上限(${AgentCoreContract.MAX_TOOL_CALLS_PER_TURN}),已跳过执行。" +
+                        "请汇总已获取的信息并给出最终结论,不要继续发起新的工具调用。"
+                    onToolBlock?.invoke(ToolBlockAction.UpdateResult(
+                        callIndex = callIndex, stdout = "", stderr = "", exitCode = null,
+                        durationMs = null, status = "FAIL"))
+                    ordered[i] = ToolExecOutcome(i, call, callIndex, OutcomeKind.OVERFLOW, content = msg, status = "FAIL")
+                    continue
+                }
+
+                // --- Security Gate(串行,保持与原来一致的顺序语义 + 钩子顺序) ---
+                var gateAllow = true
                 val gate = securityGate
                 if (gate != null) {
                     val cmd = gate.classify(call.name, call.arguments)
                     val decision = gate.decide(cmd, gate.getPermissionMode())
-
                     when (decision) {
-                        is Decision.Allow -> {
-                            gate.audit(cmd, decision, null)
-                        }
+                        is Decision.Allow -> gate.audit(cmd, decision, null)
                         is Decision.Denied -> {
                             gate.audit(cmd, decision, null)
+                            val msg = "操作被安全闸门拒绝: ${decision.reason}"
                             onToolBlock?.invoke(ToolBlockAction.UpdateResult(
-                                callIndex = callIndex, stdout = "", stderr = "",
-                                exitCode = null, durationMs = null, status = "DENIED"))
-                            messages.add(org.json.JSONObject().apply {
-                                put("role", "tool")
-                                put("tool_call_id", call.id)
-                                put("content", "操作被安全闸门拒绝: ${decision.reason}")
-                            })
-                            checkpointCursor()
-                            continue
+                                callIndex = callIndex, stdout = "", stderr = "", exitCode = null,
+                                durationMs = null, status = "DENIED"))
+                            ordered[i] = ToolExecOutcome(i, call, callIndex, OutcomeKind.DENIED, content = msg, status = "DENIED")
+                            gateAllow = false
                         }
                         is Decision.NeedConfirm -> {
                             if (cmd.toolName in sessionWhitelist) {
@@ -775,153 +816,157 @@ class AgentCore(
                                 val handler = confirmHandler
                                 if (handler == null) {
                                     gate.audit(cmd, decision, "auto-deny: no handler")
+                                    val msg = "操作需要确认但无可用的确认处理程序，已自动拒绝"
                                     onToolBlock?.invoke(ToolBlockAction.UpdateResult(
-                                        callIndex = callIndex, stdout = "", stderr = "",
-                                        exitCode = null, durationMs = null, status = "DENIED"))
-                                    messages.add(org.json.JSONObject().apply {
-                                        put("role", "tool")
-                                        put("tool_call_id", call.id)
-                                        put("content", "操作需要确认但无可用的确认处理程序，已自动拒绝")
-                                    })
-                                    checkpointCursor()
-                                    continue
-                                }
-                                _state.value = AgentState.WaitingConfirm(
-                                    iteration = iteration, toolName = call.name, preview = decision.preview)
-                                // 步骤E:本地框与远端回执赛跑(无桥时等价于原来的 handler 直调)。
-                                val confirmResult = resolveConfirm(cmd, decision.preview, handler)
-                                when (confirmResult) {
-                                    ToolConfirmResult.DENY -> {
-                                        gate.audit(cmd, decision, "用户拒绝")
-                                        onToolBlock?.invoke(ToolBlockAction.UpdateResult(
-                                            callIndex = callIndex, stdout = "", stderr = "",
-                                            exitCode = null, durationMs = null, status = "DENIED"))
-                                        messages.add(org.json.JSONObject().apply {
-                                            put("role", "tool"); put("tool_call_id", call.id)
-                                            put("content", "用户拒绝了此操作")
-                                        })
-                                        checkpointCursor(); continue
-                                    }
-                                    ToolConfirmResult.ALLOW_ONCE -> {
-                                        gate.audit(cmd, decision, "用户确认(仅本次)")
-                                    }
-                                    ToolConfirmResult.ALWAYS_ALLOW -> {
-                                        sessionWhitelist.add(cmd.toolName)
-                                        gate.audit(cmd, decision, "用户确认(总是允许)")
-                                        Log.d(TAG, "Added ${cmd.toolName} to session whitelist")
+                                        callIndex = callIndex, stdout = "", stderr = "", exitCode = null,
+                                        durationMs = null, status = "DENIED"))
+                                    ordered[i] = ToolExecOutcome(i, call, callIndex, OutcomeKind.DENIED, content = msg, status = "DENIED")
+                                    gateAllow = false
+                                } else {
+                                    _state.value = AgentState.WaitingConfirm(
+                                        iteration = iteration, toolName = call.name, preview = decision.preview)
+                                    // 步骤E:本地框与远端回执赛跑(无桥时等价于原来的 handler 直调)。
+                                    val confirmResult = resolveConfirm(cmd, decision.preview, handler)
+                                    when (confirmResult) {
+                                        ToolConfirmResult.DENY -> {
+                                            gate.audit(cmd, decision, "用户拒绝")
+                                            val msg = "用户拒绝了此操作"
+                                            onToolBlock?.invoke(ToolBlockAction.UpdateResult(
+                                                callIndex = callIndex, stdout = "", stderr = "", exitCode = null,
+                                                durationMs = null, status = "DENIED"))
+                                            ordered[i] = ToolExecOutcome(i, call, callIndex, OutcomeKind.DENIED, content = msg, status = "DENIED")
+                                            gateAllow = false
+                                        }
+                                        ToolConfirmResult.ALLOW_ONCE ->
+                                            gate.audit(cmd, decision, "用户确认(仅本次)")
+                                        ToolConfirmResult.ALWAYS_ALLOW -> {
+                                            sessionWhitelist.add(cmd.toolName)
+                                            gate.audit(cmd, decision, "用户确认(总是允许)")
+                                            Log.d(TAG, "Added ${cmd.toolName} to session whitelist")
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-                // --- End Security Gate ---
+                if (gateAllow) toExec.add(i to call)
+            }
 
-                _state.value = AgentState.Executing(iteration, call.name)
-                // 步骤D:执行边界(会话元素+pre/post钩+计时)收敛到 ToolOrchestrator,
-                // 顺序与原来内联代码逐行一致;结果映射(成功/失败写 tool 消息)留在原地。
-                val execution = orchestrator.runBounded(call, sessionId)
-                val toolResult = execution.result
-                val durationMs = execution.durationMs
-                // 生图是外部能力边界：失败后禁止 Agent 继续猜测聊天模型并重复调用。
-                // 工具卡已经收到失败结果，下面仍会写入工具消息并 checkpoint。
-                val stopAfterToolFailure = call.name == "generate_image" && toolResult is ToolResult.Error
-
-                val stdout = when (toolResult) {
-                    is ToolResult.Success -> toolResult.output
-                    is ToolResult.Error -> ""
-                }
-                val stderr = when (toolResult) {
-                    is ToolResult.Error -> toolResult.stderr ?: toolResult.message
-                    is ToolResult.Success -> ""
-                }
-                val exitCode = when (toolResult) {
-                    is ToolResult.Error -> toolResult.exitCode
-                    is ToolResult.Success -> 0
-                }
-                val resultStatus = when (toolResult) {
-                    is ToolResult.Success -> "SUCCESS"
-                    is ToolResult.Error -> "FAIL"
-                }
-
-                // Emit UpdateResult so UI fills in stdout/stderr/exitCode/duration
-                onToolBlock?.invoke(ToolBlockAction.UpdateResult(
-                    callIndex = callIndex,
-                    stdout = stdout,
-                    stderr = stderr,
-                    exitCode = exitCode,
-                    durationMs = durationMs,
-                    status = resultStatus
-                ))
-                // 死循环刹车:模型撞上同一个错误时往往会一模一样地再试一遍,而它看到的反馈
-                // 每次都相同,于是可以一直转下去(实测见过连转 9 轮同一个「未知工具」)。
-                // 这里按「工具名 + 错误信息」记连击数,连续同样的失败达到阈值就直接中止整轮,
-                // 并把原因如实告诉用户,而不是让它自己撞到天荒地老。
-                if (toolResult is ToolResult.Error) {
-                    val sig = "${call.name}|${toolResult.message}"
-                    if (sig == lastToolErrorSignature) {
-                        repeatedToolErrors++
-                    } else {
-                        lastToolErrorSignature = sig; repeatedToolErrors = 1
+            // §1:按并发安全性分批(连续安全工具成批并发,非安全工具独占打断当前批)。
+            val isSafe: (ToolCall) -> Boolean = { c ->
+                toolRegistry.get(c.name)?.concurrencySafe == true || c.name in AgentCoreContract.CONCURRENCY_SAFE_TOOLS
+            }
+            val batches = ToolBatchPlanner.planToolBatches(toExec, { isSafe(it.second) }, AgentCoreContract.MAX_PARALLEL_TOOLS)
+            for (batch in batches) {
+                // 并发安全批:各调用 async 并发执行;单条/非安全批:串行。
+                val execs = if (batch.size == 1) {
+                    listOf(runToolExec(batch[0].first, batch[0].second, iteration))
+                } else {
+                    // 失败隔离:批内单个工具抛异常/失败不影响兄弟(异常已在 runToolExec 内被吞为 ToolResult.Error)。
+                    coroutineScope {
+                        batch.map { (idx, c) -> async(Dispatchers.IO) { runToolExec(idx, c, iteration) } }
+                            .awaitAll()
+                            .sortedBy { it.index }
                     }
+                }
+                for (e in execs) {
+                    ordered[e.index] = ToolExecOutcome(
+                        index = e.index, call = e.call, callIndex = e.callIndex,
+                        kind = OutcomeKind.EXECUTED, result = e.result,
+                        durationMs = e.durationMs, status = e.status
+                    )
+                }
+            }
+
+            // §2:整轮结果三层预算(先 L2 聚合 → 再 L3 落盘/L1 截断),仅作用于已执行结果。
+            val execList = ordered.filterNotNull().filter { it.kind == OutcomeKind.EXECUTED }
+            val budgeted = ToolResultBudget.applyTurnBudget(
+                entries = execList.map { o ->
+                    val base = when (val r = o.result) {
+                        is ToolResult.Success -> r.output
+                        is ToolResult.Error -> buildErrorBaseContent(r)
+                        else -> ""
+                    }
+                    ToolResultBudget.Entry(o.call.id, o.call.name, base)
+                },
+                offloadDir = toolResultOffloadDir,
+                isExemptFromOffload = { it in AgentCoreContract.OFFLOAD_EXEMPT_TOOLS }
+            )
+            for (k in execList.indices) execList[k].content = budgeted[k]
+
+            // 按原始顺序回灌结果(与完成先后无关),并串行处理刹车/落盘后内容/checkpoint。
+            for (o in ordered.filterNotNull().sortedBy { it.index }) {
+                // §3 死循环刹车 + 生图失败停止:仅对已执行结果生效。
+                var finalContent = o.content ?: ""
+                if (o.kind == OutcomeKind.EXECUTED && o.result is ToolResult.Error) {
+                    val sig = "${o.call.name}|${o.result.message}"
+                    if (sig == lastToolErrorSignature) repeatedToolErrors++ else { lastToolErrorSignature = sig; repeatedToolErrors = 1 }
                     if (repeatedToolErrors >= MAX_REPEATED_TOOL_ERRORS) {
                         Log.w(TAG, "aborting: same tool error x$repeatedToolErrors — $sig")
                         _state.value = AgentState.Error(
-                            "「${call.name}」连续 $repeatedToolErrors 次同样失败,已中止以免空转。" +
-                                "最后的错误:${toolResult.message}",
-                            iteration
-                        )
+                            "「${o.call.name}」连续 $repeatedToolErrors 次同样失败,已中止以免空转。" +
+                                "最后的错误:${o.result.message}", iteration)
                         clearCursor()
                         return
                     }
-                } else {
-                    lastToolErrorSignature = null; repeatedToolErrors = 0
-                }
-
-                // Build content for model feedback (existing logic, keep unchanged)
-                val content = when (toolResult) {
-                    is ToolResult.Success -> toolResult.output
-                    is ToolResult.Error -> buildString {
-                        append("错误: ${toolResult.message}")
-                        if (toolResult.exitCode != null) append("\n退出码: ${toolResult.exitCode}")
-                        if (!toolResult.stderr.isNullOrBlank()) append("\nstderr:\n${toolResult.stderr}")
-                        // 明确告诉模型「别再原样重试了」。只回错误不给指引时,模型很容易
-                        // 认为是偶发失败而重复同一个调用。
-                        if (repeatedToolErrors >= 2) {
-                            append("\n\n注意:这个调用已经连续失败 $repeatedToolErrors 次,原样重试不会有不同结果。" +
-                                "请先说明你判断的失败原因和打算换的做法,再调用工具;若无法解决,直接告诉用户。")
-                        }
+                    if (repeatedToolErrors >= 2) {
+                        finalContent = (o.content ?: "") +
+                            "\n\n注意:这个调用已经连续失败 $repeatedToolErrors 次,原样重试不会有不同结果。" +
+                            "请先说明你判断的失败原因和打算换的做法,再调用工具;若无法解决,直接告诉用户。"
                     }
                 }
 
-                // Save cursor with pending tool result BEFORE feeding back
-                pendingToolCallJson = org.json.JSONObject().apply {
-                    put("tool_call_id", call.id)
-                    put("name", call.name)
-                    put("arguments", call.arguments)
-                    if (call.thoughtSignature.isNotBlank()) put("thought_signature", call.thoughtSignature)
-                }.toString()
-                pendingToolResultJson = org.json.JSONObject().apply {
-                    put("tool_call_id", call.id)
-                    put("content", content)
-                }.toString()
-                checkpointCursor()  // ← KILL HERE → resume picks up tool result
+                // Emit UpdateResult so UI fills in stdout/stderr/exitCode/duration
+                val (stdout, stderr, exitCode) = when (o.kind) {
+                    OutcomeKind.EXECUTED -> when (val r = o.result) {
+                        is ToolResult.Success -> Triple(r.output, "", 0)
+                        is ToolResult.Error -> Triple("", r.stderr ?: r.message, r.exitCode)
+                        else -> Triple("", "", null)
+                    }
+                    else -> Triple("", "", null)
+                }
+                val status = if (o.kind == OutcomeKind.EXECUTED) {
+                    if (o.result is ToolResult.Success) "SUCCESS" else "FAIL"
+                } else o.status
+                onToolBlock?.invoke(ToolBlockAction.UpdateResult(
+                    callIndex = o.callIndex, stdout = stdout, stderr = stderr,
+                    exitCode = exitCode, durationMs = o.durationMs, status = status))
+
+                if (o.kind == OutcomeKind.EXECUTED) {
+                    // Save cursor with pending tool result BEFORE feeding back(与原来一致)
+                    pendingToolCallJson = org.json.JSONObject().apply {
+                        put("tool_call_id", o.call.id)
+                        put("name", o.call.name)
+                        put("arguments", o.call.arguments)
+                        if (o.call.thoughtSignature.isNotBlank()) put("thought_signature", o.call.thoughtSignature)
+                    }.toString()
+                    pendingToolResultJson = org.json.JSONObject().apply {
+                        put("tool_call_id", o.call.id)
+                        put("content", finalContent)
+                    }.toString()
+                    checkpointCursor()  // ← KILL HERE → resume picks up tool result
+                }
 
                 messages.add(org.json.JSONObject().apply {
                     put("role", "tool")
-                    put("tool_call_id", call.id)
-                    put("content", content)
+                    put("tool_call_id", o.call.id)
+                    put("content", finalContent)
                 })
-                pendingToolCallJson = null  // fed back, clear pending
-                pendingToolResultJson = null
-                checkpointCursor()  // tool result fed back
 
-                if (stopAfterToolFailure) {
+                if (o.kind == OutcomeKind.EXECUTED) {
+                    pendingToolCallJson = null  // fed back, clear pending
+                    pendingToolResultJson = null
+                    checkpointCursor()  // tool result fed back
+                } else {
+                    checkpointCursor()
+                }
+
+                // 生图是外部能力边界:失败后禁止 Agent 继续猜测聊天模型并重复调用。
+                if (o.call.name == "generate_image" && o.result is ToolResult.Error) {
                     _state.value = AgentState.Error(
                         "生图未完成，已停止自动更换模型重试。最后错误: " +
-                            (toolResult as ToolResult.Error).message,
-                        iteration
-                    )
+                            (o.result as ToolResult.Error).message, iteration)
                     clearCursor()
                     return
                 }
@@ -929,9 +974,58 @@ class AgentCore(
             // → loop back to Thinking for next iteration
         }
 
-        // Exhausted max iterations
-        _state.value = AgentState.Error("已达最大轮数 ($maxIterations)，强制停止", maxIterations)
-        clearCursor()
+        // Exhausted max iterations(仅「有限」模式下会走到这里;unlimited 模式由最终回答/超时终止)。
+        if (!unlimited) {
+            _state.value = AgentState.Error("已达最大轮数 ($maxIterations)，强制停止", maxIterations)
+            clearCursor()
+        }
+    }
+
+    // ---- §1/§2/§3 工具执行辅助(并发分层 / 三层截断 / 单轮预算) ----
+
+    /** 工具执行结果的一次性容器(用于按原始顺序回灌)。 */
+    private enum class OutcomeKind { EXECUTED, DENIED, OVERFLOW }
+
+    /** 单个工具调用的执行 outcome(在原始 [index] 处落到 [ordered] 列表)。 */
+    private data class ToolExecOutcome(
+        val index: Int,
+        val call: ToolCall,
+        val callIndex: Int,
+        val kind: OutcomeKind,
+        val result: ToolResult? = null,
+        val durationMs: Long? = null,
+        var content: String? = null,
+        val status: String = "FAIL"
+    )
+
+    /** [runToolExec] 的返回值(原始 index 与运行结果)。 */
+    private data class ToolExecResult(
+        val index: Int,
+        val call: ToolCall,
+        val callIndex: Int,
+        val result: ToolResult,
+        val durationMs: Long,
+        val status: String
+    )
+
+    /** 错误结果的基础反馈文本(不含「连续失败」提示,该提示在回灌阶段按刹车计数追加)。 */
+    private fun buildErrorBaseContent(r: ToolResult.Error): String = buildString {
+        append("错误: ${r.message}")
+        if (r.exitCode != null) append("\n退出码: ${r.exitCode}")
+        if (!r.stderr.isNullOrBlank()) append("\nstderr:\n${r.stderr}")
+    }
+
+    /**
+     * §1 真正的工具执行点(并发安全的批内会并发跑多个本方法)。
+     * 仅做「执行边界」(会话元素 + pre/post 钩 + 计时),异常被吞成 [ToolResult.Error]
+     * 实现批内失败隔离 —— 一个工具炸了不影响同批兄弟。
+     */
+    private suspend fun runToolExec(index: Int, call: ToolCall, iteration: Int): ToolExecResult {
+        _state.value = AgentState.Executing(iteration, call.name)
+        // 步骤D:执行边界(会话元素+pre/post钩+计时)收敛到 ToolOrchestrator,与原内联逻辑一致。
+        val execution = orchestrator.runBounded(call, sessionId)
+        val status = if (execution.result is ToolResult.Success) "SUCCESS" else "FAIL"
+        return ToolExecResult(index, call, index + 1, execution.result, execution.durationMs, status)
     }
 
     // ---- helpers ----

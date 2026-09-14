@@ -10,6 +10,17 @@ interface Tool {
     /** Unique name the model uses to request this tool. */
     val name: String
 
+    /**
+     * §1 工具并发语义:本工具是否「只读 + 幂等」,可与其他安全工具并发执行。
+     *
+     * **默认 false(fail-closed)**:未显式声明为安全的工具一律独占串行执行,宁可牺牲并发
+     * 也不冒数据竞争 / 状态错乱的风险。只有确定只读且无副作用的工具才返回 true
+     * (也可在 AgentCoreContract.CONCURRENCY_SAFE_TOOLS 白名单里集中登记,等价生效)。
+     *
+     * 用接口默认实现而非抽象属性,是为了不破坏现有 30+ 个工具实现 —— 它们无需逐个补字段。
+     */
+    val concurrencySafe: Boolean get() = false
+
     /** Human-readable description for the model. */
     val description: String
 

@@ -1,6 +1,7 @@
 package com.xincode.security
 
 import com.xincode.data.PermissionRuleEntity
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,10 +18,11 @@ class SecurityGateTest {
         return g.decide(c, mode)
     }
 
-    // 允许全部(全自动):真·放行一切——危险命令也直接放行(仅致命 FATAL_BANNED 与显式 deny 规则能挡)。
-    @Test fun allowAll_dangerous_allows() {
+    // 允许全部(全自动):危险 + 不可逆操作不再直接放行 —— 按契约 §5.3 红线,至少确认一次。
+    // 这是有意的语义变更:旧语义为"危险命令也直接放行",与 §5.3 冲突,现改为 NeedConfirm。
+    @Test fun allowAll_dangerous_needsConfirm() {
         val g = gate()
-        assertTrue(decide(g, "shell_exec", shell("rm -rf /data/data/x"), PermissionMode.ALLOW_ALL) is Decision.Allow)
+        assertTrue(decide(g, "shell_exec", shell("rm -rf /data/data/x"), PermissionMode.ALLOW_ALL) is Decision.NeedConfirm)
     }
 
     @Test fun allowAll_normal_allows() {
@@ -69,5 +71,70 @@ class SecurityGateTest {
         val g = gate()
         g.setPermissionRules(listOf(PermissionRuleEntity(action = "allow", toolFilter = "shell_exec", pattern = "*npm*", createdAt = 0)))
         assertTrue(decide(g, "shell_exec", shell("npm install"), PermissionMode.ASK) is Decision.Allow)
+    }
+
+    // ===== §5.4 解析差异防御:引号/转义/IFS 绕过必须判定为不安全 =====
+
+    // 'rm' '-rf' '/' —— 加引号后子串匹配会漏,但 tokenize 后应还原成 rm -rf /。
+    @Test fun bypass_quotedTokens_isFatal() {
+        val g = gate()
+        assertEquals(RiskLevel.FATAL_BANNED, g.classifyRisk("'rm' '-rf' '/'"))
+        assertTrue(decide(g, "shell_exec", shell("'rm' '-rf' '/'"), PermissionMode.ASK) is Decision.Denied)
+        assertTrue(decide(g, "shell_exec", shell("'rm' '-rf' '/'"), PermissionMode.ALLOW_ALL) is Decision.Denied)
+    }
+
+    // r''m -rf / —— 空引号拼接,词法上仍是 rm。
+    @Test fun bypass_emptyQuoteConcat_isFatal() {
+        val g = gate()
+        assertEquals(RiskLevel.FATAL_BANNED, g.classifyRisk("r''m -rf /"))
+        assertTrue(decide(g, "shell_exec", shell("r''m -rf /"), PermissionMode.ALLOW_ALL) is Decision.Denied)
+    }
+
+    // rm${IFS}-rf${IFS}/ —— IFS 拼接,没有空格但语义仍是 rm -rf /。
+    @Test fun bypass_ifsConcat_isFatal() {
+        val g = gate()
+        assertEquals(RiskLevel.FATAL_BANNED, g.classifyRisk("rm\${IFS}-rf\${IFS}/"))
+        assertTrue(decide(g, "shell_exec", shell("rm\${IFS}-rf\${IFS}/"), PermissionMode.ALLOW_ALL) is Decision.Denied)
+    }
+
+    // ; rm -rf / —— 命令分隔符后面的致命命令也要命中。
+    @Test fun bypass_semicolon_prefix_isFatal() {
+        val g = gate()
+        assertEquals(RiskLevel.FATAL_BANNED, g.classifyRisk("; rm -rf /"))
+        assertTrue(decide(g, "shell_exec", shell("; rm -rf /"), PermissionMode.ALLOW_ALL) is Decision.Denied)
+    }
+
+    // ls | xargs rm —— 管道拼接不得被静默放行(至少确认)。
+    @Test fun bypass_pipe_concat_notAllowed() {
+        val g = gate()
+        val d = decide(g, "shell_exec", shell("ls | xargs rm"), PermissionMode.ALLOW_ALL)
+        assertTrue(d is Decision.NeedConfirm)
+    }
+
+    // ALLOW_ALL 下 shell_exec 执行 dd 写块设备:必须不是直接放行(应为 Denied/NeedConfirm)。
+    @Test fun allowAll_dd_blockDevice_notAllowed() {
+        val g = gate()
+        val d = decide(g, "shell_exec", shell("dd if=/dev/zero of=/dev/block/sda"), PermissionMode.ALLOW_ALL)
+        assertTrue(d !is Decision.Allow)
+    }
+
+    // ===== 回归:正常命令不得被误判为 FATAL_BANNED,且在 ALLOW_ALL 下直接放行 =====
+
+    @Test fun regression_normalCommands_notFatal_and_allowed() {
+        val g = gate()
+        val normals = listOf(
+            "gradle assembleDebug",
+            "adb devices",
+            "git status",
+            "ls -la",
+            "cat a.txt",
+            "find . -name '*.kt'",
+            "grep -rn foo ."
+        )
+        for (cmd in normals) {
+            assertEquals("命令应被判 NORMAL: $cmd", RiskLevel.NORMAL, g.classifyRisk(cmd))
+            val d = decide(g, "shell_exec", shell(cmd), PermissionMode.ALLOW_ALL)
+            assertTrue("ALLOW_ALL 下应直接放行: $cmd -> $d", d is Decision.Allow)
+        }
     }
 }

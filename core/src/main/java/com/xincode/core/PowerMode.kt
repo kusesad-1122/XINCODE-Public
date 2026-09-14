@@ -1,8 +1,9 @@
 package com.xincode.core
 
-/** 轮数不设实际上限(仅由总超时兜底),避免"已达最大轮数"提前打断长任务。
- *  必须是【顶层】常量:枚举项的初始化早于伴生对象,不能在枚举构造参数里引用伴生对象成员。 */
-const val UNLIMITED_ITERS = 100000
+/** 轮数「不限」哨兵值。契约约定 0 = 不限(由 AgentCore.runLoop 的 `maxIterations <= 0` 分支识别),
+ *  保留用户显式配置为不限的能力。必须是【顶层】常量:枚举项的初始化早于伴生对象,
+ *  不能在枚举构造参数里引用伴生对象成员。 */
+const val UNLIMITED_ITERS = 0
 
 /**
  * Agent power mode — controls performance vs battery life tradeoffs.

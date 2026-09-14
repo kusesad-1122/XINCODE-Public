@@ -343,3 +343,46 @@ fun tokenizeCommand(raw: String): List<String> {
     if (hasToken || cur.isNotEmpty()) out.add(cur.toString())
     return out
 }
+
+/**
+ * XINCODE 应用自身私有数据根目录的两种等价写法。
+ * 闸门([SecurityGateImpl])与自我保护([com.xincode.tools.SelfProtect])共用,避免各写一份导致漂移。
+ */
+val XINCODE_APP_DATA_ROOTS = listOf("/data/data/com.xincode.app", "/data/user/0/com.xincode.app")
+
+/**
+ * 命令安全(契约 §5.4「解析差异防御」):判定命令原始文本是否含可被引号/转义绕过的语法。
+ *
+ * 与引号/转义无关 —— 调用方应先 [tokenizeCommand] 还原 argv 语义;这里直接扫原始串即可捕获
+ * 命令替换/变量/IFS 拼接/命令分隔/重定向/brace 展开等形态。命中即「禁止在 ALLOW_ALL 下静默放行」
+ * (至少降级为 prompt / 升级为 dangerous)。
+ *
+ * 注意:宁可多判不漏判 —— 任何含这些字符的命令都会被标记,由上层决定具体裁决。
+ */
+fun containsShellExpansionSyntax(raw: String): Boolean {
+    if (raw.isEmpty()) return false
+    if (raw.contains('$')) return true   // $VAR  ${VAR}  $(...)  ${IFS}
+    if (raw.contains('`')) return true   // 反引号命令替换
+    if (raw.contains(';')) return true   // 命令分隔
+    if (raw.contains('|')) return true   // 管道
+    if (raw.contains('&')) return true   // 后台 / AND
+    if (raw.contains('>')) return true   // 重定向
+    if (raw.contains('\n') || raw.contains('\r')) return true // 换行分隔
+    // brace 展开 {a,b}
+    if (Regex("\\{[^}\\s]*,[^}\\s]*\\}").containsMatchIn(raw)) return true
+    return false
+}
+
+/**
+ * 把命令文本清洗成「路径比对」用的字符串:剥掉 `$()` / `${}` / 反引号 / 引号 / 分隔符 / 重定向等
+ * shell 语法(保留内部路径片段),并压平多余空白。供自我保护模块判断命令是否触碰受保护目录,
+ * 避免 `chmod $(echo /data/...)/x` 这类变量拼接把路径切开导致漏判。宁可多判不漏判。
+ */
+fun flattenForPathMatch(raw: String): String {
+    return raw
+        .replace(Regex("\\$\\(|\\$\\{|`"), " ")   // 起始符 → 空格,保留内部路径
+        .replace(Regex("[)}\\$]"), " ")            // 收尾符 / 变量符 → 空格
+        .replace(Regex("'|\"|;|\\||&|>"), " ")     // 引号 / 分隔 / 重定向 → 空格
+        .replace(Regex("\\s+"), " ")
+        .trim()
+}

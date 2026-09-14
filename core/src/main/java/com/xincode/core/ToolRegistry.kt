@@ -13,6 +13,34 @@ import org.json.JSONObject
 class ToolRegistry {
     private val tools = mutableMapOf<String, Tool>()
 
+    /**
+     * P2-2 工具结果缓存接线。
+     *
+     * 此前 [ToolCache] 是一个实现完整但**零调用**的类(只有自身定义,全仓无引用),
+     * 逐工具 TTL / LRU / 错误不缓存都写好了却从未生效 —— 重复的 file_read / web_fetch
+     * 每次都在真跑,白烧 token 与时间。这里把它接进唯一的派发点。
+     *
+     * 只在「只读 + 幂等」工具上生效(用契约 §1 的 [AgentCoreContract.CONCURRENCY_SAFE_TOOLS]
+     * 判定),且最终以 [ToolCache] 自己的 TTL 表为准(表里没有的工具不会被缓存)。
+     */
+    private val toolCache = ToolCache()
+    /** 关闭开关:测试或排障时可整体关掉缓存。 */
+    @Volatile
+    var cacheEnabled: Boolean = true
+    /** 观测:累计缓存命中次数。 */
+    @Volatile
+    var cacheHitCount: Long = 0L
+        private set
+
+    /**
+     * 有副作用的工具。执行成功后必须让「同一批只读结果」失效,
+     * 否则模型会拿着写之前的 file_read 内容继续推理。
+     */
+    private val mutatingTools = setOf(
+        "file_write", "file_edit", "multi_edit", "make_directory", "delete_file",
+        "shell_exec", "su_exec", "env_exec", "execute_code", "download_file"
+    )
+
     // Hermes-③ check_fn TTL 缓存:避免每次 buildToolsJson 都真跑 isAvailable()(可能读设置/探网)。
     private val availabilityCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, Boolean>>()
     private val availabilityTtlMs = 30_000L
@@ -190,6 +218,18 @@ class ToolRegistry {
         // gap-05:把原始 arguments 解析为 JSONObject 后经 executeJson 透传(保留 array/object 类型)。
         // 默认 executeJson 会压平成 Map<String,String> 委托 execute,老工具行为不变。
         val argsJson = parseArgumentsJson(call.arguments)
+        // P2-2:只读 + 幂等工具先查缓存。命中就直接返回,连 onDispatch/onExecuted 都不触发
+        // (它并没有真的「派发」出去 —— 让观测钩子看到一次不存在的执行会污染 Harness 轨迹)。
+        val cacheParams = if (cacheEnabled && tool.name in AgentCoreContract.CONCURRENCY_SAFE_TOOLS) {
+            jsonToParams(argsJson)
+        } else null
+        if (cacheParams != null) {
+            val cached = toolCache.get(tool.name, cacheParams)
+            if (cached != null) {
+                cacheHitCount += 1
+                return cached
+            }
+        }
         // 步骤C:真实派发前通知观察者(未知工具/前置拦截的早退路径不算派发)。
         runCatching { onDispatch?.invoke(call) }
         val result: ToolResult = try {
@@ -202,8 +242,33 @@ class ToolRegistry {
             // 漏掉就会直接杀死进程(用户看到的"闪退")。转成模型可见的错误,让它自我纠正。
             ToolResult.Error("${tool.name} 执行异常(${t::class.java.simpleName}): ${t.message}")
         }
+        // P2-2:成功结果入缓存(错误不入,见 ToolCache.put);有副作用的工具成功后让只读缓存失效。
+        if (result is ToolResult.Success) {
+            if (cacheParams != null) toolCache.put(tool.name, cacheParams, result)
+            if (tool.name in mutatingTools) {
+                toolCache.invalidate("file_read")
+                toolCache.invalidate("list_dir")
+            }
+        }
         runCatching { onExecuted?.invoke(call, result) }
         return result
+    }
+
+    /** JSONObject → Map<String,String>,与 [Tool.executeJson] 默认压平口径保持一致。 */
+    private fun jsonToParams(args: JSONObject): Map<String, String> {
+        if (args.length() == 0) return emptyMap()
+        val map = HashMap<String, String>(args.length())
+        val keys = args.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            map[k] = if (args.isNull(k)) "" else {
+                when (val v = args.get(k)) {
+                    is String -> v
+                    else -> v.toString()
+                }
+            }
+        }
+        return map
     }
 
     /** Parse model-generated JSON arguments string into a JSONObject (empty on failure). */

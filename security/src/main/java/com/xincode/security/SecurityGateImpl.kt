@@ -119,24 +119,31 @@ class SecurityGateImpl(
     }
 
     override fun classifyRisk(command: String): RiskLevel {
-        val trimmed = command.trim()
-        val normalized = trimmed.replace(Regex("\\s+"), " ")
+        val raw = command
+        // §5.4 解析差异防御:先把命令 tokenize 成 argv(剥引号/转义),并把 ${IFS} 还原成空格,
+        // 使 'rm' '-rf' '/'、r''m -rf /、rm${IFS}-rf${IFS}/ 都还原成 rm -rf / 一类语义。
+        // 主判据基于 canonical argv;原始串的 contains 仅作【补充判据】,不再作为主判据。
+        val deIfs = raw.replace(Regex("(?i)\\$\\{IFS\\}"), " ")
+        val tokens = tokenizeCommand(deIfs)
+        val canonical = tokens.joinToString(" ")
+        val normalized = raw.trim().replace(Regex("\\s+"), " ")
+        fun hit(s: String) = canonical.contains(s) || normalized.contains(s)
 
         // ===== FATAL_BANNED =====
 
         // 1. System partition writes + App 私有数据（bind 后 /data 直通）
-        val systemPaths = listOf("/system", "/system_ext", "/vendor", "/product", "/odm", "/boot", "/recovery", "/data/user/0/com.xincode.app", "/data/data/com.xincode.app")
+        val systemPaths = listOf("/system", "/system_ext", "/vendor", "/product", "/odm", "/boot", "/recovery") + XINCODE_APP_DATA_ROOTS
         val destructiveOps = listOf("rm", "mv", "cp", "dd", "mount -o rw", "chmod", "chown", "touch", "mkdir", "rmdir", "ln -sf")
         for (path in systemPaths) {
             for (op in destructiveOps) {
-                if (normalized.contains("$op ") && normalized.contains(path)) {
+                if (hit("$op ") && hit(path)) {
                     return RiskLevel.FATAL_BANNED
                 }
             }
         }
         // Also check > /tee redirect to system paths
         for (path in systemPaths) {
-            if ((normalized.contains(">") || normalized.contains("tee ")) && normalized.contains(path)) {
+            if ((hit(">") || hit("tee ")) && hit(path)) {
                 return RiskLevel.FATAL_BANNED
             }
         }
@@ -145,31 +152,31 @@ class SecurityGateImpl(
         val partitionOps = listOf("parted", "sgdisk", "fdisk", "mkfs", "mke2fs", "make_ext4fs", "wipe",
             "fastboot flash", "flash_image")
         for (op in partitionOps) {
-            if (normalized.contains(op)) return RiskLevel.FATAL_BANNED
+            if (hit(op)) return RiskLevel.FATAL_BANNED
         }
         // dd/cat/> to /dev/block/*
-        if (normalized.contains("/dev/block/") && (normalized.startsWith("dd ") || normalized.startsWith("cat ") || normalized.contains("> /dev/block/"))) {
+        if (hit("/dev/block/") && (canonical.startsWith("dd ") || canonical.startsWith("cat ") || hit("> /dev/block/"))) {
             return RiskLevel.FATAL_BANNED
         }
         // Writing to boot.img / recovery.img / system.img
         val imgPatterns = listOf("boot.img", "recovery.img", "system.img")
         for (img in imgPatterns) {
-            if (normalized.contains(img) && (normalized.contains("dd ") || normalized.contains(">"))) {
+            if (hit(img) && (hit("dd ") || hit(">"))) {
                 return RiskLevel.FATAL_BANNED
             }
         }
 
         // 3. rm -rf / or equivalent
-        if (normalized.contains("rm -rf /") && !normalized.contains("/data/data/") && !normalized.contains("/sdcard/")) {
+        if (hit("rm -rf /") && !hit("/data/data/") && !hit("/sdcard/")) {
             // Check if it's rm -rf / (root) not rm -rf /something
-            val afterRm = normalized.substringAfter("rm -rf ").trimStart()
+            val afterRm = canonical.substringAfter("rm -rf ").trimStart()
             if (afterRm == "/" || afterRm == "/*" || afterRm.startsWith("/ ") || afterRm.startsWith("/* ")) {
                 return RiskLevel.FATAL_BANNED
             }
         }
         // rm -rf /data (entire data, not subdir)
-        if (normalized.contains("rm -rf /data") && !normalized.contains("/data/data/") && !normalized.contains("/data/local/") && !normalized.contains("/data/adb/")) {
-            val afterData = normalized.substringAfter("rm -rf /data").trim()
+        if (hit("rm -rf /data") && !hit("/data/data/") && !hit("/data/local/") && !hit("/data/adb/")) {
+            val afterData = canonical.substringAfter("rm -rf /data").trim()
             if (afterData.isEmpty() || afterData.startsWith(" ") || afterData == "/*") {
                 return RiskLevel.FATAL_BANNED
             }
@@ -178,32 +185,36 @@ class SecurityGateImpl(
         // ===== DANGEROUS =====
 
         // rm -rf on system dirs (non-FATAL)
-        if (normalized.contains("rm -rf /data/data/") || normalized.contains("rm -rf /data/system")) {
+        if (hit("rm -rf /data/data/") || hit("rm -rf /data/system")) {
             return RiskLevel.DANGEROUS
         }
         // build.prop / default.prop modification
-        if ((normalized.contains("build.prop") || normalized.contains("default.prop")) &&
-            (normalized.startsWith("rm ") || normalized.startsWith("mv ") || normalized.contains(">") || normalized.contains("tee ") || normalized.startsWith("sed "))) {
+        if ((hit("build.prop") || hit("default.prop")) &&
+            (canonical.startsWith("rm ") || canonical.startsWith("mv ") || canonical.startsWith("sed ") || hit(">") || hit("tee "))) {
             return RiskLevel.DANGEROUS
         }
         // iptables -F / firewall flush
-        if (normalized.contains("iptables") && (normalized.contains("-F") || normalized.contains("--flush"))) {
+        if (hit("iptables") && (hit("-F") || hit("--flush"))) {
             return RiskLevel.DANGEROUS
         }
         // pm uninstall system app
-        if (normalized.contains("pm uninstall") && normalized.contains("--user 0")) {
+        if (hit("pm uninstall") && hit("--user 0")) {
             return RiskLevel.DANGEROUS
         }
         // /etc/hosts modification (root context)
-        if (normalized.contains("/etc/hosts") && (normalized.contains(">") || normalized.contains("tee ") || normalized.startsWith("sed "))) {
+        if (hit("/etc/hosts") && (hit(">") || hit("tee ") || canonical.startsWith("sed "))) {
             return RiskLevel.DANGEROUS
         }
         // setenforce 0
-        if (normalized.startsWith("setenforce 0") || normalized.startsWith("setenforce 0 ")) {
+        if (canonical.startsWith("setenforce 0") || canonical.startsWith("setenforce 0 ")) {
             return RiskLevel.DANGEROUS
         }
 
-        // ===== NORMAL =====
+        // ===== NORMAL（带解析差异防御）=====
+        // 含命令替换/变量/IFS 拼接/命令分隔/重定向/brace 展开等语法的命令,
+        // 全自动档下也绝不允许静默放行(至少升为 DANGEROUS → 触发确认)。
+        if (containsShellExpansionSyntax(raw)) return RiskLevel.DANGEROUS
+
         return RiskLevel.NORMAL
     }
 
@@ -244,10 +255,19 @@ class SecurityGateImpl(
                 else Decision.NeedConfirm("权限模式「询问」，需要确认", preview(cmd))
             }
 
-            // 允许全部(全自动):真·放行一切——只有 FATAL_BANNED(上面已拦)与显式 deny 规则能挡。
-            // 用户明确要求"允许全部就真的全部执行、别再问",故不再对危险/不可逆强制确认。
-            PermissionMode.ALLOW_ALL ->
-                Decision.Allow("权限模式「允许全部」，自动放行(全自动)")
+            // 允许全部(全自动):语义 = 【免确认】,不是【免拦截】(契约 §5.3 红线)。
+            // 只有"普通 + 可逆"操作才直接放行;其余(危险 / 不可逆 / 含解析差异语法)至少确认一次。
+            // FATAL_BANNED 在上方已恒拒,此处不重复处理。
+            PermissionMode.ALLOW_ALL -> {
+                if (risk == RiskLevel.NORMAL && cmd.reversibility == Reversibility.REVERSIBLE) {
+                    Decision.Allow("权限模式「允许全部」，自动放行(全自动)")
+                } else {
+                    Decision.NeedConfirm(
+                        "全自动档下该操作非「普通+可逆」(risk=$risk, rev=${cmd.reversibility}),按契约 §5.3 至少确认一次",
+                        preview(cmd)
+                    )
+                }
+            }
         }
     }
 

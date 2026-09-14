@@ -23,6 +23,9 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(project(":provider"))
+    // 复用 security 的命令安全通道(tokenize / flattenForPathMatch / 受保护根目录常量),
+    // 让自我保护与闸门对"解析差异绕过"用同一套判定,避免各写一份漂移。
+    implementation(project(":security"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jsoup:jsoup:1.17.2")

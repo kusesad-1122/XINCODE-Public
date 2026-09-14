@@ -1,5 +1,9 @@
 package com.xincode.tools
 
+import com.xincode.security.XINCODE_APP_DATA_ROOTS
+import com.xincode.security.containsShellExpansionSyntax
+import com.xincode.security.flattenForPathMatch
+
 /**
  * 自我保护:不让 AI 动 App 自己的运行时数据。
  *
@@ -133,17 +137,27 @@ object SelfProtect {
     fun refuseCommand(command: String): String? {
         val base = appDataDir
         if (base.isEmpty()) return null
-        val norm = normalizeCommand(command)
         // 同一个私有目录有两种写法,两种都要认:/data/user/0/<pkg> 与 /data/data/<pkg>
-        val pkg = base.substringAfterLast('/')
-        val prefixes = listOf(base, "/data/data/$pkg", "/data/user/0/$pkg")
-        for (p in prefixes) {
-            for (sub in LOCKED) {
-                if (norm.contains("$p/$sub")) {
-                    return "拒绝:这条命令要动 `$p/$sub` —— 那是 XINCODE 自己的运行时数据。" +
-                        "动了它 App 下次就打不开数据库,用户数据会全部丢失。换个目录做这件事。"
+        val prefixes = listOf(base) + XINCODE_APP_DATA_ROOTS
+        // 多重候选:原始串 + 既有 normalizeCommand(消解 .. 与引号) + security 的 flattenForPathMatch
+        // (剥掉 $()/${}/反引号/分隔符等 shell 语法,覆盖 `chmod $(echo <dir>)/x` 这类变量拼接绕过)。
+        // 宁可多判不漏判。
+        val candidates = listOf(command, normalizeCommand(command), flattenForPathMatch(command))
+        for (c in candidates) {
+            for (p in prefixes) {
+                for (sub in LOCKED) {
+                    if (c.contains("$p/$sub")) {
+                        return "拒绝:这条命令要动 `$p/$sub` —— 那是 XINCODE 自己的运行时数据。" +
+                            "动了它 App 下次就打不开数据库,用户数据会全部丢失。换个目录做这件事。"
+                    }
                 }
             }
+        }
+        // 保守兜底:命令含变量/命令替换语法($() ${} ` 等)且提及任一锁死子目录名,
+        // 无法静态确认其真实前缀指向哪,宁可拒绝也不冒险(与契约 §5.4「宁可多判不漏判」一致)。
+        if (containsShellExpansionSyntax(command) && LOCKED.any { command.contains(it) }) {
+            return "拒绝:命令含变量/命令替换且提及运行时数据子目录(${LOCKED.joinToString()})," +
+                "无法确认真实路径,已拒绝以防损坏 App 自身数据。"
         }
         return null
     }
