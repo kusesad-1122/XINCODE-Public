@@ -574,6 +574,11 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
             register(RecallMemoryTool(database, openAiClient))
             register(InvokeSkillTool(database))
             register(FileReadTool())   // 只读:允许复盘时回看文件
+            // 只读环境探针(Grounding Agent Memory 的 Probe 段):写记忆前先"现场看一眼",
+            // 核实候选记忆里的路径/符号/schema 是否仍然成立。全是只读工具,不进用户工具预算。
+            register(ListDirTool())
+            register(GlobTool())
+            register(GrepTool())
         }
         backgroundReviewRunner = BackgroundReviewRunner(
             reviewCoreFactory = {

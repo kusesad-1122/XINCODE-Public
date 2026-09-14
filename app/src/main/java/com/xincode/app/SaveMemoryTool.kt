@@ -25,7 +25,9 @@ class SaveMemoryTool(private val database: AppDatabase) : Tool {
     override val description =
         "把值得长期记住的信息写入记忆。target=user 记用户画像/偏好;target=situation 记当前近况;" +
         "target=note 记可检索的知识条目。action=add 新增、replace 改写、remove 删除。" +
-        "只记真正持久、跨会话有用的东西——不要记一次性、环境相关或否定性的失败结论。"
+        "note 条目必须是【可执行】格式:适用范围(applies_to)+ 可执行过程(从哪查/怎么关联/过滤条件/当前状态)," +
+        "且已用只读探针核实过仍然成立;禁止只给结论性警告而不给正确做法。" +
+        "不要记一次性、环境相关或否定性的失败结论。"
 
     override val parametersSchema: JSONObject = JSONObject().apply {
         put("type", "object")

@@ -14,8 +14,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Hermes-① 自进化学习闭环的执行器。
  *
  * 收到 [AgentCore.onBackgroundReview] 回调后,用 [reviewCoreFactory] 造一个**隔离**的复盘分身
- * (受限工具集:save_memory + skill_manage + recall/invoke,isReviewFork=true 不再递归),
- * 喂给它一段复盘提示 + 对话尾部,让它**自主判断**该不该沉淀记忆 / 改进或新建技能。
+ * (受限工具集:save_memory + skill_manage + recall/invoke + 只读环境探针 file_read/list_dir/glob/grep,
+ * isReviewFork=true 不再递归),喂给它一段复盘提示 + 对话尾部,让它按
+ * **propose–probe–commit** 三段策展:先提炼候选记忆,再用只读探针现场核实,
+ * 核实通过才写盘——记忆落盘那一刻就是「可执行的」,而不是「看起来对的」。
  * 全程在后台、回答已交付之后运行,失败静默(学习闭环不该影响主流程)。
  */
 class BackgroundReviewRunner(
@@ -88,11 +90,25 @@ class BackgroundReviewRunner(
         appendLine("你是一个【后台复盘】分身,正在用户回答之后独立复盘刚才的对话。只做下面要求的事,做完用一句话总结即可。")
         appendLine()
         if (reviewMemory) {
-            appendLine("【记忆复盘】用户是否透露了值得长期记住的画像/偏好/个人信息?是否表达了对你行为方式的期望?")
-            appendLine("- 若有耐久画像 → save_memory(target=user)。")
-            appendLine("- 若是当前进行中的事/近况 → save_memory(target=situation)。")
-            appendLine("- 若是可检索的知识点 → save_memory(target=note)。")
-            appendLine("- 什么都不值得记就直接说“无需沉淀”。不要记一次性、环境相关或否定性的失败结论。")
+            appendLine("【记忆复盘】按 propose–probe–commit 三段执行:")
+            appendLine()
+            appendLine("1) Propose(提炼):从对话尾部提炼候选记忆——耐久画像、当前近况、可复用的可执行经验。")
+            appendLine("2) Probe(核实,写前必做):你手上有 file_read/glob/grep/list_dir 一组只读探针。")
+            appendLine("   - 带着假设去探,不为探而探、不为未来任务探。")
+            appendLine("   - 候选记忆若涉及文件路径/符号名/命令/schema,必须先现场核实它【现在】仍然成立:")
+            appendLine("     路径存在吗?符号还在吗?有没有更短路径能得到同样结果?前置条件都满足吗?")
+            appendLine("   - 区分偶然答案与可复用关系;怀疑环境已漂移时重新查询当前环境,并顺手把已知过期的")
+            appendLine("     旧记忆用 save_memory(action=replace/remove) 订正、收窄或删除,不要留给下游误导。")
+            appendLine("   - 核实不成立:改为记录当前真实状态,或直接不记。")
+            appendLine("   - 与记忆/事实无关的主观偏好(用户画像类)不需要探针核实。")
+            appendLine("3) Commit(落盘):只写【可执行】的记忆,不写【看起来对的】记忆:")
+            appendLine("   - 好的写法是「适用范围 + 可执行过程」:从哪里查、怎么关联、过滤条件是什么、当前状态是什么。")
+            appendLine("     例:『gradle 依赖改动在 app/build.gradle.kts;改后跑 ./gradlew :app:tasks 验证。』")
+            appendLine("   - 坏的写法是答案锚定的警告:只说『X 是错的/不对』却不给当前正确做法——这种一律不落盘。")
+            appendLine("   - 绝不记任务答案本身;沉淀的是过程、关系、约定和带范围的警告。")
+            appendLine("   - 落盘目标:耐久画像 → save_memory(target=user);当前近况 → save_memory(target=situation);")
+            appendLine("     可检索的可执行经验 → save_memory(target=note)。")
+            appendLine("   - 什么都不值得记就直接说“无需沉淀”。不要记一次性、环境相关或否定性的失败结论。")
             appendLine()
         }
         if (reviewSkill) {
