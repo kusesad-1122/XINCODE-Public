@@ -2,6 +2,7 @@ package com.xincode.app
 
 import com.xincode.data.SkillEntity
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -65,9 +66,27 @@ class SkillRecallTest {
     }
 
     @Test
-    fun block_containsContentAndHint() {
+    fun block_isIndexOnlyAndHintsInvokeSkill() {
         val skills = listOf(skill("root终端", "执行 root shell 命令", content = "先 su，再执行"))
         val block = SkillRecall.blockForQuery(skills, "用root终端重启手机")
-        assertTrue(block.contains("root终端") && block.contains("先 su") && block.contains("invoke_skill"))
+        // 渐进披露：注入的是索引（名 + 摘要），**不含步骤正文**
+        assertTrue("必须带技能名", block.contains("root终端"))
+        assertTrue("必须带摘要", block.contains("执行 root shell 命令"))
+        assertTrue("必须指引模型去取正文", block.contains("invoke_skill"))
+        assertFalse("正文不得进上下文（那是渐进披露的意义）", block.contains("先 su"))
+        // 命中成本应远小于旧的 1500 字全文
+        assertTrue("索引块应很短，实际 ${block.length} 字", block.length < 300)
+    }
+
+    @Test
+    fun block_descriptionIsClippedToBudget() {
+        val long = "很长的技能描述".repeat(200) // 远超 250 字预算
+        val skills = listOf(skill("大技能", long, content = "步骤"))
+        val block = SkillRecall.blockForQuery(skills, "帮我用大技能干活")
+        assertTrue(block.contains("大技能"))
+        assertTrue(
+            "描述必须被裁到 SKILL_DESC_MAX 以内（实际 ${block.length}）",
+            block.length < SkillRecall.SKILL_DESC_MAX + 200
+        )
     }
 }

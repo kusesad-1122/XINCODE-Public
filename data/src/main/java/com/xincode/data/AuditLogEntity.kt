@@ -17,5 +17,9 @@ data class AuditLogEntity(
     val capability: String,
     val reversibility: String,
     val decision: String,
-    val result: String?
+    val result: String?,
+    /** 上一条记录的哈希(首条为空串),用于防篡改哈希链。MIGRATION_51_52 新增。 */
+    val prevHash: String = "",
+    /** 本条记录的防篡改哈希 = sha256(prevHash|timestamp|toolName|toolArgs|decision|result)。 */
+    val hash: String = ""
 )

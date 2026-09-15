@@ -23,18 +23,21 @@ import com.xincode.core.AgentState
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * Workflow real-time view: status bar + timeline + interrupt button.
+ * Run monitor real-time view: status bar + timeline + interrupt button.
+ *
+ * 改名说明(M3-10):原 `WorkflowScreen` 只是「单次 Agent 运行的状态监视器」,
+ * 没有任何工作流编排能力,改名为 `RunMonitorScreen`(运行监控)以免误导。
  */
 @Composable
-fun WorkflowScreen(
+fun RunMonitorScreen(
     agentCore: AgentCore,
-    workflowState: WorkflowState,
+    runMonitorState: RunMonitorState,
     onBack: () -> Unit,
     onNavigateToReplay: () -> Unit = {}
 ) {
     var elapsed by remember { mutableLongStateOf(0L) }
-    val currentState by workflowState.currentState.collectAsState()
-    val events by workflowState.events.collectAsState()
+    val currentState by runMonitorState.currentState.collectAsState()
+    val events by runMonitorState.events.collectAsState()
     val isRunning = currentState.isBusy
 
     // Elapsed timer
@@ -141,16 +144,16 @@ private fun StatusBar(
 }
 
 @Composable
-private fun TimelineCard(event: WorkflowState.TimelineEvent) {
+private fun TimelineCard(event: RunMonitorState.TimelineEvent) {
     val (iconColor, bgColor) = when (event.type) {
-        WorkflowState.EventType.THINKING -> WfPalette.gray to WfPalette.gray.copy(alpha = 0.08f)
-        WorkflowState.EventType.CALLING_TOOL -> WfPalette.black to WfPalette.black.copy(alpha = 0.06f)
-        WorkflowState.EventType.WAITING_CONFIRM -> WfPalette.black to WfPalette.black.copy(alpha = 0.06f)
-        WorkflowState.EventType.EXECUTING -> WfPalette.black to WfPalette.black.copy(alpha = 0.08f)
-        WorkflowState.EventType.RESPONDING -> WfPalette.green to WfPalette.green.copy(alpha = 0.06f)
-        WorkflowState.EventType.ERROR -> WfPalette.red to WfPalette.red.copy(alpha = 0.08f)
-        WorkflowState.EventType.INTERRUPTED -> WfPalette.gray to WfPalette.gray.copy(alpha = 0.06f)
-        WorkflowState.EventType.IDLE -> WfPalette.gray to WfPalette.gray.copy(alpha = 0.04f)
+        RunMonitorState.EventType.THINKING -> WfPalette.gray to WfPalette.gray.copy(alpha = 0.08f)
+        RunMonitorState.EventType.CALLING_TOOL -> WfPalette.black to WfPalette.black.copy(alpha = 0.06f)
+        RunMonitorState.EventType.WAITING_CONFIRM -> WfPalette.black to WfPalette.black.copy(alpha = 0.06f)
+        RunMonitorState.EventType.EXECUTING -> WfPalette.black to WfPalette.black.copy(alpha = 0.08f)
+        RunMonitorState.EventType.RESPONDING -> WfPalette.green to WfPalette.green.copy(alpha = 0.06f)
+        RunMonitorState.EventType.ERROR -> WfPalette.red to WfPalette.red.copy(alpha = 0.08f)
+        RunMonitorState.EventType.INTERRUPTED -> WfPalette.gray to WfPalette.gray.copy(alpha = 0.06f)
+        RunMonitorState.EventType.IDLE -> WfPalette.gray to WfPalette.gray.copy(alpha = 0.04f)
     }
 
     var expanded by remember { mutableStateOf(false) }

@@ -32,7 +32,6 @@ private val JetBrainsMonoAL = XinUiFont
 
 @Composable
 fun AuditLogScreen(onBack: () -> Unit, database: AppDatabase? = null) {
-    val scope = rememberCoroutineScope()
     var entries by remember { mutableStateOf<List<AuditLogEntity>>(emptyList()) }
 
     LaunchedEffect(Unit) {
@@ -42,10 +41,8 @@ fun AuditLogScreen(onBack: () -> Unit, database: AppDatabase? = null) {
     }
 
     Column(Modifier.fillMaxSize().background(BgAL).padding(16.dp)) {
-        XinPageHeader(title = "审计日志", subtitle = "最近 200 条工具调用与权限记录", onBack = onBack) {
-            XinHeaderAction(label = "清空", destructive = true, onClick = {
-                scope.launch { database?.let { withContext(Dispatchers.IO) { it.auditLogDao().deleteAll() } }; entries = emptyList() }
-            })
+        XinPageHeader(title = "审计日志", subtitle = "最近 200 条工具调用与权限记录(防篡改哈希链,不可清空)", onBack = onBack) {
+            // M3-7:取消「一键清空」——审计日志是追责证据,清空会破坏哈希链且抹除证据。
         }
         Spacer(Modifier.height(12.dp))
 

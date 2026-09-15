@@ -28,7 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// Terminal palette — consistent with ChatScreen/WorkflowScreen
+// Terminal palette — consistent with ChatScreen/RunMonitorScreen
 private val SkBg: Color @Composable get() = LocalXinColors.current.bg
 private val SkInk: Color @Composable get() = LocalXinColors.current.ink
 private val SkSub: Color @Composable get() = LocalXinColors.current.sub

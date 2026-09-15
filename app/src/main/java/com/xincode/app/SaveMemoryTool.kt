@@ -4,6 +4,7 @@ import com.xincode.core.Tool
 import com.xincode.core.ToolResult
 import com.xincode.data.AppDatabase
 import com.xincode.data.MemoryEntity
+import com.xincode.provider.OpenAiClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -19,7 +20,10 @@ import org.json.JSONObject
  *
  * action:add / replace / remove。内容会做注入/外泄模式的极简清洗(冻结进系统提示,需保守)。
  */
-class SaveMemoryTool(private val database: AppDatabase) : Tool {
+class SaveMemoryTool(
+    private val database: AppDatabase,
+    private val openAiClient: OpenAiClient? = null
+) : Tool {
 
     override val name = "save_memory"
     override val description =
@@ -78,12 +82,20 @@ class SaveMemoryTool(private val database: AppDatabase) : Tool {
                         "add", "replace" -> {
                             if (content.isBlank()) return@withContext ToolResult.Error("content 不能为空")
                             val title = match.ifBlank { content.lineSequence().first().take(60) }
+                            // M3-2:note 类记忆与 assistant 记忆同一条通道生成 embedding。
+                            // 用显式 client,没有则借进程内 EmbeddingClientHolder 兜底;失败降级为无向量(关键词召回)。
+                            if (openAiClient != null) EmbeddingClientHolder.client = openAiClient
+                            // M3-2:用显式 client,没有则借进程内 holder 兜底;失败降级为无向量(关键词召回)。
+                            val embedding = EmbeddingClientHolder.embedWith(
+                                { (openAiClient ?: EmbeddingClientHolder.client)?.embeddings(it) }, content
+                            )
                             dao.upsert(MemoryEntity(
                                 title = title,
                                 content = content,
                                 projectId = com.xincode.tools.WorkspaceContext.projectId, // 项目隔离
                                 tags = "agent-curated",
                                 source = "agent",
+                                embedding = embedding,
                                 updatedAt = System.currentTimeMillis()
                             ))
                             ToolResult.Success("已记入长期记忆: $title")

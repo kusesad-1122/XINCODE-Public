@@ -19,12 +19,33 @@ import com.xincode.data.SkillEntity
  */
 object SkillRecall {
 
-    /** 本回合附加块；空字符串 = 无命中（调用方直接跳过）。 */
+    /**
+     * 单条技能建索引时的描述上限。对齐 Claude Code 渐进披露的 250 字预算：
+     * 清单只给"这技能是干什么的"，步骤正文按需展开。
+     */
+    const val SKILL_DESC_MAX = 250
+
+    /**
+     * 本回合附加块；空字符串 = 无命中（调用方直接跳过）。
+     *
+     * **只注入索引级信息**（技能名 + 摘要 ≤[SKILL_DESC_MAX] 字），不注正文 —— 这才是渐进披露。
+     * 正文由模型按需 `invoke_skill("<name>")` 展开（该工具返回技能全文）。
+     *
+     * 为什么改：之前这里注的是 `content.take(1500)` 全文，与"渐进披露"名不符实 ——
+     * 命中一次就吃掉 1500 字上下文预算，而多数回合其实只是"知道有这么个技能"就够了。
+     * 现在是「摘要常驻、正文按需」，命中成本从 ~1500 字降到 ~250 字。
+     */
     fun blockForQuery(skills: List<SkillEntity>, query: String): String {
         val hit = suggest(skills, query) ?: return ""
-        val body = hit.content.trim().take(1500)
-        if (body.isBlank()) return ""
-        return "[场景技能已自动引用:${hit.name}]\n$body\n(以上为该技能用法摘要,完整版可用 invoke_skill(\"${hit.name}\") 展开)"
+        val desc = hit.description.trim().replace(Regex("""\s+"""), " ").take(SKILL_DESC_MAX)
+        if (desc.isBlank() && hit.name.isBlank()) return ""
+        return buildString {
+            append("[场景技能命中:").append(hit.name).append("]")
+            if (desc.isNotBlank()) append(" ").append(desc)
+            append("\n(以上只是索引,不含步骤。需要照着做时请先 invoke_skill(\"")
+            append(hit.name)
+            append("\") 取完整正文,不要凭摘要猜步骤。)")
+        }
     }
 
     fun suggest(skills: List<SkillEntity>, query: String): SkillEntity? {

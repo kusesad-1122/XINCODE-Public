@@ -1,6 +1,8 @@
 package com.xincode.security
 
 import org.json.JSONObject
+import java.security.MessageDigest
+import java.util.concurrent.Executors
 
 /**
  * Default SecurityGate implementation.
@@ -31,6 +33,11 @@ class SecurityGateImpl(
     private var permissionRules: List<com.xincode.data.PermissionRuleEntity> = emptyList()
     override fun setPermissionRules(rules: List<com.xincode.data.PermissionRuleEntity>) {
         permissionRules = rules
+    }
+
+    /** A-DEAD-2:设置权威权限围栏;传 null 即取消围栏,decide() 恢复现状行为。 */
+    override fun setAuthorityProfile(profile: PermissionProfile?) {
+        authorityProfile = profile
     }
 
     /**
@@ -79,6 +86,16 @@ class SecurityGateImpl(
 
     // ---- audit trail ----
     private val auditTrail = mutableListOf<AuditEntry>()
+
+    /**
+     * 审计写入单线程串行化,保证哈希链的 prevHash 严格按插入顺序链接
+     * (原实现每条 new Thread,并发插入会打乱链序)。
+     */
+    private val auditExecutor = Executors.newSingleThreadExecutor()
+
+    // ---- A-DEAD-2 权威档(默认不设置 = 行为与现状完全一致)----
+    @Volatile
+    private var authorityProfile: PermissionProfile? = null
 
     // ---- SecurityGate interface ----
 
@@ -238,7 +255,7 @@ class SecurityGateImpl(
         val isSafeShell = cmd.toolName == "shell_exec" && isSafeReadOnlyCommand(command)
         val safe = isReadOnlyTool || isSafeShell
 
-        return when (mode) {
+        val base = when (mode) {
             PermissionMode.DENY_ALL ->
                 Decision.Denied("user_denied_global: 权限模式为「禁止全部」，已自动拒绝所有工具调用")
 
@@ -269,7 +286,56 @@ class SecurityGateImpl(
                 }
             }
         }
+        // A-DEAD-2:权威档求交(fail-closed)。未设置权威档时直接返回 base,行为不变。
+        return applyAuthority(base, cmd)
     }
+
+    /** A-DEAD-2:把「权威档」与「请求档」求交;Unfit 或超出围栏一律按拒绝处理。 */
+    private fun applyAuthority(base: Decision, cmd: GateCommand): Decision {
+        val auth = authorityProfile ?: return base
+        val requested = profileForCommand(cmd)
+        return when (val res = intersectProfiles(auth, requested)) {
+            is IntersectionResult.Unfit ->
+                Decision.Denied("authority_intersection_unfit: ${res.reason}")
+            is IntersectionResult.Ok -> {
+                // 命令无法收敛到具体路径(shell/未知工具):围栏下 fail-closed 拒绝。
+                if (requested.fs.kind == FsPolicyKind.UNRESTRICTED) {
+                    Decision.Denied("authority_intersection_denied: 命令无法收敛到路径,超出权威围栏")
+                } else {
+                    val path = extractPathForIntersection(cmd) ?: ""
+                    val write = cmd.toolName in WRITE_TOOLS || cmd.toolName == "su_exec"
+                    if (res.profile.allows(path, write)) base
+                    else Decision.Denied("authority_intersection_denied: 路径 $path 超出权威围栏")
+                }
+            }
+        }
+    }
+
+    /** A-DEAD-2:把一次工具请求收敛成权限剖面;能解析到路径的收敛为文件授权,否则视为不受限(交由权威档收紧)。 */
+    private fun profileForCommand(cmd: GateCommand): PermissionProfile {
+        val path = extractPathForIntersection(cmd)
+        val write = cmd.toolName in WRITE_TOOLS || cmd.toolName == "su_exec"
+        return if (path != null) {
+            val access = if (write) FsAccess.READ_WRITE else FsAccess.READ
+            PermissionProfile(FsPolicy.restricted(FsGrant(normalizeFsPath(path), access)), NetPolicy.RESTRICTED)
+        } else {
+            PermissionProfile.unrestricted()
+        }
+    }
+
+    /** A-DEAD-2:仅对文件类工具提取路径,用于在权威围栏内判定允许/拒绝。 */
+    private fun extractPathForIntersection(cmd: GateCommand): String? {
+        return try {
+            val obj = JSONObject(cmd.toolArgs)
+            when (cmd.toolName) {
+                "file_read", "file_write", "file_edit", "multi_edit",
+                "delete_file", "make_directory", "download_file" ->
+                    obj.optString("path", "").takeIf { it.isNotBlank() }
+                else -> null
+            }
+        } catch (_: Exception) { null }
+    }
+
 
     /**
      * gap-13:判断一条 shell 命令是否为“只读安全命令”。
@@ -339,18 +405,84 @@ class SecurityGateImpl(
             result = result
         )
         if (auditLogDao != null) {
-            Thread {
+            // 单线程串行写入,保证 prevHash 严格按插入顺序链接成链。
+            auditExecutor.submit {
                 try {
-                    kotlinx.coroutines.runBlocking { auditLogDao.insert(entry) }
+                    kotlinx.coroutines.runBlocking {
+                        val prevHash = auditLogDao.getRecent(1).firstOrNull()?.hash ?: ""
+                        val hash = computeAuditHash(
+                            prevHash, entry.timestamp, entry.toolName, entry.toolArgs, entry.decision, entry.result
+                        )
+                        auditLogDao.insert(entry.copy(prevHash = prevHash, hash = hash))
+                    }
                 } catch (_: Exception) {}
-            }.start()
+            }
         } else {
             auditTrail.add(AuditEntry(System.currentTimeMillis(), cmd.toolName, cmd.toolArgs,
                 cmd.capability, cmd.reversibility, ds, result))
         }
     }
 
-    override fun getAuditTrail(): List<AuditEntry> = auditTrail.toList()
+    override fun getAuditTrail(): List<AuditEntry> {
+        val dao = auditLogDao ?: return auditTrail.toList()
+        return try {
+            kotlinx.coroutines.runBlocking { dao.getRecent(200) }.mapNotNull { e ->
+                try {
+                    AuditEntry(
+                        e.timestamp, e.toolName, e.toolArgs,
+                        Capability.valueOf(e.capability), Reversibility.valueOf(e.reversibility),
+                        e.decision, e.result
+                    )
+                } catch (_: Exception) { null }
+            }
+        } catch (_: Exception) {
+            auditTrail.toList()
+        }
+    }
+
+    /**
+     * 校验审计哈希链完整性。
+     * - ok=true 且 brokenAt=null:链完整(或没有 DAO,无可篡改数据)。
+     * - ok=false:在 brokenAt 处发现断链/被篡改。
+     */
+    fun verifyAuditChain(): AuditChainVerification {
+        val dao = auditLogDao ?: return AuditChainVerification(ok = true)
+        return try {
+            val rows = kotlinx.coroutines.runBlocking { dao.getAll() }.sortedBy { it.id }
+            var prev = ""
+            for ((i, e) in rows.withIndex()) {
+                if (e.prevHash != prev) return AuditChainVerification(ok = false, brokenAt = i)
+                val expected = computeAuditHash(e.prevHash, e.timestamp, e.toolName, e.toolArgs, e.decision, e.result)
+                if (expected != e.hash) return AuditChainVerification(ok = false, brokenAt = i)
+                prev = e.hash
+            }
+            AuditChainVerification(ok = true)
+        } catch (_: Exception) {
+            AuditChainVerification(ok = true)
+        }
+    }
+
+    /** sha256(prevHash|timestamp|toolName|toolArgs|decision|result)。 */
+    private fun computeAuditHash(
+        prevHash: String,
+        timestamp: Long,
+        toolName: String,
+        toolArgs: String,
+        decision: String,
+        result: String?
+    ): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        val input = buildString {
+            append(prevHash); append('|')
+            append(timestamp); append('|')
+            append(toolName); append('|')
+            append(toolArgs); append('|')
+            append(decision); append('|')
+            append(result ?: "")
+        }
+        return md.digest(input.toByteArray(Charsets.UTF_8))
+            .joinToString("") { "%02x".format(it) }
+    }
 
     // ---- private helpers ----
 

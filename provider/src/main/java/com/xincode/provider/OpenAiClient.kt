@@ -6,6 +6,7 @@ import com.xincode.data.AppDatabase
 import com.xincode.security.KeystoreProvider
 import com.xincode.provider.HttpCacheProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -191,6 +192,78 @@ class OpenAiClient(
         return cfg to model
     }
 
+    // -- 重试退避(契约 §4) ----------------------------------------------------
+
+    /**
+     * 带契约 §4 退避重试的 HTTP 分发。
+     *
+     * 重试只覆盖「尚未产出任何 delta」的阶段:[client.newCall(request).execute()] 抛网络异常、
+     * 或响应非 2xx。一旦响应成功,本函数把 [okhttp3.Response] 交还调用方去读 SSE 流 ——
+     * 流式场景里,进入流读取循环之后发生的断流/异常就【不在】本函数重试范围,因此绝不会
+     * 「已吐内容再重发」导致重复输出。
+     *
+     * 退避:delay(n)=min(BASE×2^(n-1),MAX)×(1+rand×JITTER);429 带 Retry-After 优先用它。
+     * max_tokens 溢出:检测命中后用 [shrinkRequest] 重建请求,额外重试一次(不计入 MAX_ATTEMPTS)。
+     *
+     * @return 成功的 [okhttp3.Response](调用方负责关闭)
+     * @throws ApiError 重试耗尽或遇不可重试错误时,原样回传原始错误(契约 §4.3 禁止静默降级)
+     */
+    private suspend fun executeWithRetry(
+        client: OkHttpClient,
+        request: Request,
+        random: () -> Double = { Math.random() },
+        delayFn: suspend (Long) -> Unit = { delay(it) },
+        // §4.3 max_tokens 溢出收缩:默认开启。无 max_tokens 字段的请求(如 GET listModels、embeddings)
+        // 会被 shrinkRequestMaxTokens 安全返回 null,等于不触发,故全路径统一开启无副作用。
+        shrinkRequest: ((Request) -> Request?)? = { LlmRetry.shrinkRequestMaxTokens(it) }
+    ): okhttp3.Response {
+        var currentRequest = request
+        var overflowUsed = false
+        var attempt = 0
+        while (true) {
+            attempt++
+            val response = try {
+                client.newCall(currentRequest).execute()
+            } catch (e: IOException) {
+                // 网络层异常(连接/超时/重置/DNS)——可重试
+                val err = ApiError.from(e)
+                if (attempt < LlmRetry.RETRY_MAX_ATTEMPTS && LlmRetry.isRetryable(err)) {
+                    delayFn(LlmRetry.delayMillisFor(attempt, random))
+                    continue
+                }
+                throw err
+            }
+
+            if (response.isSuccessful) return response
+
+            // 非 2xx:先读 Retry-After 头与错误体,再关连接,避免连接泄漏
+            val code = response.code
+            val retryAfter = LlmRetry.retryAfterMillis(response.headers)
+            val errorBody = response.body?.string().orEmpty()
+            response.close()
+
+            // 溢出特例:不计入 MAX_ATTEMPTS,额外收缩重试一次
+            if (!overflowUsed && shrinkRequest != null && LlmRetry.detectMaxTokensOverflow(errorBody)) {
+                val shrunk = shrinkRequest(currentRequest)
+                if (shrunk != null) {
+                    overflowUsed = true
+                    currentRequest = shrunk
+                    continue   // 额外一次,不加退避
+                }
+            }
+
+            val detail = try {
+                org.json.JSONObject(errorBody).optJSONObject("error")?.optString("message")
+            } catch (_: Exception) { null } ?: errorBody.take(200)
+            val apiErr = ApiError.from(IOException("HTTP $code: $detail"), httpCode = code)
+            if (attempt < LlmRetry.RETRY_MAX_ATTEMPTS && LlmRetry.isRetryable(apiErr)) {
+                delayFn(retryAfter ?: LlmRetry.delayMillisFor(attempt, random))
+                continue
+            }
+            throw apiErr
+        }
+    }
+
     // -- model list ------------------------------------------------------------
 
     /**
@@ -211,16 +284,22 @@ class OpenAiClient(
             var lastError = "模型列表为空"
             for (url in urls) {
                 val nativeGemini = gemini && !url.contains("/openai/")
-                val response = httpClient.newCall(
-                    Request.Builder()
-                        .url(url)
-                        .apply {
-                            if (nativeGemini) addHeader("x-goog-api-key", apiKey)
-                            else addHeader("Authorization", "Bearer $apiKey")
-                        }
-                        .get()
-                        .build()
-                ).execute()
+                val request = Request.Builder()
+                    .url(url)
+                    .apply {
+                        if (nativeGemini) addHeader("x-goog-api-key", apiKey)
+                        else addHeader("Authorization", "Bearer $apiKey")
+                    }
+                    .get()
+                    .build()
+                // §4 退避重试:单 URL 内瞬时失败(5xx/429/网络抖动)自动重试;
+                // 重试耗尽则记录并继续尝试下一个候选端点(多端点容错优先于单点重试)。
+                val response = try {
+                    executeWithRetry(httpClient, request)
+                } catch (e: ApiError) {
+                    lastError = "HTTP ${e.message ?: "unknown"}"
+                    continue
+                }
                 response.use {
                     val responseBody = it.body?.string().orEmpty()
                     Log.d(TAG, "← GET $url ${it.code} ${responseBody.take(300)}")
@@ -297,7 +376,8 @@ class OpenAiClient(
                     .build()
 
                 Log.d(TAG, "→ POST $endpoint model=${cfg.model} (responses)")
-                httpClient.newCall(request).execute().use { response ->
+                // §4 退避重试:分发/状态码阶段重试;流式之外,整段可重试
+                executeWithRetry(httpClient, request).use { response ->
                     val responseBody = response.body?.string() ?: ""
                     Log.d(TAG, "← ${response.code} ${responseBody.take(500)}")
                     if (!response.isSuccessful) {
@@ -342,7 +422,8 @@ class OpenAiClient(
 
             Log.d(TAG, "→ POST ${chatEndpoint(cfg.baseUrl, cfg.apiPathType)} model=${cfg.model}")
 
-            val response = httpClient.newCall(request).execute()
+            // §4 退避重试:非流式入口,整段可重试
+            val response = executeWithRetry(httpClient, request)
 
             val responseBody = response.body?.string() ?: ""
             Log.d(TAG, "← ${response.code} ${responseBody.take(500)}")
@@ -430,18 +511,9 @@ class OpenAiClient(
 
                 Log.d(TAG, "→ SSE POST ${chatEndpoint(cfg.baseUrl, cfg.apiPathType)} model=${cfg.model} stream=true")
 
-                response = streamingHttpClient.newCall(request).execute()
-
-                if (!response.isSuccessful) {
-                    val errorBody = response.body?.string() ?: ""
-                    val errorJson = try {
-                        JSONObject(errorBody).optJSONObject("error")?.optString("message")
-                    } catch (e: Exception) { null }
-                    val msg = errorJson ?: errorBody.take(200)
-                    val apiErr = ApiError.from(IOException("HTTP ${response.code}: $msg"), httpCode = response.code)
-                    onError(apiErr)
-                    return@withContext
-                }
+                // §4 退避重试:仅在「尚未产出任何 delta」的分发/状态码阶段重试;
+                // 一旦拿到 2xx 响应,后续 SSE 读取循环不在重试范围,避免重复输出。
+                response = executeWithRetry(streamingHttpClient, request)
 
                 val source = response.body?.source()
                     ?: run {
@@ -506,15 +578,8 @@ class OpenAiClient(
                 .build()
 
             Log.d(TAG, "→ SSE POST $endpoint model=${cfg.model} (responses)")
-            response = streamingHttpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val errorBody = response.body?.string() ?: ""
-                val message = try {
-                    JSONObject(errorBody).optJSONObject("error")?.optString("message")
-                } catch (_: Exception) { null } ?: errorBody.take(200)
-                onError(ApiError.from(IOException("HTTP ${response.code}: $message"), httpCode = response.code))
-                return
-            }
+            // §4 退避重试:仅在分发/状态码阶段重试(未产出 delta 前)
+            response = executeWithRetry(streamingHttpClient, request)
             val source = response.body?.source() ?: run {
                 onError(ApiError.from(IOException("Response body is null")))
                 return
@@ -592,6 +657,9 @@ class OpenAiClient(
 
                 val body = JSONObject().apply {
                     put("model", cfg.model)
+                    // §7 上下文注入稳定性:system 必须位于 messages 首位且会话内固定不变,
+                    // 可变内容(召回记忆/工具结果)置于其后,前缀字节才稳定,供应商前缀缓存才能命中。
+                    // 标准 OpenAI Chat/Responses 协议靠「稳定前缀」自动缓存,无客户端 cache_control 字段(见报告)。
                     put("messages", JSONArray(messages))
                     // 供应商配置里关掉「模型支持 ToolCall」就不发 tools:有些网关收到不认识的
                     // tools 字段直接 400,关掉是让这类端点至少能聊天的唯一出路。
@@ -643,17 +711,8 @@ class OpenAiClient(
 
                 Log.d(TAG, "→ Agent SSE POST ${chatEndpoint(cfg.baseUrl, cfg.apiPathType)} model=${cfg.model} tools=${tools.length()}")
 
-                response = streamingHttpClient.newCall(request).execute()
-
-                if (!response.isSuccessful) {
-                    val errorBody = response.body?.string() ?: ""
-                    val errorJson = try {
-                        JSONObject(errorBody).optJSONObject("error")?.optString("message")
-                    } catch (e: Exception) { null }
-                    val msg = errorJson ?: errorBody.take(200)
-                    onError(ApiError.from(IOException("HTTP ${response.code}: $msg"), httpCode = response.code))
-                    return@withContext
-                }
+                // §4 退避重试:仅在分发/状态码阶段重试(未产出 delta 前);读流后不再重试
+                response = executeWithRetry(streamingHttpClient, request)
 
                 val source = response.body?.source()
                     ?: run {
@@ -773,14 +832,8 @@ class OpenAiClient(
                 .build()
 
             Log.d(TAG, "→ Anthropic SSE POST ${cfg.baseUrl}/v1/messages model=${cfg.model} tools=${tools.length()}")
-            response = streamingHttpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val errBody = response.body?.string() ?: ""
-                val msg = try { JSONObject(errBody).optJSONObject("error")?.optString("message") } catch (_: Exception) { null }
-                    ?: errBody.take(200)
-                onError(ApiError.from(IOException("HTTP ${response.code}: $msg"), httpCode = response.code))
-                return
-            }
+            // §4 退避重试:仅在分发/状态码阶段重试(未产出 delta 前)
+            response = executeWithRetry(streamingHttpClient, request)
             val source = response.body?.source() ?: run {
                 onError(ApiError.from(IOException("Response body is null"))); return
             }
@@ -929,14 +982,8 @@ class OpenAiClient(
                 .build()
 
             Log.d(TAG, "→ Responses SSE POST $endpoint model=${cfg.model} tools=${tools.length()}")
-            response = streamingHttpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                val errBody = response.body?.string() ?: ""
-                val msg = try { JSONObject(errBody).optJSONObject("error")?.optString("message") } catch (_: Exception) { null }
-                    ?: errBody.take(200)
-                onError(ApiError.from(IOException("HTTP ${response.code}: $msg"), httpCode = response.code))
-                return
-            }
+            // §4 退避重试:仅在分发/状态码阶段重试(未产出 delta 前)
+            response = executeWithRetry(streamingHttpClient, request)
             val source = response.body?.source() ?: run {
                 onError(ApiError.from(IOException("Response body is null"))); return
             }
@@ -1355,7 +1402,13 @@ class OpenAiClient(
                 .post(body.toString().toRequestBody(JSON))
                 .build()
             Log.d(TAG, "→ POST $embUrl model=$embModel len=${input.length}")
-            val response = httpClient.newCall(request).execute()
+            // §4 退避重试:非流式入口,整段可重试(embeddings body 无 max_tokens,故不触发收缩分支)
+            val response = try {
+                executeWithRetry(httpClient, request)
+            } catch (e: ApiError) {
+                Log.w(TAG, "embeddings: ${e.message} — provider may not support embeddings")
+                return@withContext null
+            }
             val responseBody = response.body?.string() ?: ""
             if (!response.isSuccessful) {
                 Log.w(TAG, "embeddings: HTTP ${response.code} — provider may not support embeddings")

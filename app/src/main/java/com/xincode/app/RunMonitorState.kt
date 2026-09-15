@@ -7,12 +7,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Observable timeline events for the Workflow view.
+ * Observable timeline events for the run monitor view.
  * Subscribes to [AgentCore.state] and records each state transition.
+ *
+ * 改名说明(M3-10):原 `WorkflowState` 只是「单次 Agent 运行的状态监视器」,
+ * 没有任何编排引擎,名字会误导用户以为有工作流编排能力。现统一改名为
+ * `RunMonitorState`,UI 同步叫「运行监控」。
  */
-class WorkflowState {
+class RunMonitorState {
     companion object {
-        private const val TAG = "WorkflowState"
+        private const val TAG = "RunMonitorState"
     }
 
     /** Single timeline entry. */

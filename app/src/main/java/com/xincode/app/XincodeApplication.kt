@@ -134,7 +134,7 @@ private val groupSessionMember = HashMap<Long, String>()
         private set
     lateinit var rootDetector: RootDetector
         private set
-    lateinit var workflowState: WorkflowState
+    lateinit var workflowState: RunMonitorState
         private set
     lateinit var goalRunner: GoalRunner
         private set
@@ -565,7 +565,7 @@ val suExecTool = SuExecTool().also { this.suExecTool = it }
         pluginStoreManager = PluginStoreManager(this, database, keystore, mcpManager, toolRegistry)
 
         // workflowState 必须先于会话工厂构造(各 core 的状态收集器会调用它)。
-        workflowState = WorkflowState()
+        workflowState = RunMonitorState()
 
         // Hermes-① 复盘分身运行器(共享;每个会话 core 都挂它)——必须先于会话工厂构造。
         val reviewToolRegistry = ToolRegistry().apply {

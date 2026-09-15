@@ -147,6 +147,12 @@
       "input_schema": { "type": "object", "properties": { "url": { "type": "string" }, "path": { "type": "string", "description": "Save path; relative resolves against workspace; omit to use URL filename at workspace root" } }, "required": ["url"], "additionalProperties": false }
     },
     {
+      "name": "generate_image",
+      "description": "文生图:按文字描述生成一张图片(OpenAI /images/generations 兼容,中转站一般可用)。prompt=画面描述(越具体越好);model=生图模型 ID(可选,不填使用已配置的图像模型;不要传聊天模型);size=尺寸(可选,默认 1024x1024)。成功后返回一个「### 文件名(图片,路径:…)」标记——必须把该标记原样贴进给用户的回复里,图片才会直接显示,不要只用文字描述代替。若返回模型或账户不支持,停止换模型重试并明确告知用户配置生图供应商。",
+      "security": { "capability": "NET", "reversibility": "REVERSIBLE", "read_only": false, "plan_allowed": false, "ask_mode": "need-confirm" },
+      "input_schema": { "type": "object", "properties": { "prompt": { "type": "string", "description": "画面描述" }, "model": { "type": "string", "description": "生图模型名(可选)" }, "size": { "type": "string", "description": "如 1024x1024(可选)" } }, "required": ["prompt"], "additionalProperties": false }
+    },
+    {
       "name": "sleep",
       "description": "Pause N seconds (0.1-30) for polling gaps. Keep short; do not poll background tasks blindly. NOTE: falls in gate UNKNOWN bucket, so ASK mode may pop a confirm card.",
       "security": { "capability": "UNKNOWN", "reversibility": "REVERSIBLE", "read_only": true, "plan_allowed": true, "ask_mode": "need-confirm-per-gate-default" },

@@ -40,7 +40,18 @@ interface SecurityGate {
 
     /** gap-12:注入持久化的 allow/deny 权限规则快照(default no-op,便于测试替身)。 */
     fun setPermissionRules(rules: List<com.xincode.data.PermissionRuleEntity>) {}
+
+    /** A-DEAD-2:设置权威权限围栏(默认 no-op,不设置 = 不影响现有行为)。 */
+    fun setAuthorityProfile(profile: PermissionProfile?) {}
 }
+
+/** 审计哈希链校验结果。 */
+data class AuditChainVerification(
+    /** 链是否完整(无篡改、无断链)。没有 DAO 时视为无数据可篡改,返回 ok=true。 */
+    val ok: Boolean,
+    /** 断链/被篡改的位置(0 基);ok=true 时为 null。 */
+    val brokenAt: Int? = null
+)
 
 /** Immutable audit record. */
 data class AuditEntry(

@@ -54,6 +54,10 @@ abstract class MemoryDao {
     @Query("UPDATE memories SET recallCount = :count, lastRecalledAt = :ts WHERE id = :id")
     abstract suspend fun bumpRecall(id: Long, count: Int, ts: Long)
 
+    /** 老化/清理:写入归档标记与活跃度权重(由 [com.xincode.data.MemoryDecay.sweep] 周期性调用)。 */
+    @Query("UPDATE memories SET archived = :archived, decayWeight = :weight WHERE id = :id")
+    abstract suspend fun updateDecay(id: Long, archived: Int, weight: Float)
+
     @Query("SELECT COUNT(*) FROM memories")
     abstract suspend fun count(): Int
 

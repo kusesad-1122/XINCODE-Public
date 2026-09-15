@@ -552,9 +552,9 @@ class MainActivity : ComponentActivity() {
                         onBack = { currentPage = "settings" },
                         database = app.database
                     )
-                    "workflow" -> WorkflowScreen(
+                    "workflow" -> RunMonitorScreen(
                         agentCore = app.agentCore,
-                        workflowState = app.workflowState,
+                        runMonitorState = app.workflowState,
                         onBack = { currentPage = "chat" },
                         onNavigateToReplay = { currentPage = "replay" }
                     )

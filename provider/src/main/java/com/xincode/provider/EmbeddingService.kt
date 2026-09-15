@@ -56,7 +56,17 @@ object EmbeddingService {
      * @param embeddedCandidates all memories that have embeddings (for vector scoring)
      * @param vectorWeight how much to weight vector similarity [0..1]
      * @param limit max results to return
+     *
+     * ⚠️ 已废弃(A-DEAD-3):全仓零调用。活动路径是 `app` 端
+     * `MemoryRecall.rankMemoriesByEmbedding(query, candidates)`——它走「FTS 关键词召回候选
+     * (在 `recallForQuery` 内完成) + 纯向量余弦重排」,不再做 FTS 排名与向量的加权混合。
+     * 本函数的混合打分逻辑(位置式 FTS 分 + 余弦加权)未被任何调用方使用,保留仅为兼容/参考。
+     * **请勿新增调用**,新代码请直接使用 `MemoryRecall.rankMemoriesByEmbedding`。
      */
+    @Deprecated(
+        message = "死代码:活动路径是 MemoryRecall.rankMemoriesByEmbedding;请勿新增调用",
+        level = DeprecationLevel.WARNING
+    )
     fun hybridRank(
         ftsResults: List<com.xincode.data.MemoryEntity>,
         queryVector: FloatArray,
