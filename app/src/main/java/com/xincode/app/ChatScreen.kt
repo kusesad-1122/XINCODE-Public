@@ -344,6 +344,8 @@ fun ChatScreen(
     onOpenDrawer: () -> Unit = {},
     onNewChat: () -> Unit = {},
     planState: PlanState? = null,
+    /** M3-5:把当前计划固化到看板(null = 卡片不显示该按钮)。 */
+    onImportPlanToKanban: (() -> Unit)? = null,
     tokenStats: TokenStats = TokenStats.EMPTY,
     onRegenerate: (Long) -> Unit = {},
     onDeleteMessage: (Long) -> Unit = {},
@@ -800,7 +802,7 @@ fun ChatScreen(
 
         // Live plan card (only shows when an agent_plan has been published)
         if (planState != null) {
-            PlanCard(planState = planState)
+            PlanCard(planState = planState, onImportToKanban = onImportPlanToKanban)
         }
 
         val turnGroups by remember(chatState.messages.toList()) {

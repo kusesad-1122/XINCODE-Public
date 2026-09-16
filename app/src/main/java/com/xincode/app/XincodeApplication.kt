@@ -188,6 +188,31 @@ private val groupSessionMember = HashMap<Long, String>()
 
     fun planStateForSession(sessionId: Long): PlanState = planStates.forSession(sessionId)
 
+    /**
+     * M3-5:把当前会话的 AI 计划「一键固化」到看板(跨会话长期待办)。
+     *
+     * 为什么要有这条路径:`AppStrings` 与 `KanbanTaskEntity` 的注释都承诺了
+     * "可把 AI 的计划一键导入",但此前**代码里没有实现** —— UI 在说谎。
+     *
+     * 刻意**不给 PlanState 加持久化**:既有代码明确写了「PlanState 刻意不落库,
+     * 留着旧计划只会让 UI 混乱」——计划是回合内临时清单,长期化的正确出口是看板。
+     *
+     * 回调在**主线程**执行([applicationScope] 已是 Main.immediate),UI 可直接弹提示。
+     */
+    fun importCurrentPlanToKanban(onDone: (String) -> Unit) {
+        val sid = currentSessionId
+        val state = planStateForSession(sid)
+        applicationScope.launch {
+            val result = runCatching { PlanImport.importToKanban(database.kanbanTaskDao(), state, sid) }
+            onDone(
+                result.fold(
+                    onSuccess = { PlanImport.receipt(it, state.totalCount()) },
+                    onFailure = { "固化失败:" + (it.message ?: it::class.java.simpleName) }
+                )
+            )
+        }
+    }
+
     /** 看板执行器:把 ready 的任务交给隔离 AgentCore 去跑。 */
     lateinit var kanbanRunner: KanbanRunner
         private set

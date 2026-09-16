@@ -40,7 +40,17 @@ private val JetBrainsMono = XinUiFont
  *  - Animates step transitions with spring, not tween, so it feels alive
  */
 @Composable
-fun PlanCard(planState: PlanState, modifier: Modifier = Modifier) {
+fun PlanCard(
+    planState: PlanState,
+    modifier: Modifier = Modifier,
+    /**
+     * M3-5:「固化到看板」回调。null = 不显示该按钮。
+     *
+     * 这条路径在 `AppStrings` 与 `KanbanTaskEntity` 的注释里都被承诺过
+     * （"可把 AI 的计划一键导入"），但此前**没有任何实现** —— 见 [PlanImport] 的说明。
+     */
+    onImportToKanban: (() -> Unit)? = null
+) {
     val xc = LocalXinColors.current
     val visible = planState.visible && planState.steps.isNotEmpty()
     var expanded by remember(planState.title) { mutableStateOf(false) }
@@ -143,6 +153,19 @@ fun PlanCard(planState: PlanState, modifier: Modifier = Modifier) {
                 Column(Modifier.padding(top = 8.dp)) {
                     planState.steps.forEach { step ->
                         PlanStepRow(step, xc = xc)
+                    }
+                    if (onImportToKanban != null) {
+                        Text(
+                            "固化到看板",
+                            fontSize = 11.sp,
+                            fontFamily = JetBrainsMono,
+                            color = xc.green,
+                            modifier = Modifier
+                                .padding(top = 8.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { onImportToKanban() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
                     }
                 }
             }

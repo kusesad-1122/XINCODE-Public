@@ -403,6 +403,12 @@ class MainActivity : ComponentActivity() {
                                 currentPage = "chat"
                             },
                             planState = app.planState,
+                            // M3-5：补齐 AppStrings 里承诺过、此前没实现的「一键固化到看板」
+                            onImportPlanToKanban = {
+                                app.importCurrentPlanToKanban { msg ->
+                                    Toast.makeText(app, msg, Toast.LENGTH_SHORT).show()
+                                }
+                            },
                             skillNames = skillNames.value,
                             onRegenerate = { msgId -> app.regenerateFromMessage(msgId) },
                             onDeleteMessage = { msgId -> app.deleteMessage(msgId) },

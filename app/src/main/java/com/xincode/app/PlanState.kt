@@ -5,7 +5,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.mutableStateListOf
-import java.util.concurrent.ConcurrentHashMap
+
+import java.util.LinkedHashMap
+
+/** [SessionPlanStore] 默认保留的会话上限。见该类注释里"为什么要有上限"。 */
+const val MAX_PLAN_SESSIONS = 32
 
 /**
  * A single step in the model's live task plan. Immutable — mutations replace the whole
@@ -101,14 +105,35 @@ class PlanState {
     fun totalCount(): Int = steps.size
 }
 
-/** Keeps the live task card owned by the conversation that created it. */
-class SessionPlanStore {
-    private val states = ConcurrentHashMap<Long, PlanState>()
+/**
+ * Keeps the live task card owned by the conversation that created it.
+ *
+ * ## 为什么要有上限
+ *
+ * 原实现是裸的 ConcurrentHashMap：**每个访问过的会话都会永久占一份 PlanState**。
+ * 一个长期使用、频繁切会话的 App 会一直涨。32 个足够覆盖"最近在用"的会话，
+ * 超出的按**访问顺序**淘汰最旧的 —— 注意是 accessOrder（LRU）而不是插入顺序：
+ * 当前正在看的那个会话会被反复 touch，永远不会被淘汰。
+ *
+ * 淘汰时**不调 `reset()`**：那个 PlanState 已经没人观察了，
+ * 对它做 Compose 状态写入既无意义、又可能在别的线程上触发快照。
+ */
+class SessionPlanStore(private val maxSessions: Int = MAX_PLAN_SESSIONS) {
 
-    fun forSession(sessionId: Long): PlanState =
-        states.getOrPut(sessionId) { PlanState() }
+    private val lock = Any()
+    private val states = object : LinkedHashMap<Long, PlanState>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, PlanState>): Boolean =
+            size > maxSessions
+    }
+
+    fun forSession(sessionId: Long): PlanState = synchronized(lock) {
+        states[sessionId] ?: PlanState().also { states[sessionId] = it }
+    }
 
     fun remove(sessionId: Long) {
-        states.remove(sessionId)?.reset()
+        synchronized(lock) { states.remove(sessionId) }?.reset()
     }
+
+    /** 当前保留的会话数（观测/测试用）。 */
+    fun size(): Int = synchronized(lock) { states.size }
 }
