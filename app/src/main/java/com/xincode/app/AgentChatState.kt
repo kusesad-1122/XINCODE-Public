@@ -29,6 +29,32 @@ class AgentChatState(
 ) : ChatStateLike {
     companion object {
         private const val TAG = "AgentChatState"
+
+        /** M2-4:压缩后补注入的"最近文件"上限(契约 §6.4 同口径)。 */
+        private const val COMPACT_REINJECT_FILES = 5
+
+        /**
+         * M2-4:上下文压缩的结构化模板。
+         *
+         * 替代原来的"不超过 800 字的单段总结" —— 单段总结会丢掉
+         * 「用户逐条说过什么」「改动过哪些文件」「压缩那一刻正在做什么」,
+         * 而这些恰好是续跑时最需要的信息。
+         */
+        private val COMPACT_PROMPT_TEMPLATE = """
+你的任务是把下面这段对话压缩成结构化摘要,供后续继续工作使用。不要回答对话里的任何问题,只做摘要。
+只输出摘要正文,不要开场白。按以下 9 段输出:
+
+1. 用户原始请求     —— 用户最初要做什么
+2. 关键技术概念     —— 涉及的技术、约束、约定
+3. 文件与代码片段   —— 涉及的文件路径 + 关键代码
+4. 错误与修复       —— 遇到的报错与解决方式
+5. 已完成的排查     —— 已得出的结论,避免重复走一遍
+6. 用户全部指令     —— 用户说过的每条关键指令,逐条列出,不要合并
+7. 未完成任务       —— 还没做完的
+8. 压缩时正在做什么 —— 被打断的那一刻在做的事
+9. 建议的下一步
+""".trimIndent()
+
         private val logFile by lazy { java.io.File("/data/data/com.xincode.app/files/xincode_memory.log") }
         private fun fileLog(msg: String) {
             try {
@@ -396,29 +422,76 @@ class AgentChatState(
         // in-flight assistant 占位行,残留 consumer 用旧 asstIdx 越界崩溃、答案写入已删行而丢失。
         // 因此仅在空闲时压缩;自动压缩若在回合中触发则跳过(留到回合结束/下次手动 /compact)。
         if (isStreaming.value) { Log.d(TAG, "compact skipped: streaming in progress"); return false }
+        val snapshot = messages.toList()
         val text = try {
-            val history = messages.joinToString("\n\n") { m ->
+            val history = snapshot.joinToString("\n\n") { m ->
                 val role = if (m.role == "assistant") "AI" else if (m.role == "user") "USER" else "TOOL"
-                "$role: ${m.content.take(2000)}"
+                // M2-4:单条截断 2000 → 4000 字。压缩的目标是"留得住"，压得太狠等于丢信息。
+                "$role: ${m.content.take(4000)}"
             }
             if (history.length < 200) return false
             // 自定义总结规则(设置→上下文压缩):有则追加到默认规则后,指导总结模型怎么压、留哪些。
             val customRule = withContext(Dispatchers.IO) {
                 try { database.globalSettingsDao().get()?.customSummaryRule?.trim() } catch (_: Exception) { null }
             }
-            val ruleLine = if (!customRule.isNullOrBlank()) "\n额外要求：$customRule" else ""
-            val prompt = "以下是一段对话历史。请用不超过 800 字的中文总结用户目标、关键决策、未完成项，为后续会话保留上下文。只输出总结，不要开场白。$ruleLine\n\n$history"
+            val ruleLine = if (!customRule.isNullOrBlank()) "\n\n额外要求：$customRule" else ""
+            // M2-4:多段结构化模板,替代原来的"不超过 800 字的单段总结"——
+            // 单段总结丢掉"用户逐条指令""改动过的文件""当时正在做什么"，而这些恰是续跑最需要的。
+            val prompt = COMPACT_PROMPT_TEMPLATE + ruleLine + "\n\n===== 待压缩的对话 =====\n" + history
             compactClient.chat(prompt).getOrNull()?.takeIf { it.isNotBlank() } ?: return false
         } catch (_: Exception) { return false }
 
+        // M2-4:压缩后补注入 —— 把"正在用的东西"按预算补回来。
+        // 只留一个光秃秃的摘要,等于把"刚才在改哪个文件"也一起丢了。
+        val reinject = buildReinjectionBlock(snapshot)
+
         withContext(Dispatchers.IO) {
             messageDao.deleteBySessionId(currentSessionId)
-            val digest = MessageEntity(role = "assistant", content = "[上下文摘要]\n$text", sessionId = currentSessionId)
+            val body = buildString {
+                append("[上下文摘要]\n").append(text)
+                if (reinject.isNotBlank()) append("\n\n").append(reinject)
+            }
+            val digest = MessageEntity(role = "assistant", content = body, sessionId = currentSessionId)
             messageDao.insert(digest)
         }
         agentCore.clearHistory()
         loadHistory()
+        Log.i(TAG, "compact done: summary=${text.length} 字, reinject=${reinject.length} 字")
         return true
+    }
+
+    /**
+     * M2-4:压缩后的续接上下文(最近文件 + 命中技能)。
+     *
+     * 预算对齐契约 §6.4:文件最多 5 个、技能描述 ≤250 字。
+     * 注:计划步骤(AgentPlan)是**进程内不落库**的(见 PlanState 注释),这里拿不到,
+     * 属于已知缺口 —— 需要 M3-5 计划持久化落地后才能一并补进来。
+     */
+    private suspend fun buildReinjectionBlock(snapshot: List<ChatState.MessageUi>): String {
+        val files = LinkedHashSet<String>()
+        for (m in snapshot.asReversed()) {
+            if (files.size >= COMPACT_REINJECT_FILES) break
+            val block = m.contentBlock as? MessageContent.ToolCall ?: continue
+            val params = runCatching { org.json.JSONObject(block.fullParams) }.getOrNull() ?: continue
+            val p = params.optString("path").ifBlank { params.optString("file") }
+            if (p.isNotBlank()) files.add(p)
+        }
+        val lastUser = snapshot.lastOrNull { it.role == "user" }?.content.orEmpty()
+        val skills = withContext(Dispatchers.IO) {
+            runCatching {
+                val all = database.skillDao().getAll().filter { it.state == "active" }
+                SkillRecall.suggest(all, lastUser)?.let { listOf(it.name to it.description) } ?: emptyList()
+            }.getOrDefault(emptyList())
+        }
+        if (files.isEmpty() && skills.isEmpty()) return ""
+        return buildString {
+            append("## 压缩前的续接上下文\n")
+            if (files.isNotEmpty()) append("最近处理过的文件：").append(files.joinToString("、")).append("\n")
+            for ((n, d) in skills) {
+                append("命中技能 ").append(n).append("：").append(d.replace(Regex("""\s+"""), " ").take(SkillRecall.SKILL_DESC_MAX)).append("\n")
+            }
+            append("（以上是压缩前正在使用的内容索引,不含正文;需要精确内容请重新读取。）")
+        }
     }
 
     override suspend fun loadHistory() {

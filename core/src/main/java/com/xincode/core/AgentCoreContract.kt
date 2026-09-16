@@ -127,4 +127,30 @@ object AgentCoreContract {
 
     /** compactToolResults 尾部保留 token 数。 */
     const val RESULT_COMPACT_SUFFIX_TOKENS = 1_000
+
+    // ───────────────────────── §8 历史窗口(M1-4) ─────────────────────────
+
+    /**
+     * 发给模型的**历史消息窗口**上限(条数)。
+     *
+     * 之前内部历史跨回合无限增长:一个长会话到后面每轮都要把全部历史重发一遍,
+     * 直到撞上 auto-compact 阈值(85%)才被整段丢掉 —— 那是断崖式的,中间过程全没了。
+     * 60 条 ≈ 30 个来回,与桌面端 `HISTORY_MAX_TURNS_DEFAULT = 30` 对齐。
+     */
+    const val HISTORY_WINDOW_MAX_MESSAGES = 60
+
+    /**
+     * 历史窗口的字符上限。6000 token × 4 字符/token = 24000,
+     * 与桌面端 `HISTORY_BUDGET_TOKENS_DEFAULT = 6000` 同口径。
+     */
+    const val HISTORY_WINDOW_MAX_CHARS = 24_000
+
+    /**
+     * 历史裁剪**只在 user 消息边界切**。
+     *
+     * 原因:API 要求每个 `assistant.tool_calls` 必须紧跟其配对的 `tool` 结果,
+     * 从中间切会把这一组拆散 → 整段历史非法 → HTTP 400。
+     * 以 user 为切点可保证任何被保留的后缀都是自洽的(每轮工具结果都在同一轮内闭合)。
+     */
+    const val HISTORY_TRIM_AT_USER_BOUNDARY = true
 }

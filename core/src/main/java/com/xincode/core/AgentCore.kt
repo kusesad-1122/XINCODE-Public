@@ -672,6 +672,10 @@ class AgentCore(
             // 否则历史非法 → HTTP 400。在快照上补齐合成占位结果,不动真实 messages。
             sanitizeToolPairs(messagesSnapshot)
 
+            // M1-4:配对补齐**之后**再裁历史窗口(只在 user 边界切,不会拆散 assistant↔tool 配对)。
+            // 放在这里而不是放在 messages 上:真实历史还要负责断点续跑与 cursor 落库,不该在它上面删。
+            trimHistoryWindow(messagesSnapshot)
+
             // P1: Compact long tool results before sending to API (does not modify Room data)
             compactToolResults(messagesSnapshot)
 
@@ -1181,6 +1185,28 @@ onComplete = { result ->
      * 断点恢复、或多 tool_call 回合被杀导致部分结果缺失时,历史会非法(assistant 声明了工具调用却
      * 没有全部结果)→ HTTP 400。此处在【快照】上为缺失的 id 追加合成占位结果(不动真实 [messages])。
      */
+    /**
+     * M1-4:把**发给模型的快照**裁到窗口预算内(不改动真实 messages / Room 数据)。
+     *
+     * 为什么只裁快照:真实历史还承担"断点续跑 + cursor 落库"的职责,在它上面删消息
+     * 会让恢复逻辑与 UI 对不上。而 M1-4 要解决的是"每轮把全部历史重发一遍、撞 85% 才断崖式压缩",
+     * 那纯粹是**请求侧**的问题 —— 在快照上解决最精准、风险最低。
+     *
+     * 切点纪律与安全兜底见 [HistoryWindow.trim] 的注释:只在 user 边界切,
+     * 找不到边界宁可不裁(否则会产出注定 400 的非法历史)。
+     * 调用时机必须在 [sanitizeToolPairs] **之后**,那时 tool_calls 配对已补齐。
+     *
+     * @return 被裁掉的消息条数(0 = 没裁)。
+     */
+    internal fun trimHistoryWindow(msgs: MutableList<org.json.JSONObject>): Int {
+        val removed = HistoryWindow.trim(msgs)
+        if (removed > 0) {
+            Log.i(TAG, "history window trimmed: removed=$removed kept=${msgs.size - 1} " +
+                "(max=${AgentCoreContract.HISTORY_WINDOW_MAX_MESSAGES}/${AgentCoreContract.HISTORY_WINDOW_MAX_CHARS})")
+        }
+        return removed
+    }
+
     private fun sanitizeToolPairs(msgs: MutableList<org.json.JSONObject>) {
         var i = 0
         while (i < msgs.size) {

@@ -53,6 +53,18 @@ class AgentCoreContractTest {
     @Test fun resultCompactPrefixTokens() = assertEquals(1_500, AgentCoreContract.RESULT_COMPACT_PREFIX_TOKENS)
     @Test fun resultCompactSuffixTokens() = assertEquals(1_000, AgentCoreContract.RESULT_COMPACT_SUFFIX_TOKENS)
 
+    // ───────────── §8 历史窗口(M1-4) ─────────────
+    @Test fun historyWindowMaxMessages() = assertEquals(60, AgentCoreContract.HISTORY_WINDOW_MAX_MESSAGES)
+    @Test fun historyWindowMaxChars() = assertEquals(24_000, AgentCoreContract.HISTORY_WINDOW_MAX_CHARS)
+    @Test fun historyTrimAtUserBoundary() = assertTrue(AgentCoreContract.HISTORY_TRIM_AT_USER_BOUNDARY)
+
+    @Test fun historyWindowParityWithDesktop() {
+        // 桌面端 HISTORY_MAX_TURNS_DEFAULT=30、HISTORY_BUDGET_TOKENS_DEFAULT=6000
+        // 手机端 60 条 = 30 来回 × 2；24000 字符 = 6000 token × 4 字符/token
+        assertEquals(30, AgentCoreContract.HISTORY_WINDOW_MAX_MESSAGES / 2)
+        assertEquals(6_000 * 4, AgentCoreContract.HISTORY_WINDOW_MAX_CHARS)
+    }
+
     // ───────────── 与桌面端 toolLimits.ts 的对齐检查 ─────────────
     @Test fun parityWithDesktopToolLimits() {
         // 桌面端: DEFAULT_MAX_RESULT_SIZE_CHARS=50_000 / MAX_TOOL_RESULTS_PER_MESSAGE_CHARS=200_000 / TOOL_SUMMARY_MAX_LENGTH=50
