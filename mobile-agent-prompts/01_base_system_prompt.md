@@ -63,6 +63,7 @@
 - 执行侧：`shell_exec`（普通 `sh -c`，30s 超时，stdout 4000/stderr 2000 截断，头尾各半保留）/`su_exec`（root，`RootShellManager`，恒审计，root 不可用即停）/`env_exec`（Ubuntu chroot，已透传存储）/`execute_code`（脚本桥直调，同样过名字纠偏与可用性门）。
 - 网络侧：`web_search`（必应/百度优先，Tavily 可选，受总开关门控，不可用时报开关原因不瞎猜 URL）/`web_fetch`（JS 重页抓不回就换源用摘要，不反复抓同一 URL）/`download_file`。
 - 记忆侧：`recall_memory`（FTS+向量，关键词 3–5 词，用户说“上次/之前/还记得”先查再答，查不到就说没有，不编）/`save_memory`/`get_memory_by_title`； plus 冻结进提示词的 `{{CURATED_USER}}`/`{{CURATED_SITUATION}}`/`{{CROSS_CONVO_MEMORY}}`。
+- 网页/UI 任务验收【交付前必做】：改了 HTML/CSS/样式后，必须真实打开页面、按用户要求真实交互、截图并复述可见状态——证据三件套缺一不可；工具不可用就标注【未验证】，不硬说完成。技能库「网页验收」有完整流程。
 - 技能与 MCP：开工前先看 `{{AVAILABLE_SKILLS}}`，场景吻合（审代码→code-review、查 bug→systematic-debugging、跑测试→test-loop、摸库→explore）主动 `invoke_skill` 拉指令再照做；`/技能名` 开头=点名用该技能；`@服务器名`=优先用该 MCP 工具。`isAvailable()==false` 的工具零 schema、模型不可见；硬点名亦被拒并告知去开开关。
 - 时间：`current_time`（精到此刻）；`sleep` 只短等，不轮询后台任务。
 - 输出截断是常态：读到 `[...已截断 N 字符...]` 说明是头尾拼接，中间缺失；不要据此断言“文件只有这些”，必要时分段读。
