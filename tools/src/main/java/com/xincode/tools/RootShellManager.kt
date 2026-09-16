@@ -4,6 +4,7 @@ import android.util.Log
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * XINCODE root shell 管理器，基于 libsu。
@@ -12,10 +13,24 @@ import kotlinx.coroutines.withContext
  * 全部走 libsu 的 Shell API。
  *
  * 使用前必须调用 init() 一次（在 Application.onCreate）。
+ *
+ * ## ⚠️ 这是**唯一**的一份实现（2026-09-16 合并）
+ *
+ * 原先 `app/src/main/java/com/xincode/app/root/RootShellManager.kt` 有一份近重复的拷贝，
+ * 结果是**两个 object、两套独立 `rootStatus`**：
+ *   - `XincodeApplication.onCreate` 调的是**本类**的 `init()`
+ *   - `PrivilegedExecutor` 读的却是**那份拷贝**的 `rootStatus`，而它的 `init()` 从来没被调用过
+ *   → `rootStatus` 恒为 UNKNOWN，`PrivilegedExecutor` **永远拿不到 ROOT 档**
+ *     （除非用户恰好进过 Linux 环境页，那条路径会顺带刷新拷贝的状态）。
+ * 已删除那份拷贝，`LinuxEnvironment` / `PrivilegedExecutor` 改为引用本类。
+ * **不要再复制一份出去。**
  */
 object RootShellManager {
 
     private const val TAG = "RootShellManager"
+
+    /** 流式执行的兜底超时。 */
+    private const val STREAM_TIMEOUT_MS = 300_000L
 
     @Volatile
     var rootStatus: RootStatus = RootStatus.UNKNOWN
@@ -95,6 +110,39 @@ object RootShellManager {
                 success = false
             )
         }
+    }
+
+    /**
+     * 流式执行：命令输出【逐行实时】回调 [onLine]（stdout+stderr 合并），用于可视终端/部署进度。
+     * 返回退出码等汇总（out/err 不再累积，已经流式给了 onLine）。
+     *
+     * 从原 `app/root/` 拷贝合并过来 —— 那份有、这份没有，正是两份漂移的证据。
+     */
+    suspend fun executeStreaming(command: String, onLine: (String) -> Unit): ExecResult = withContext(Dispatchers.IO) {
+        val startMs = System.currentTimeMillis()
+        val result = withTimeoutOrNull(STREAM_TIMEOUT_MS) {
+            try {
+                val sink = object : com.topjohnwu.superuser.CallbackList<String>() {
+                    override fun onAddElement(e: String?) { if (e != null) onLine(e) }
+                }
+                val r = Shell.cmd(command).to(sink, sink).exec()
+                ExecResult(
+                    stdout = "",
+                    stderr = "",
+                    exitCode = r.code,
+                    durationMs = System.currentTimeMillis() - startMs,
+                    success = r.isSuccess
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "executeStreaming EXCEPTION: command='$command'", e)
+                onLine("[异常] ${e.message}")
+                ExecResult("", e.message ?: "", -1, System.currentTimeMillis() - startMs, false)
+            }
+        }
+        if (result == null) {
+            onLine("[超时] 命令超过 ${STREAM_TIMEOUT_MS / 1000}s 未结束")
+            ExecResult("", "命令超时 (${STREAM_TIMEOUT_MS / 1000}s)", -1, System.currentTimeMillis() - startMs, false)
+        } else result
     }
 
     /**

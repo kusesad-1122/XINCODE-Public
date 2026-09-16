@@ -87,37 +87,37 @@ object ShizukuShell {
         } catch (_: Exception) {}
     }
 
-    suspend fun execute(command: String, context: android.content.Context? = null): com.xincode.app.root.ExecResult = withContext(Dispatchers.IO) {
+    suspend fun execute(command: String, context: android.content.Context? = null): com.xincode.tools.ExecResult = withContext(Dispatchers.IO) {
         val start = System.currentTimeMillis()
         try {
             if (!isAvailable(context) || !isPermissionGranted(context)) {
-                return@withContext com.xincode.app.root.ExecResult("", "Shizuku 未授权或未运行", -1, System.currentTimeMillis() - start, false)
+                return@withContext com.xincode.tools.ExecResult("", "Shizuku 未授权或未运行", -1, System.currentTimeMillis() - start, false)
             }
-            val c = shizukuClass() ?: return@withContext com.xincode.app.root.ExecResult("", "Shizuku 类不存在", -1, 0, false)
+            val c = shizukuClass() ?: return@withContext com.xincode.tools.ExecResult("", "Shizuku 类不存在", -1, 0, false)
             val m = c.getMethod("newProcess", Array<String>::class.java, Array<String>::class.java, String::class.java)
             // newProcess(cmd, env, dir) -> Process
             val process = m.invoke(null, arrayOf("sh", "-c", command), null, null) as? Process
-                ?: return@withContext com.xincode.app.root.ExecResult("", "Shizuku 启动进程失败", -1, 0, false)
+                ?: return@withContext com.xincode.tools.ExecResult("", "Shizuku 启动进程失败", -1, 0, false)
             val stdout = process.inputStream.bufferedReader().use(BufferedReader::readText)
             val stderr = process.errorStream.bufferedReader().use(BufferedReader::readText)
             val code = process.waitFor()
-            com.xincode.app.root.ExecResult(stdout.trim(), stderr.trim(), code, System.currentTimeMillis() - start, code == 0)
+            com.xincode.tools.ExecResult(stdout.trim(), stderr.trim(), code, System.currentTimeMillis() - start, code == 0)
         } catch (e: Exception) {
-            com.xincode.app.root.ExecResult("", "Shizuku 执行异常: ${e.message}", -1, System.currentTimeMillis() - start, false)
+            com.xincode.tools.ExecResult("", "Shizuku 执行异常: ${e.message}", -1, System.currentTimeMillis() - start, false)
         }
     }
 
-    suspend fun executeStreaming(command: String, onLine: (String) -> Unit, context: android.content.Context? = null): com.xincode.app.root.ExecResult = withContext(Dispatchers.IO) {
+    suspend fun executeStreaming(command: String, onLine: (String) -> Unit, context: android.content.Context? = null): com.xincode.tools.ExecResult = withContext(Dispatchers.IO) {
         val start = System.currentTimeMillis()
         try {
             if (!isAvailable(context) || !isPermissionGranted(context)) {
                 onLine("[Shizuku 未授权]")
-                return@withContext com.xincode.app.root.ExecResult("", "Shizuku 未授权", -1, System.currentTimeMillis() - start, false)
+                return@withContext com.xincode.tools.ExecResult("", "Shizuku 未授权", -1, System.currentTimeMillis() - start, false)
             }
-            val c = shizukuClass() ?: return@withContext com.xincode.app.root.ExecResult("", "Shizuku 类不存在", -1, 0, false)
+            val c = shizukuClass() ?: return@withContext com.xincode.tools.ExecResult("", "Shizuku 类不存在", -1, 0, false)
             val m = c.getMethod("newProcess", Array<String>::class.java, Array<String>::class.java, String::class.java)
             val process = m.invoke(null, arrayOf("sh", "-c", command), null, null) as? Process
-                ?: return@withContext com.xincode.app.root.ExecResult("", "Shizuku 启动失败", -1, 0, false)
+                ?: return@withContext com.xincode.tools.ExecResult("", "Shizuku 启动失败", -1, 0, false)
             activeStreamingProcess = process
             val outT = Thread {
                 try { process.inputStream.bufferedReader().forEachLine { onLine(it) } } catch (_: Exception) {}
@@ -129,10 +129,10 @@ object ShizukuShell {
             val code = process.waitFor()
             outT.join(2000); errT.join(2000)
             if (activeStreamingProcess === process) activeStreamingProcess = null
-            com.xincode.app.root.ExecResult("", "", code, System.currentTimeMillis() - start, code == 0)
+            com.xincode.tools.ExecResult("", "", code, System.currentTimeMillis() - start, code == 0)
         } catch (e: Exception) {
             onLine("[Shizuku 异常] ${e.message}")
-            com.xincode.app.root.ExecResult("", e.message ?: "", -1, System.currentTimeMillis() - start, false)
+            com.xincode.tools.ExecResult("", e.message ?: "", -1, System.currentTimeMillis() - start, false)
         }
     }
 }

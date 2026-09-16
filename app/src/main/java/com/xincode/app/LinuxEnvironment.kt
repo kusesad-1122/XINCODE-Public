@@ -5,8 +5,8 @@ import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.xincode.app.root.ExecResult
-import com.xincode.app.root.RootShellManager
+import com.xincode.tools.ExecResult
+import com.xincode.tools.RootShellManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient

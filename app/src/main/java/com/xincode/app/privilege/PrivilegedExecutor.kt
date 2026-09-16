@@ -1,8 +1,8 @@
 package com.xincode.app.privilege
 
 import android.content.Context
-import com.xincode.app.root.ExecResult
-import com.xincode.app.root.RootShellManager
+import com.xincode.tools.ExecResult
+import com.xincode.tools.RootShellManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -29,7 +29,7 @@ object PrivilegedExecutor {
 
     fun currentTier(context: Context? = null): PrivilegeTier {
         return when {
-            RootShellManager.rootStatus == com.xincode.app.root.RootStatus.OK -> PrivilegeTier.ROOT
+            RootShellManager.rootStatus == com.xincode.tools.RootStatus.OK -> PrivilegeTier.ROOT
             ShizukuShell.isAvailable(context) && ShizukuShell.isPermissionGranted(context) -> PrivilegeTier.SHIZUKU
             ShizukuShell.isAvailable(context) -> PrivilegeTier.NORMAL // 已安装但未授权，仍显示 Shizuku 可请求，但执行走普通
             else -> PrivilegeTier.NORMAL
@@ -46,7 +46,7 @@ object PrivilegedExecutor {
 
     suspend fun execute(command: String, context: Context? = null): ExecResult {
         // 1. Root 优先
-        if (RootShellManager.rootStatus == com.xincode.app.root.RootStatus.OK) {
+        if (RootShellManager.rootStatus == com.xincode.tools.RootStatus.OK) {
             try {
                 val r = RootShellManager.execute(command)
                 // 若 Root 执行失败且可能是权限问题，尝试降级；否则直接返回
@@ -99,7 +99,7 @@ object PrivilegedExecutor {
     }
 
     suspend fun executeStreaming(command: String, onLine: (String) -> Unit, context: Context? = null): ExecResult {
-        if (RootShellManager.rootStatus == com.xincode.app.root.RootStatus.OK) {
+        if (RootShellManager.rootStatus == com.xincode.tools.RootStatus.OK) {
             try {
                 // 尝试 Root 流式，若成功直接返回；若抛异常则降级
                 return RootShellManager.executeStreaming(command, onLine)
