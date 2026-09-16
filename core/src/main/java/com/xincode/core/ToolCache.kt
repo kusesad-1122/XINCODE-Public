@@ -26,10 +26,18 @@ class ToolCache(private val maxEntries: Int = 100) {
         32, 0.75f, true  // initialCapacity, loadFactor, accessOrder (LRU)
     )
 
-    /** Deterministic hash of sorted params for cache key. */
+    /**
+     * Deterministic key material for sorted params.
+     *
+     * 这里刻意**不做 32 位哈希压缩**：Java 字符串 hashCode 极易碰撞
+     * （经典例子 "Aa" 与 "BB" 同哈希），而参数串只是前缀拼接后的整体哈希，
+     * 于是 "path=Aa" 与 "path=BB" 会落到同一个缓存键 —— file_read 会返回**另一个文件**的内容。
+     * 这是正确性问题而非性能问题；本缓存的参数（路径 / 查询词 / 命令）都很短，
+     * 直接用原串做键，代价可忽略。
+     */
     private fun argHash(params: Map<String, String>): String {
         val sorted = params.entries.sortedBy { it.key }
-        return sorted.joinToString("|") { "${it.key}=${it.value}" }.hashCode().toUInt().toString(16)
+        return sorted.joinToString("|") { "${it.key}=${it.value}" }
     }
 
     /** Build cache key from tool name and arguments. */
@@ -65,14 +73,18 @@ class ToolCache(private val maxEntries: Int = 100) {
     @Synchronized
     fun put(toolName: String, params: Map<String, String>, result: ToolResult) {
         if (!isCacheable(toolName)) return
+        if (maxEntries <= 0) return              // 容量为 0 = 不缓存（旧实现在这里对空 map 调 iter.next() 抛 NoSuchElementException）
         if (result is ToolResult.Error) return  // don't cache errors
 
         val k = key(toolName, params)
-        if (cache.size >= maxEntries) {
+        // 只有插入**新键**时才淘汰；更新已有键不应把别人挤掉。
+        if (!cache.containsKey(k) && cache.size >= maxEntries) {
             // Remove eldest (LinkedHashMap with accessOrder=true)
             val iter = cache.entries.iterator()
-            iter.next()
-            iter.remove()
+            if (iter.hasNext()) {
+                iter.next()
+                iter.remove()
+            }
         }
         cache[k] = Entry(result)
     }

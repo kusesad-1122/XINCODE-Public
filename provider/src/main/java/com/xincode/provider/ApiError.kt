@@ -78,11 +78,13 @@ sealed class ApiError(
                         msg.contains("timeout", ignoreCase = true) -> TimeoutError(e)
                         msg.contains("Unable to resolve host", ignoreCase = true) -> NetworkError(e)
                         msg.contains("connect", ignoreCase = true) -> NetworkError(e)
-                        else -> UnknownError(msg, e)
+                        // 兜底文案不能是空串：IOException() 可以完全没有 message，
+                        // 空文案在 UI 上就是一片空白，用户既看不懂也报不了。
+                        else -> UnknownError(msg.ifBlank { "请求失败（未提供原因）" }, e)
                     }
                 }
                 is ApiError -> e // already classified
-                else -> UnknownError(e.message ?: "未知错误", e)
+                else -> UnknownError(e.message?.takeIf { it.isNotBlank() } ?: "未知错误", e)
             }
         }
     }
