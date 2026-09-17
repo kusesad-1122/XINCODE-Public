@@ -44,6 +44,7 @@ import com.xincode.data.AppDatabase
 import com.xincode.data.ModelProfile
 import com.xincode.data.ModelProfileCodec
 import com.xincode.data.ProviderConfigEntity
+import com.xincode.provider.EndpointUrl
 import com.xincode.provider.OpenAiClient
 import com.xincode.security.KeystoreProvider
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +61,17 @@ private val Red: Color @Composable get() = LocalXinColors.current.red
 private val Border: Color @Composable get() = LocalXinColors.current.border
 
 private const val TAG = "XincodeUI"
+
+/**
+ * 把连接失败原因转成用户能看懂的一句话。
+ *
+ * ApiError 各变体自带中文文案（明文被拦 / 超时 / 鉴权失败…），优先用它的 message；
+ * 其它异常退回 message 或类名 —— 但绝不允许返回空串：空白提示等于没提示。
+ */
+internal fun describeConnectError(err: Throwable): String {
+    val msg = err.message?.trim().orEmpty()
+    return msg.ifBlank { err::class.simpleName ?: "未知错误" }
+}
 
 // ── known supplier catalog (fallback models; live fetch preferred via fetchModels()) ──
 
@@ -257,15 +269,23 @@ fun SupplierConfigScreen(
 
     fun fetchModels() {
         val key = apiKey.ifBlank { editingApiKey }
-        if (key.isBlank() || effectiveBaseUrl.isBlank()) {
-            status = "✗ 需要 api_key 才能拉取模型列表"; return
+        if (effectiveBaseUrl.isBlank()) {
+            status = "✗ 请先填写 base_url"; return
         }
         modelsLoading = true; status = ""
         scope.launch {
-            val liveModels = openAiClient.listModels(effectiveBaseUrl, key, selectedSupplierId).getOrDefault(emptyList())
+            // 不强制 api_key：本地服务（Ollama / LM Studio / vLLM）通常无鉴权，
+            // 卡在 key 上会让用户根本走不到「能不能连通」这一步；
+            // 真缺 key 时服务端会回 401，下面会原样显示。
+            val result = openAiClient.listModels(effectiveBaseUrl, key, selectedSupplierId)
             modelsLoading = false
-            if (liveModels.isEmpty()) {
-                status = "✗ 拉取失败或无可用模型，可在下方手动填写模型 ID"
+            val liveModels = result.getOrNull()
+            if (liveModels == null) {
+                // 失败原因必须透出：此前统一显示「拉取失败或无可用模型」，
+                // 用户分不清是网络不通、明文被拦、还是地址填错，无从自查。
+                status = "✗ 连接失败：" + describeConnectError(result.exceptionOrNull() ?: Exception("未知错误"))
+            } else if (liveModels.isEmpty()) {
+                status = "✗ 已连上但没有可用模型，可在下方手动填写模型 ID"
             } else {
                 // 在线列表是权威来源；旧缓存中的下线模型不再继续混入选择器。
                 models = liveModels
@@ -300,12 +320,12 @@ fun SupplierConfigScreen(
     }
 
     fun saveConfig() {
-        val url = effectiveBaseUrl.ifBlank {
+        // 入库前先规范化：缺 scheme 自动补（见 EndpointUrl）。
+        // 存原样会让同一条配置在别处复用时再踩一次同一颗雷。
+        val url = EndpointUrl.normalize(effectiveBaseUrl).ifBlank {
             status = "✗ base_url 不能为空"; return
         }
-        if (apiKey.isBlank() && editingConfig == null) {
-            status = "✗ api_key 不能为空"; return
-        }
+        // api_key 不再强制：本地服务普遍无鉴权；真缺 key 时服务端回 401，错误可读。
         if (checkedModelIds.isEmpty()) { status = "✗ 至少勾选一个模型"; return }
         if (model.isBlank() && checkedModelIds.isNotEmpty()) {
             model = checkedModelIds.first()  // auto-select first if none active
@@ -347,7 +367,7 @@ fun SupplierConfigScreen(
             }
             if (newId > 0L) activeId = newId
             showForm = false; loadConfigs()
-            status = "✓ 配置已保存"
+            status = if (keyEnc.isBlank()) "✓ 配置已保存（未填 api_key，仅适用于无需鉴权的本地服务）" else "✓ 配置已保存"
             onConfigChanged()
         }
     }
@@ -572,9 +592,10 @@ fun SupplierConfigScreen(
                 // 预览必须与 OpenAiClient.chatEndpoint 的拼法一致:先剥掉用户可能自带的 /v1,再补全,
                 // 否则界面显示的地址和实际请求的地址不一样,排查问题时更误导。
                 val shown = if (selectedApiPathType == "custom") {
-                    effectiveBaseUrl.trim().trimEnd('/')
+                    EndpointUrl.normalize(effectiveBaseUrl)
                 } else {
-                    val base = effectiveBaseUrl.trim().trimEnd('/')
+                    // 与实际请求用同一套规范化,否则预览和真实请求不一致,排查时更误导
+                    val base = EndpointUrl.normalize(effectiveBaseUrl)
                     // 与 OpenAiClient.chatEndpoint 完全同一套规则:base_url 自带版本段(/v1、/v4…)时只接资源路径。
                     val versioned = Regex("/v\\d+[a-zA-Z0-9]*$").containsMatchIn(base)
                     base + when (selectedApiPathType) {
@@ -587,11 +608,20 @@ fun SupplierConfigScreen(
             }
             Spacer(Modifier.height(12.dp))
 
-            if (isCustom) {
+            // 本地类供应商(Ollama)的地址因机器而异,必须可编辑 ——
+            // 服务通常在另一台机器上跑,而手机上的 localhost 指的是手机自己。
+            if (isCustom || selectedSupplierId == "ollama") {
                 Label("base_url")
                 TextField(value = baseUrl, onValueChange = { baseUrl = it },
                     modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors(), textStyle = fieldTextStyle(),
-                    placeholder = { Text("https://api.xxx.com", color = Faint, fontSize = 12.sp, fontFamily = XinUiFont) })
+                    placeholder = { Text("https://api.xxx.com 或 192.168.1.5:11434", color = Faint, fontSize = 12.sp, fontFamily = XinUiFont) })
+                if (selectedSupplierId == "ollama") {
+                    Text(
+                        "连运行 Ollama 的那台机器:填它的局域网 IP(形如 192.168.1.5:11434),不要填 localhost —— 手机上的 localhost 指手机自己。",
+                        fontSize = 10.sp, fontFamily = XinUiFont, color = Faint,
+                        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
 
                 Label(t("API 路径类型"))

@@ -102,7 +102,12 @@ class OpenAiClient(
     private fun hasVersionSegment(base: String): Boolean =
         Regex("/v\\d[^/]*").containsMatchIn(base)
 
-    private fun trimBase(baseUrl: String): String = baseUrl.trim().trimEnd('/')
+    /**
+     * 统一处理 base_url：规范化 scheme（缺 scheme 自动补，见 [EndpointUrl.normalize]）并去掉尾部斜杠。
+     * 所有端点拼接都必须经过这里 —— 否则用户填 "192.168.1.5:11434" 会直接死在
+     * OkHttp 的 "Expected URL scheme" 上，表现为「连不上」。
+     */
+    private fun normalizeBase(baseUrl: String): String = EndpointUrl.normalize(baseUrl)
 
     private fun isGeminiEndpoint(baseUrl: String, supplierId: String = ""): Boolean =
         supplierId.equals("gemini", ignoreCase = true) ||
@@ -114,8 +119,8 @@ class OpenAiClient(
      */
     private fun chatEndpoint(baseUrl: String, apiPathType: String): String {
         // custom = 用户提供完整 URL,原样使用(不追加任何东西)。
-        if (apiPathType == "custom") return trimBase(baseUrl)
-        var base = trimBase(baseUrl)
+        if (apiPathType == "custom") return normalizeBase(baseUrl)
+        var base = normalizeBase(baseUrl)
         if (apiPathType == "openai" && isGeminiEndpoint(base) && !base.endsWith("/openai")) {
             base += "/openai"
         }
@@ -273,7 +278,7 @@ class OpenAiClient(
      */
     suspend fun listModels(baseUrl: String, apiKey: String, supplierId: String = ""): Result<List<String>> = withContext(Dispatchers.IO) {
         try {
-            val b = trimBase(baseUrl)
+            val b = normalizeBase(baseUrl)
             val gemini = isGeminiEndpoint(b, supplierId)
             val urls = if (gemini) {
                 val compatBase = if (b.endsWith("/openai")) b else "$b/openai"
@@ -281,7 +286,7 @@ class OpenAiClient(
             } else {
                 listOf(if (hasVersionSegment(b)) "$b/models" else "$b/v1/models")
             }
-            var lastError = "模型列表为空"
+            var lastError: Throwable = ApiError.from(IOException("模型列表为空"))
             for (url in urls) {
                 val nativeGemini = gemini && !url.contains("/openai/")
                 val request = Request.Builder()
@@ -297,14 +302,15 @@ class OpenAiClient(
                 val response = try {
                     executeWithRetry(httpClient, request)
                 } catch (e: ApiError) {
-                    lastError = "HTTP ${e.message ?: "unknown"}"
+                    // 保留类型化错误(明文拦截/超时/不可达…):压成 "HTTP xx" 会把根因丢掉,用户无从下手
+                    lastError = e
                     continue
                 }
                 response.use {
                     val responseBody = it.body?.string().orEmpty()
                     Log.d(TAG, "← GET $url ${it.code} ${responseBody.take(300)}")
                     if (!it.isSuccessful) {
-                        lastError = "HTTP ${it.code}"
+                        lastError = ApiError.from(IOException(responseBody.take(300).ifBlank { "HTTP ${it.code}" }), it.code)
                         return@use
                     }
                     val models = parseModelList(responseBody)
@@ -312,10 +318,10 @@ class OpenAiClient(
                         Log.i(TAG, "✓ Listed ${models.size} models from $url")
                         return@withContext Result.success(models.sorted())
                     }
-                    lastError = "响应没有可用模型"
+                    lastError = ApiError.from(IOException("响应没有可用模型"))
                 }
             }
-            Result.failure(ApiError.from(IOException("获取模型列表失败: $lastError")))
+            Result.failure(lastError)
         } catch (e: Exception) {
             Log.e(TAG, "✗ listModels failed: ${e.message}", e)
             Result.failure(ApiError.from(e))
@@ -1392,7 +1398,7 @@ class OpenAiClient(
                 put("input", input)
             }
             // 端点同样要按版本段拼:base_url 自带 /v1 时硬拼会变成 /v1/v1/embeddings。
-            val embUrl = trimBase(cfg.baseUrl).let {
+            val embUrl = normalizeBase(cfg.baseUrl).let {
                 if (hasVersionSegment(it)) "$it/embeddings" else "$it/v1/embeddings"
             }
             val request = Request.Builder()

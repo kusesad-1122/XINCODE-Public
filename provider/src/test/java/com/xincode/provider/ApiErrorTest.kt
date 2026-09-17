@@ -10,6 +10,7 @@ import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.net.UnknownServiceException
 
 /**
  * ApiError 分类单元测试 —— 这条链路直接决定"要不要重试 / 怎么提示用户"。
@@ -81,5 +82,44 @@ class ApiErrorTest {
         val e = ApiError.from(IOException("HTTP 302: redirect"), 302)
         assertTrue("非 4xx/5xx 状态码也必须有类型，实际: ${e::class.java.simpleName}", e is ApiError.UnknownError)
         assertTrue(e.message!!.contains("302"))
+    }
+
+    // ── 明文 HTTP 被网络策略拦截：这是「连不上本地 API」的头号原因，必须单独成类且文案可操作 ──
+
+    @Test
+    fun cleartextBlocked_isRecognizedAsItsOwnVariant() {
+        // Android 网络策略拦截明文 HTTP 时 OkHttp 抛出的系统原文
+        val e = ApiError.from(
+            UnknownServiceException(
+                "CLEARTEXT communication to 192.168.1.5 not permitted by network security policy"
+            )
+        )
+        assertTrue("必须识别为明文拦截，实际: ${e::class.java.simpleName}", e is ApiError.CleartextBlockedError)
+        assertTrue("文案必须给出可操作说明，且不能为空", !e.message.isNullOrBlank())
+    }
+
+    @Test
+    fun tlsTrustFailure_isRecognizedWithActionableMessage() {
+        // 自签证书的典型报错原文
+        val e = ApiError.from(
+            javax.net.ssl.SSLHandshakeException(
+                "java.security.cert.CertPathValidatorException: Trust anchor for certification path not found."
+            )
+        )
+        assertTrue("必须识别为证书问题，实际: ${e::class.java.simpleName}", e is ApiError.TlsError)
+        assertTrue("文案要给出可操作建议", !e.message.isNullOrBlank())
+    }
+
+    @Test
+    fun cleartextDetection_isCaseInsensitive() {
+        val e = ApiError.from(UnknownServiceException("cleartext traffic blocked"))
+        assertTrue(e is ApiError.CleartextBlockedError)
+    }
+
+    @Test
+    fun unknownServiceException_withoutCleartext_isNotMisclassified() {
+        // 其它 UnknownServiceException（如协议协商失败）不能被误判成明文问题
+        val e = ApiError.from(UnknownServiceException("no supported protocols"))
+        assertFalse(e is ApiError.CleartextBlockedError)
     }
 }

@@ -1,10 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  明文(HTTP)流量策略。
+
+  本应用是 AI 客户端,要连的是【用户自己填的】地址:手机本机回环(127.0.0.1)、
+  局域网里的自建推理服务(192.168.x.x / 10.x.x.x / 172.16-31.x.x)、模拟器宿主(10.0.2.2)。
+  这些服务(Ollama / LM Studio / vLLM / 各类中转)绝大多数只提供 http://。
+
+  ⚠️ 这里必须放开 base-config,不能只写白名单:
+  network-security-config 的 <domain> 只支持【具体域名或具体 IP】精确匹配,
+  不支持 CIDR / IP 段通配。而局域网 IP 是任意值,白名单无法穷举 ——
+  此前只放行了 127.0.0.1 / localhost / 10.0.2.2,导致填局域网地址的用户
+  100% 收到 "CLEARTEXT communication to ... not permitted",表现为「死活连不上」,
+  而同一网络下别的软件(不受此策略约束)却正常。
+
+  安全代价:允许明文 HTTP。HTTPS 端点的证书校验完全不受影响。
+-->
 <network-security-config>
-    <!-- 允许本地回环地址明文 HTTP 访问（支持 local MCP 服务器如 127.0.0.1:8787/mcp） -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">127.0.0.1</domain>
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">10.0.2.2</domain>
-    </domain-config>
-    <base-config cleartextTrafficPermitted="false" />
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

@@ -68,6 +68,10 @@ object LlmRetry {
      */
     fun isRetryable(error: ApiError): Boolean = when (error) {
         is ApiError.NetworkError -> true   // 连接/超时/重置/DNS 等网络层异常
+        // 明文被网络策略拦截属于【本地策略】问题:重试多少次结果都一样,不能算网络抖动。
+        is ApiError.CleartextBlockedError -> false
+        // 证书不被信任是配置问题,重试不会让证书变得可信
+        is ApiError.TlsError -> false
         is ApiError.TimeoutError -> true   // 连接或读取超时(OkHttp SocketTimeoutException)
         is ApiError.ServerError -> true    // 5xx
         is ApiError.AuthError -> false     // 401/403:鉴权失败,重试无意义
