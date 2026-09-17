@@ -157,10 +157,35 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
 
       - name: Upload to Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: app/build/outputs/apk/release/app-release.apk
-          tag_name: ${{ github.ref_name }}
-          body_path: release-notes.md
+        # 用 runner 自带的 gh CLI,不再用 softprops/action-gh-release@v1:
+        # 后者基于已弃用的 Node 16 运行时。实测同一套配置,它可能 5 秒传完,
+        # 也可能卡满 140 秒后失败(Release 已创建、资产却没上去),且自身无重试。
+        # 这里改为:不存在则创建 -> 更新说明 -> 上传资产(3 次重试 + --clobber)。
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -u
+          TAG="${GITHUB_REF_NAME}"
+          APK="app/build/outputs/apk/release/app-release.apk"
+          ls -l "$APK"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在,直接复用"
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file release-notes.md
+          fi
+
+          # 说明始终以 CHANGELOG 为准(幂等,重复执行结果一致)
+          gh release edit "$TAG" --notes-file release-notes.md
+
+          # 大文件上传偶发失败:重试 3 次;--clobber 保证重跑能覆盖半成品
+          for i in 1 2 3; do
+            if gh release upload "$TAG" "$APK" --clobber; then
+              echo "APK 上传成功(第 $i 次尝试)"
+              exit 0
+            fi
+            echo "第 $i 次上传失败,10 秒后重试..."
+            sleep 10
+          done
+          echo "APK 三次上传均失败"
+          exit 1
